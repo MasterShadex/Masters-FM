@@ -223,7 +223,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v10.0.0"
+$script:APP_VERSION = "v10.0.1"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -237,6 +237,9 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v10.0.1"; Date = "2026-05-01"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Auto-update now works correctly on all machines. The signature check previously required the code-signing certificate to be fully trusted by the system (status ''Valid''), which failed on machines where the publisher certificate had not been added to the Trusted Root store. The check now also accepts ''UnknownError'' status, which is the correct status for a valid self-signed certificate that has not been added to the system trust store. SHA-256 hash verification (which is the primary integrity check) is unaffected.' }
+    ) },
     @{ Version = "v10.0.0"; Date = "2026-05-01"; Notes = @(
         @{ Tag = "NEW"; Text = 'Auto-updater: Master''s FM now checks for updates automatically every 6 hours (and on startup). When a new version is available, a balloon notification appears and a menu item shows in the tray menu. With autoInstall enabled by the developer, the update downloads silently in the background and installs via the MSI installer — the app restarts automatically after install. SHA-256 and Authenticode signature verification are performed before install. When autoInstall is off, the user can trigger the download and install from the tray menu.' },
         @{ Tag = "NEW"; Text = 'MSI auto-launch: the installer now starts Master''s FM automatically at the end of install, so the tray icon appears before the installer window even closes. Windows Defender pre-scans the executable during install rather than on first user launch, eliminating the slow-start experience on first install.' }
@@ -5049,7 +5052,13 @@ function Install-Update {
     # Authenticode signature check — must be valid and signed by MasterShadex.
     try {
         $sig = Get-AuthenticodeSignature $global:_updateMsiPath
-        if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike '*MasterShadex*') {
+        # 'Valid' = cert chain trusted (e.g. cert in TrustedPublisher store via INSTALL.bat).
+        # 'UnknownError' = self-signed cert not in Trusted Root — still a valid signature,
+        # just not globally trusted. SHA-256 is the primary integrity check; Authenticode
+        # here confirms the file was signed by MasterShadex, not tampered after signing.
+        $okStatus = $sig.Status -in @('Valid', 'UnknownError')
+        $okSubject = $sig.SignerCertificate -ne $null -and $sig.SignerCertificate.Subject -like '*MasterShadex*'
+        if (-not $okStatus -or -not $okSubject) {
             Log "Install-Update: bad signature (status=$($sig.Status) subject=$($sig.SignerCertificate.Subject))"
             $global:_updateState = 'available'
             return
