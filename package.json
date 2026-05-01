@@ -1,0 +1,13 @@
+{
+  "main": "server.js",
+  "bin": "server.js",
+  "pkg": {
+    "assets": [
+      "overlay.html",
+      "customize.html"
+    ]
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

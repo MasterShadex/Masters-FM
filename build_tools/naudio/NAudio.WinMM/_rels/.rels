@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Type="http://schemas.microsoft.com/packaging/2010/07/manifest" Target="/NAudio.WinMM.nuspec" Id="R56C25F4E810D9DF3" />
+  <Relationship Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="/package/services/metadata/core-properties/9935e71f91fb409182a463c6e57a1b54.psmdcp" Id="R8A2212F19666CE87" />
+</Relationships>

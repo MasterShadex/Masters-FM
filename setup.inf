@@ -1,0 +1,42 @@
+;*** BEGIN **********************************************************
+;**                                                                **
+;** Automatically generated on: Fri May 01 22:04:14 2026           **
+;**                                                                **
+;** MakeCAB Version: 5.00                                 **
+;**                                                                **
+;*** BEGIN **********************************************************
+[disk list]
+1,Disk 1
+[cabinet list]
+1,1,Data1.cab
+[file list]
+1,1,server.exe,37747230
+1,1,tray.ps1,732439
+1,1,MastersFM.ico,11816
+1,1,MastersFM.exe,28672
+1,1,config_default.json,2144
+1,1,overlay.html,175630
+1,1,customize.html,206284
+1,1,discord_rpc.js,14132
+1,1,customize.exe,25088
+1,1,Microsoft.Web.WebView2.Core.dll,563672
+1,1,Microsoft.Web.WebView2.WinForms.dll,38360
+1,1,WebView2Loader.dll,162264
+1,1,MastersFM_Tray.exe,20992
+1,1,audio_spectrum.exe,68096
+1,1,NAudio.Core.dll,187904
+1,1,NAudio.Wasapi.dll,179200
+1,1,NAudio.WinMM.dll,57344
+1,1,NAudio.Asio.dll,34304
+1,1,Microsoft.Win32.Registry.dll,50760
+1,1,System.Buffers.dll,21376
+1,1,System.Memory.dll,142752
+1,1,System.Numerics.Vectors.dll,163464
+1,1,System.Runtime.CompilerServices.Unsafe.dll,18024
+1,1,System.Security.AccessControl.dll,55688
+1,1,System.Security.Principal.Windows.dll,37768
+;*** END ************************************************************
+;**                                                                **
+;** Automatically generated on: Fri May 01 22:04:14 2026           **
+;**                                                                **
+;*** END ************************************************************

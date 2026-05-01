@@ -1,0 +1,99 @@
+{
+  "lastfm_username": "",
+  "welcome_seen": false,
+  "liveAudioVisualizer": true,
+  "audioSpectrumBackend": "wasapi_loopback",
+  "audioSpectrumDevice": "default",
+  "discord_rpc": {
+    "enabled": true,
+    "client_id": ""
+  },
+  "overlay": {
+    "font": "Inter",
+    "card": {
+      "borderRadius": 56,
+      "borderThickness": 5,
+      "backgroundTop": "rgba(18,6,36,0.99)",
+      "backgroundBottom": "rgba(12,4,24,0.99)",
+      "backgroundAngle": 148,
+      "backgroundBlur": 0
+    },
+    "border": {
+      "enabled": true,
+      "spinDuration": 4,
+      "colors": ["#ff1085","#ff60c8","#d040ff","#8020e0","#4a0ab8"]
+    },
+    "glow": {
+      "enabled": true,
+      "color1": "#e632b4",
+      "color2": "#961ee6",
+      "intensity": 1.0,
+      "pulseDuration": 3
+    },
+    "art": {
+      "enabled": true,
+      "width": 310,
+      "fadeWidth": 130,
+      "position": "left"
+    },
+    "nowPlaying": {
+      "text": "Now Playing",
+      "fontSize": 44,
+      "color": "#c060ff",
+      "letterSpacing": 5
+    },
+    "bars": {
+      "enabled": true,
+      "color": "#c060ff",
+      "count": 4,
+      "speed": 0.85
+    },
+    "platformBadge": {
+      "enabled": true,
+      "soundcloudLabel": "SoundCloud"
+    },
+    "title": {
+      "fontSize": 68,
+      "fontWeight": 800,
+      "color": "#ffffff",
+      "marqueeSpeed": 68,
+      "marqueePause": 2
+    },
+    "artist": {
+      "fontSize": 44,
+      "fontWeight": 500,
+      "color": "rgba(220,185,255,0.52)"
+    },
+    "spectrum": {
+      "enabled": true,
+      "barCount": 50,
+      "gap": 3,
+      "barRadius": 4,
+      "colorMode": "rainbow",
+      "color": "#c060ff",
+      "smoothing": 0.6,
+      "mirrorMode": false,
+      "heightMult": 1.0,
+      "minHeight": 2,
+      "fps": 120,
+      "autoGain": false
+    },
+    "progressBar": {
+      "enabled": true,
+      "height": 9,
+      "trackColor": "rgba(160,70,255,0.10)",
+      "fillColors": ["#8020c0","#ff60c8","#c040ff"]
+    },
+    "timestamps": {
+      "fontSize": 46,
+      "color": "#e090ff"
+    },
+    "showAnimation": {
+      "duration": 0.5,
+      "slideDistance": 28
+    },
+    "overlay": {
+      "opacity": 1.0
+    }
+  }
+}

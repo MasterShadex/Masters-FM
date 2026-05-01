@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "customize",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-Command", "while ($true) { Start-Sleep 60 }"],
+      "url": "http://127.0.0.1:4242/customize",
+      "port": 4242
+    }
+  ]
+}
