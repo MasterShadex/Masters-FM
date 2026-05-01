@@ -12,7 +12,7 @@ L "=== REBUILD START ==="
 # Step 1: pkg build → server.exe
 L "[1/5] pkg build"
 Push-Location $root
-& npx pkg server.js --targets node18-win-x64 --output dist\server.exe
+& npx pkg src\server.js --targets node18-win-x64 --output dist\server.exe
 $pkgExit = $LASTEXITCODE
 Pop-Location
 if ($pkgExit -ne 0) { L "FAIL: pkg exit=$pkgExit"; exit 11 }
@@ -30,7 +30,7 @@ foreach ($p in $paths) { if (Test-Path $p) { $csc = $p; break } }
 if ($csc) {
     # v5 added System.Windows.Forms (hidden form → HWND → Task Manager app-root).
     # System.Drawing needed for Size/Point used to push the form offscreen.
-    $args = "/nologo /target:winexe /win32icon:MastersFM.ico /out:MastersFM.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll launcher.cs"
+    $args = "/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:MastersFM.exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\launcher.cs"
     $c = Start-Process -FilePath $csc -ArgumentList $args -WorkingDirectory $root -Wait -PassThru -NoNewWindow
     if ($c.ExitCode -eq 0) { L "  MastersFM.exe OK" } else { L "  WARN: csc exit=$($c.ExitCode) - MastersFM.exe may be stale" }
 
@@ -41,9 +41,9 @@ if ($csc) {
     $wv2core = Join-Path $root 'Microsoft.Web.WebView2.Core.dll'
     $wv2wf   = Join-Path $root 'Microsoft.Web.WebView2.WinForms.dll'
     if ((Test-Path $wv2core) -and (Test-Path $wv2wf)) {
-        $argsC = '/nologo /target:winexe /win32icon:MastersFM.ico /out:customize.exe ' +
+        $argsC = '/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:customize.exe ' +
                  '/reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Core.dll ' +
-                 "/reference:`"$wv2core`" /reference:`"$wv2wf`" customize.cs"
+                 "/reference:`"$wv2core`" /reference:`"$wv2wf`" src\customize.cs"
         $c2 = Start-Process -FilePath $csc -ArgumentList $argsC -WorkingDirectory $root -Wait -PassThru -NoNewWindow
         if ($c2.ExitCode -eq 0) { L "  customize.exe OK" } else { L "  WARN: customize.exe csc exit=$($c2.ExitCode)" }
     } else {
@@ -59,9 +59,9 @@ if ($csc) {
     L "[1d/5] Compiling MastersFM_Tray.exe (PowerShell host) via csc.exe..."
     $sma = 'C:\Windows\Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll'
     if (Test-Path $sma) {
-        $argsT = '/nologo /target:winexe /win32icon:MastersFM.ico /out:MastersFM_Tray.exe ' +
+        $argsT = '/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:MastersFM_Tray.exe ' +
                  '/reference:System.dll /reference:System.Core.dll ' +
-                 "/reference:$sma tray_launcher.cs"
+                 "/reference:$sma src\tray_launcher.cs"
         $c3 = Start-Process -FilePath $csc -ArgumentList $argsT -WorkingDirectory $root -Wait -PassThru -NoNewWindow
         if ($c3.ExitCode -eq 0) { L "  MastersFM_Tray.exe OK" } else { L "  WARN: MastersFM_Tray.exe csc exit=$($c3.ExitCode)" }
     } else {
@@ -105,7 +105,7 @@ if (Test-Path $resedit) {
         # VersionInfo, leaving pkg's default Node-shaped icon intact.  The
         # --delete-allicon pair strips every existing icon/groupicon resource
         # so our --icon lands cleanly without being shadowed.
-        $ico = Join-Path $root 'MastersFM.ico'
+        $ico = Join-Path $root 'assets\MastersFM.ico'
         # resedit flag gotchas discovered during v5 debugging:
         #  - `--delete-allicon` (one token, dash-separated) is NOT a thing
         #    resedit actually ships; it was picked up as `--delete-allicon=<next-arg>`
@@ -157,7 +157,7 @@ if (Test-Path $resedit) {
 L "[2/5] build_msi.py"
 $env:PYTHONIOENCODING = 'utf-8'
 Push-Location $root
-& python build_msi.py
+& python build_tools\build_msi.py
 $pyExit = $LASTEXITCODE
 Pop-Location
 if ($pyExit -ne 0) { L "FAIL: MSI build exit=$pyExit"; exit 12 }
@@ -186,7 +186,7 @@ if (Test-Path $signScript) {
 # uploading the MSI to GitHub Releases to enable silent auto-install for friends.
 L "[2c/5] Generating version.json..."
 try {
-    $trayTxt  = Get-Content "$root\tray.ps1" -Raw
+    $trayTxt  = Get-Content "$root\src\tray.ps1" -Raw
     $appVer   = '10.0.0'
     if ($trayTxt -match '\$script:APP_VERSION\s*=\s*"v([^"]+)"') { $appVer = $matches[1] }
 
@@ -264,7 +264,7 @@ if (Test-Path "$dest\MastersFM.exe") {
 # nothing else. No standalone MSI, no standalone cer, no bootstrapper exe
 # cluttering the Desktop. The folder is self-contained + zip-ready.
 try {
-    $trayTxt = Get-Content "$root\tray.ps1" -Raw
+    $trayTxt = Get-Content "$root\src\tray.ps1" -Raw
     $appVer  = 'v2.0.0'
     if ($trayTxt -match '\$script:APP_VERSION\s*=\s*"([^"]+)"') { $appVer = $matches[1] }
 

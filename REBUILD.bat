@@ -37,7 +37,7 @@ echo.
 
 :: ── Step 1: Build server.exe via pkg ────────────────────────────────────────
 echo [1/5] pkg build -^> server.exe
-call npx pkg server.js --targets node18-win-x64 --output dist\server.exe
+call npx pkg src\server.js --targets node18-win-x64 --output dist\server.exe
 if errorlevel 1 (
     echo FAIL: pkg build failed.
     exit /b 11
@@ -56,8 +56,8 @@ if not defined CSC (
     for /f "delims=" %%i in ('dir /b /s "%windir%\Microsoft.NET\Framework\v4.0.30319\csc.exe" 2^>nul') do if not defined CSC set "CSC=%%i"
 )
 if defined CSC (
-    "%CSC%" /nologo /target:winexe /win32icon:MastersFM.ico /out:MastersFM.exe ^
-        launcher.cs
+    "%CSC%" /nologo /target:winexe /win32icon:assets\MastersFM.ico /out:MastersFM.exe ^
+        src\launcher.cs
     if errorlevel 1 (
         echo   WARN: csc compile failed — MastersFM.exe may be stale.
     ) else (
@@ -71,7 +71,7 @@ echo.
 :: ── Step 2: Build MSI ───────────────────────────────────────────────────────
 echo [2/5] build_msi.py
 set "PYTHONIOENCODING=utf-8"
-python build_msi.py
+python build_tools\build_msi.py
 if errorlevel 1 (
     echo FAIL: MSI build failed.
     exit /b 12

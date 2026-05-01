@@ -1,10 +1,10 @@
 {
-  "main": "server.js",
-  "bin": "server.js",
+  "main": "src/server.js",
+  "bin": "src/server.js",
   "pkg": {
     "assets": [
-      "overlay.html",
-      "customize.html"
+      "src/overlay.html",
+      "src/customize.html"
     ]
   },
   "devDependencies": {

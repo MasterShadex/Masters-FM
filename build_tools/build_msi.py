@@ -5,7 +5,7 @@ Runs on any Windows machine with Python installed. No WiX, no dependencies.
 
 import ctypes, ctypes.wintypes, os, sys, struct, tempfile, shutil, subprocess, uuid, re
 
-SRC   = os.path.dirname(os.path.abspath(__file__))
+SRC   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT   = os.path.join(SRC, "Master's FM Install", "MastersFM_Setup.msi")
 
 def _parse_app_version():
@@ -14,7 +14,7 @@ def _parse_app_version():
     # the Major-Upgrade machinery (Upgrade table + RemoveExistingProducts)
     # detects older installs as "older". Falls back to a low version on
     # any parse failure so the build never crashes silently.
-    tray_path = os.path.join(SRC, 'tray.ps1')
+    tray_path = os.path.join(SRC, 'src', 'tray.ps1')
     try:
         with open(tray_path, 'r', encoding='utf-8') as f:
             for line in f:
@@ -64,13 +64,13 @@ GUID_COMP26  = "{CCCCCCCC-DDDD-EEEE-FFFF-111111111111}"  # System.Security.Princ
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
     ("server.exe",                         "server.exe",                         GUID_COMP1),
-    ("tray.ps1",                           "tray.ps1",                           GUID_COMP2),
-    ("MastersFM.ico",                      "MastersFM.ico",                      GUID_COMP4),
+    ("src/tray.ps1",                       "tray.ps1",                           GUID_COMP2),
+    ("assets/MastersFM.ico",               "MastersFM.ico",                      GUID_COMP4),
     ("MastersFM.exe",                      "MastersFM.exe",                      GUID_COMP5),   # C# launcher
-    ("config_default.json",                "config_default.json",                GUID_COMP6),
-    ("overlay.html",                       "overlay.html",                       GUID_COMP7),
-    ("customize.html",                     "customize.html",                     GUID_COMP8),
-    ("discord_rpc.js",                     "discord_rpc.js",                     GUID_COMP9),
+    ("src/config_default.json",            "config_default.json",                GUID_COMP6),
+    ("src/overlay.html",                   "overlay.html",                       GUID_COMP7),
+    ("src/customize.html",                 "customize.html",                     GUID_COMP8),
+    ("src/discord_rpc.js",                 "discord_rpc.js",                     GUID_COMP9),
     ("customize.exe",                      "customize.exe",                      GUID_COMP10),  # WebView2-hosted customize window
     ("Microsoft.Web.WebView2.Core.dll",    "Microsoft.Web.WebView2.Core.dll",    GUID_COMP11),
     ("Microsoft.Web.WebView2.WinForms.dll","Microsoft.Web.WebView2.WinForms.dll",GUID_COMP12),
@@ -498,7 +498,7 @@ def main():
     )
 
     # ── Icon table — embed MastersFM.ico so the shortcut uses it ─────────────
-    ico_path = os.path.join(SRC, "MastersFM.ico")
+    ico_path = os.path.join(SRC, "assets", "MastersFM.ico")
     hv_ico = ctypes.c_uint(0)
     rc = msi_dll.MsiDatabaseOpenViewW(db, "INSERT INTO `Icon` (`Name`,`Data`) VALUES (?,?)", ctypes.byref(hv_ico))
     check(rc, "open Icon view")

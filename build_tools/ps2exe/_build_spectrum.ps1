@@ -22,7 +22,7 @@ foreach ($v in @('v4.8','v4.7.2')) {
 }
 if (-not $netstd) { Write-Host "[spectrum] netstandard.dll not found"; exit 2 }
 
-$src          = Join-Path $Root 'audio_spectrum.cs'
+$src          = Join-Path $Root 'src\audio_spectrum.cs'
 $out          = Join-Path $Root 'audio_spectrum.exe'
 $naudio       = Join-Path $Root 'NAudio.Core.dll'
 $naudioWasapi = Join-Path $Root 'NAudio.Wasapi.dll'
@@ -32,7 +32,7 @@ $naudioWasapi = Join-Path $Root 'NAudio.Wasapi.dll'
 # breaks a build as long as the download step ran once.
 $naudioWinmm  = Join-Path $Root 'NAudio.WinMM.dll'
 $naudioAsio   = Join-Path $Root 'NAudio.Asio.dll'
-$icon         = Join-Path $Root 'MastersFM.ico'
+$icon         = Join-Path $Root 'assets\MastersFM.ico'
 
 if (-not (Test-Path $src))          { Write-Host "[spectrum] $src missing"; exit 3 }
 if (-not (Test-Path $naudio))       { Write-Host "[spectrum] $naudio missing"; exit 4 }
