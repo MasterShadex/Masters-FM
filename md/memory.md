@@ -39,7 +39,8 @@ See `hard_constraints.md` for the full list. Key ones:
 
 - Add new config field: add to BOTH `overlay.html` + `customize.html` DEFAULTS → deepMerge auto-persists
 - New sidebar binding: wire in `init()` after `await fetch(...)` (not top-level)
-- Smoke test after every rebuild: `_smoke.ps1`
+- Smoke test after every rebuild: `tests/_smoke.ps1`
+- `.md` files live in `md/` (memory=`md/memory.md`, tools=`md/tools.md`, save-tokens=`md/save-tokens.md`, onboard=`md/onboard.md`). CLAUDE.md stays at root.
 - Visual debugging: `preview_start` → **resize to 1280×800 first** → `preview_eval` / `preview_screenshot`
 - Version bump: bump `APP_VERSION` in `tray.ps1` AND prepend `PATCH_HISTORY` entry
 
@@ -70,7 +71,7 @@ See `hard_constraints.md` for the full list. Key ones:
 **Manifest URL:** `https://raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json`
 **MSI URL pattern:** `https://github.com/MasterShadex/Masters-FM/releases/download/v{ver}/Masters-FM-V{ver}.msi`
 **Git state:** repo initialized, initial commit `a1c99e6`, branch `main`, remote `origin` → https://github.com/MasterShadex/Masters-FM.git
-**PENDING:** User must create the GitHub repo at https://github.com/new (name: `Masters-FM`, public), then run: `git push -u origin main` from `G:\Project Folder\Master FM\` OR just run `_push_update.ps1` (will push after flipping autoInstall)
+**Git state:** PUSHED — commit `21ca108`, branch `main` tracking `origin/main`
 **Update state globals:** `_updateState` (idle/checking/available/downloading/ready/installing), `_updateVersion`, `_updateMsiUrl`, `_updateMsiSha256`, `_updateAutoInstall`, `_updateLastCheckMs`, `_updateMsiPath`, `_updateCheckTask`, `_updateDownloadTask`, `_updateHttpClient`
 **Menu item:** appears in tray menu between "View Log" sep and "Restart" — label changes based on `_updateState`
 
@@ -151,6 +152,18 @@ See `hard_constraints.md` for the full list. Key ones:
 - New globals: `_smtcTransitionGuardMs`, `_smtcPbInfoCache`, `_smtcTlCache`, `_smtcSessionsCacheLastGood`
 - **Build**: v9.9.9 MSI rebuilt + signed + installed (fifth rebuild of v9.9.9). Startup clean — SMTC detecting normally, no SLOW TICKs.
 - **Status**: Awaiting user confirmation that lag is eliminated.
+
+### 2026-05-01 — GitHub first push — SHIPPED
+- **Repo:** https://github.com/MasterShadex/Masters-FM (private per instructions)
+- **Commit:** `21ca108` — 340 files, 15.8 MB
+- **Backup pre-push:** `F:\_BACKUPS_v9_10_github_setup_2026-05-01_22-05\Master FM_PRE_GITHUB` (88,081 files, 11.148 GB)
+- **Secret scan:** CLEAN — no `.pfx`/`.pem`/`.key` files on disk, no GitHub PATs, no Discord client_secrets. Only `.cer` (public cert only, gitignored).
+- **Discord client_id `1495411843836018819`** in `server.js`: NOT a secret — public app identifier.
+- **gitignore:** `*.cer`, `*.pfx`, `_BACKUPS_*/`, `*.msi`, `*.dll`, compiled EXEs, `node_modules/`, `config.json`, `logs/`, Claude run files.
+- **Committed:** all source (tray.ps1, server.js, overlay.html, etc.), build scripts, five sacred files, rcedit-x64.exe.
+- **Hard-coded path cosmetic:** `_full_rebuild.ps1` lines 1-2 contain `G:\Project Folder\Master FM` — not a secret.
+- **NEW HARD CONSTRAINTS:** .gitignore is PROTECTED. Token at `F:\Documents\Master FM Github.txt` NEVER in source. Code-signing key stays in `Cert:\CurrentUser\My` only.
+- **NEXT:** User uploads v10.0.0 MSI to GitHub Releases (tag v10.0.0), then runs `_push_update.ps1` to enable auto-update delivery.
 
 ### 2026-05-01 — v10.0.0: Auto-updater — SHIPPED
 - **Features**: 6-hour manifest poll (+ on startup), fire-and-poll download (`GetByteArrayAsync`), SHA-256 + Authenticode verify before install, `msiexec /quiet` silent install, tray menu item that reflects update state, `autoInstall` flag for staged rollout
