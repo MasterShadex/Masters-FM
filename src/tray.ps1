@@ -263,7 +263,6 @@ $script:PATCH_HISTORY = @(
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
     @{ Version = "v11.1.0"; Date = "2026-05-02"; Notes = @(
-        @{ Tag = "FIXED";    Text = 'SMTC track metadata now updates correctly when a track changes while the same app session remains open. Previously, title and artist would freeze after the first fetch for the lifetime of the player session.' },
         @{ Tag = "IMPROVED"; Text = 'SoundCloud playback detection now uses a single batched process lookup with a 5-second cache instead of 8 individual lookups per tick, reducing per-tick overhead.' },
         @{ Tag = "IMPROVED"; Text = 'Startup log (startup.log) no longer accumulates all session log lines after initialisation — it now captures only the boot sequence, keeping it compact for crash diagnostics.' }
     ) },
@@ -5820,7 +5819,10 @@ function Get-SMTCSessionsCached {
     if ($global:_smtcCacheTickId -ne $global:_diagTickCount) {
         $global:_smtcCacheTickId   = $global:_diagTickCount
         $global:_smtcSessionsCache = $null
-        $global:_smtcPropsFiredThisTick.Clear()   # v11.1.0: clear per-tick task-dedup table here (Get-SMTCSessionsCached always runs before Get-SMTCMediaPropsCached in the detector chain)
+        # v11.1.0 NOTE: _smtcPropsFiredThisTick.Clear() was attempted here but caused
+        # TryGetMediaPropertiesAsync to fire every tick (10/sec), causing sustained ~9 MB/min
+        # memory growth (239 MB at 13 min vs v11.0.0 stable ~175 MB). Rolled back.
+        # The correctness bug (P1-SMTC-2) is filed as a deferred item for future sessions.
     }
     if ($null -eq $global:_smtcSessionsCache) {
         $mgr = Get-SMTCManager
