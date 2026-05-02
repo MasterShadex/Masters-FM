@@ -1315,6 +1315,31 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Update progress page + status endpoint (v10.0.6) ─────────────────────
+  if (req.method === 'GET' && req.url === '/update-status') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    try {
+      const os = require('os');
+      const statusFile = require('path').join(os.tmpdir(), 'mastersfm_update_status.json');
+      res.end(fs.readFileSync(statusFile, 'utf8'));
+    } catch {
+      res.end('{"state":"idle","version":null,"progress":0,"bytesDown":0,"bytesTotal":0,"current":null,"ts":0}');
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/update') {
+    try {
+      const htmlPath = findHtmlPath('update.html');
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch {
+      res.writeHead(404); res.end('update.html not found');
+    }
+    return;
+  }
+
   if (req.method === 'GET' && (req.url === '/' || req.url.startsWith('/?'))) {
     try {
       const htmlPath = findHtmlPath('overlay.html');

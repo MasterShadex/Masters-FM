@@ -4,7 +4,8 @@
   "pkg": {
     "assets": [
       "src/overlay.html",
-      "src/customize.html"
+      "src/customize.html",
+      "src/update.html"
     ]
   },
   "devDependencies": {

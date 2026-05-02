@@ -6,10 +6,24 @@ param(
     [switch]$skipServerLaunch      # MastersFM.exe already started the server; skip our own launch
 )
 
+# ── Load pre-compiled native types (tray_native.dll) — eliminates csc.exe at startup ──
+# tray_native.dll is compiled once by _full_rebuild.ps1 and shipped in the MSI.
+# Replaces 5 inline Add-Type/csc.exe calls (10-25s) with a single ~50ms DLL load.
+# Falls back to inline Add-Type for each type if the DLL is absent (old install / dev).
+try {
+    $__nativeDllDir = if ($scriptDir -and (Test-Path $scriptDir)) { $scriptDir }
+                      elseif ($PSScriptRoot -and (Test-Path $PSScriptRoot)) { $PSScriptRoot }
+                      else { $PWD.Path }
+    $__nativeDll = Join-Path $__nativeDllDir 'tray_native.dll'
+    if ((Test-Path $__nativeDll) -and -not ('MasterFM.Win32Windows' -as [type])) {
+        Add-Type -Path $__nativeDll
+    }
+} catch {}
+
 # ── Set AppUserModelID (AUMID) — shared with MastersFM.exe / MastersFM_Tray.exe
 # / customize.exe so every Master's FM process has one Shell identity for
-# taskbar grouping, toast notifications, Jump Lists etc. Safe-to-fail; the
-# P/Invoke + Add-Type may not be available in every host context.
+# taskbar grouping, toast notifications, Jump Lists etc. Inline Add-Type is the
+# fallback when tray_native.dll wasn't loaded (old install or dev run without DLL).
 try {
     if (-not ([System.Management.Automation.PSTypeName]'MFM_Shell').Type) {
         Add-Type -Name MFM_Shell -Namespace '' -MemberDefinition @"
@@ -223,7 +237,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v10.0.1"
+$script:APP_VERSION = "v10.2.2"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -237,6 +251,69 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v10.2.2"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "IMPROVED"; Text = 'Startup time reduced by 10-25 seconds on first launch after install. Five inline C# compilations (Add-Type) that each invoked csc.exe have been replaced by a single pre-compiled tray_native.dll that loads in ~50ms.' }
+    ) },
+    @{ Version = "v10.2.1"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.2.0"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Update install helper script now correctly passes the MSI path to msiexec. The previous version embedded the path directly into a double-quoted here-string causing PowerShell to mis-parse the quotes when the helper ran — result was a silent failure after uninstall. Fixed by assigning paths as single-quoted variables and using array-form ArgumentList.' }
+    ) },
+    @{ Version = "v10.1.9"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.1.8"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Auto-update install no longer silently fails. The previous approach (msiexec /i over existing install) fails with error 1603 because Windows Installer cannot locate the source of the prior version. Fixed by writing a helper script that uninstalls the old version by ProductCode first, then installs the new MSI.' }
+    ) },
+    @{ Version = "v10.1.7"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.1.6"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Update check now always fetches a fresh copy of the version manifest. The previous check used a bare URL that GitHub''s CDN could serve from cache, causing "up to date" false positives immediately after a new release was pushed.' }
+    ) },
+    @{ Version = "v10.1.5"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.1.4"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Update download no longer stalls. Replaced the HttpClient streaming approach (unreliable in PS 5.1 + WinForms) with WebClient.DownloadDataAsync whose progress and completion events fire directly on the UI thread.' }
+    ) },
+    @{ Version = "v10.1.3"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.1.2"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Update window now correctly shows "Running v10.x.x" when up to date. The version string was not resolving inside the WinForms timer closure due to a PowerShell scope quirk — fixed by capturing APP_VERSION as a local variable before GetNewClosure().' }
+    ) },
+    @{ Version = "v10.1.1"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only.' }
+    ) },
+    @{ Version = "v10.1.0"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Update download now completes in seconds instead of minutes. Two root causes fixed: (1) The download chunk loop processed one 65 KB chunk per 2-second poll tick — a 12 MB file took ~6 minutes. Fixed by draining all buffered TCP chunks per tick in a time-bounded loop (≤80 ms per tick). (2) Content-Length was never read from the response headers because PowerShell 5.1 unwraps Nullable<long> automatically — calling .HasValue on the resulting plain long silently returned null. Fixed by removing the .HasValue check. The progress bar now shows a real percentage instead of the marquee.' }
+    ) },
+    @{ Version = "v10.0.9"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Update window now has a Download / Install button. No longer need to go back to the tray menu to trigger the download or install — the button appears directly in the progress window.' }
+    ) },
+    @{ Version = "v10.0.8"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Test build — version bump only. Used to verify the native WinForms update progress window end-to-end.' }
+    ) },
+    @{ Version = "v10.0.7"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Update progress window is now a native in-app WinForms window instead of a browser tab. Clicking "Check for Updates" opens a compact dark-themed overlay (420×200) showing live state: checking, downloading with % bar and MB counter, verifying, ready to install, installing. A custom two-panel progress bar (purple fill, dark background) replaces the system control for full color control. A marquee animation appears when download size is unknown. The window auto-closes after ~3 seconds when the "up to date" result arrives.' }
+    ) },
+    @{ Version = "v10.0.6"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Update progress window. Clicking "Check for Updates" opens a browser tab at http://localhost:4242/update showing live progress: checking → downloading (with % bar and byte counter) → verifying → installing → done. Download is now streaming (ReadAsync loop) instead of a single GetByteArrayAsync call, enabling real byte-level progress tracking. When the app restarts for install, the page detects the server going offline and auto-reconnects.' }
+    ) },
+    @{ Version = "v10.0.5"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Auto-update install no longer hangs on "Installing...". Root cause: Install-Update launched msiexec while the tray was still running, causing msiexec to wait indefinitely for locked files. Fix: msiexec is now scheduled via cmd.exe with a 2-second ping delay, then Application.Exit() closes the tray first so msiexec finds all files free when it arrives.' }
+    ) },
+    @{ Version = "v10.0.4"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "NEW"; Text = 'Auto-update end-to-end test build. No behaviour changes — version bump only. Used to verify the full update chain: manifest fetch, MSI download, SHA-256 verify, silent install, and app restart.' }
+    ) },
+    @{ Version = "v10.0.3"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Check for Updates now reliably shows feedback. Clicking the button while the startup auto-check is still in flight now flags it as user-triggered so the result balloon still fires. Menu label shows ''Checking...'' during an in-flight check. Tray tooltip also flashes ''Up to date'' for 5 seconds as a fallback if the balloon is suppressed by Windows.' }
+    ) },
+    @{ Version = "v10.0.2"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Check for Updates now shows a balloon tip confirming you are on the latest version when no update is found. Previously clicking it from an up-to-date install appeared to do nothing.' }
+    ) },
     @{ Version = "v10.0.1"; Date = "2026-05-01"; Notes = @(
         @{ Tag = "FIXED"; Text = 'Auto-update now works correctly on all machines. The signature check previously required the code-signing certificate to be fully trusted by the system (status ''Valid''), which failed on machines where the publisher certificate had not been added to the Trusted Root store. The check now also accepts ''UnknownError'' status, which is the correct status for a valid self-signed certificate that has not been added to the system trust store. SHA-256 hash verification (which is the primary integrity check) is unaffected.' }
     ) },
@@ -4487,12 +4564,17 @@ function Show-TrayMenu {
                    elseif ($global:_updateState -eq 'downloading') { [char]0x231B + "  Downloading update..." } `
                    elseif ($global:_updateState -eq 'ready')       { [char]0x2B06 + "  Install update v$($global:_updateVersion)" } `
                    elseif ($global:_updateState -eq 'installing')  { [char]0x231B + "  Installing..." } `
+                   elseif ($global:_updateState -eq 'checking')    { [char]0x231B + "  Checking..." } `
                    else                                             { "Check for Updates" }
     New-MenuItem -form $fm -yRef $y -Icon ([System.Char]::ConvertFromUtf32(0x1F4E5)) -Label $updateLabel `
         -Action {
+            # v10.0.7: open native WinForms progress window (replaces browser tab)
+            Show-UpdateWindow
+            # Advance update state machine
             if     ($global:_updateState -eq 'available')   { Start-UpdateDownload }
             elseif ($global:_updateState -eq 'ready')       { Install-Update }
-            else                                             { Invoke-UpdateCheck }
+            elseif ($global:_updateState -eq 'idle')        { $global:_updateUserCheck = $true; Invoke-UpdateCheck }
+            elseif ($global:_updateState -eq 'checking')    { $global:_updateUserCheck = $true }
         } | Out-Null
     New-MenuSep  -form $fm -yRef $y
 
@@ -4880,8 +4962,7 @@ $global:_pollTimerTask = $null
 # ── Auto-updater globals (v10.0.0) ────────────────────────────────────────────
 $global:_updateManifestUrl  = 'https://raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json'
 $global:_updateCheckTask    = $null    # Task<string>  — manifest fetch in flight
-$global:_updateDownloadTask = $null    # Task<byte[]>  — MSI download in flight
-$global:_updateHttpClient   = $null    # separate HttpClient with 10-min timeout
+$global:_updateDownloadTask = $null    # Task<byte[]>  — MSI download in flight (legacy, unused)
 $global:_updateState        = 'idle'   # idle|checking|available|downloading|ready|installing
 $global:_updateVersion      = $null    # e.g. "10.1.0"
 $global:_updateMsiUrl       = $null
@@ -4889,6 +4970,16 @@ $global:_updateMsiSha256    = $null
 $global:_updateAutoInstall  = $false
 $global:_updateLastCheckMs  = 0
 $global:_updateMsiPath      = $null
+$global:_updateUserCheck    = $false   # true when check was manually triggered from tray
+# v10.1.4 — WebClient download with DownloadProgressChanged / DownloadDataCompleted events
+# (replaces HttpClient ResponseHeadersRead streaming which was unreliable in PS 5.1 + WinForms)
+$global:_updateProgressFile  = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'mastersfm_update_status.json')
+$global:_updateDownloadBytes  = 0      # bytes received so far (set by DownloadProgressChanged)
+$global:_updateDownloadTotal  = 0      # total bytes      (set by DownloadProgressChanged)
+$global:_updateWebClient      = $null  # WebClient for MSI download (null when idle)
+$global:_updateWindow         = $null        # in-process WinForms progress window (null when closed)
+$global:_updateWinIdleTicks   = 0            # ticks spent in idle after user-check (for auto-close)
+$global:_updateWinMarqPos     = 0            # marquee animation x-offset
 
 $pollTimer          = New-Object System.Windows.Forms.Timer
 $pollTimer.Interval = 2000
@@ -5012,35 +5103,292 @@ function Send-WebhookAsync {
     }
 }
 
-# ── Auto-updater functions (v10.0.0) ─────────────────────────────────────────
+# ── Auto-updater functions (v10.0.0 / v10.0.6 streaming+progress) ────────────
+
+function Write-UpdateStatus {
+    # Writes a small JSON file that server.js serves as /update-status.
+    # Called on every meaningful state transition and every download chunk.
+    try {
+        $pct = if ($global:_updateDownloadTotal -gt 0) {
+            [int][Math]::Floor($global:_updateDownloadBytes * 100.0 / $global:_updateDownloadTotal)
+        } else { 0 }
+        $obj = @{
+            state      = $global:_updateState
+            version    = $global:_updateVersion
+            progress   = $pct
+            bytesDown  = $global:_updateDownloadBytes
+            bytesTotal = $global:_updateDownloadTotal
+            current    = $script:APP_VERSION
+            ts         = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        } | ConvertTo-Json -Compress
+        [System.IO.File]::WriteAllText($global:_updateProgressFile, $obj, [System.Text.Encoding]::UTF8)
+    } catch {}
+}
+
+function Show-UpdateWindow {
+    # v10.0.7 — native in-process WinForms progress window.
+    # If the window is already open, just bring it forward.
+    if ($global:_updateWindow -ne $null -and -not $global:_updateWindow.IsDisposed) {
+        try { $global:_updateWindow.BringToFront(); $global:_updateWindow.Activate() } catch {}
+        return
+    }
+
+    # ── Form ──────────────────────────────────────────────────────────────
+    $win = New-Object System.Windows.Forms.Form
+    $win.Text            = "Master's FM — Update"
+    $win.ClientSize      = New-Object System.Drawing.Size(420, 200)
+    $win.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $win.MaximizeBox     = $false
+    $win.MinimizeBox     = $false
+    $win.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $win.BackColor       = [System.Drawing.ColorTranslator]::FromHtml('#111122')
+    $win.TopMost         = $true
+
+    # ── Status label (large, centered) ────────────────────────────────────
+    $lblStatus = New-Object System.Windows.Forms.Label
+    $lblStatus.AutoSize  = $false
+    $lblStatus.Size      = New-Object System.Drawing.Size(388, 32)
+    $lblStatus.Location  = New-Object System.Drawing.Point(16, 18)
+    $lblStatus.Font      = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
+    $lblStatus.ForeColor = [System.Drawing.Color]::White
+    $lblStatus.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $lblStatus.Text      = [char]0x231B + '  Loading...'
+    $win.Controls.Add($lblStatus)
+
+    # ── Custom progress bar: background Panel + sliding fill Panel ────────
+    # Two-panel approach gives full color control — no system theming override needed.
+    $barBg = New-Object System.Windows.Forms.Panel
+    $barBg.Size      = New-Object System.Drawing.Size(388, 18)
+    $barBg.Location  = New-Object System.Drawing.Point(16, 62)
+    $barBg.BackColor = [System.Drawing.ColorTranslator]::FromHtml('#1e1e35')
+    $win.Controls.Add($barBg)
+
+    $barFill = New-Object System.Windows.Forms.Panel
+    $barFill.Size      = New-Object System.Drawing.Size(0, 18)
+    $barFill.Location  = New-Object System.Drawing.Point(0, 0)
+    $barFill.BackColor = [System.Drawing.ColorTranslator]::FromHtml('#7744dd')
+    $barBg.Controls.Add($barFill)
+
+    # ── Sub label (byte counter / notes) ──────────────────────────────────
+    $lblSub = New-Object System.Windows.Forms.Label
+    $lblSub.AutoSize  = $false
+    $lblSub.Size      = New-Object System.Drawing.Size(388, 18)
+    $lblSub.Location  = New-Object System.Drawing.Point(16, 88)
+    $lblSub.Font      = New-Object System.Drawing.Font('Segoe UI', 9)
+    $lblSub.ForeColor = [System.Drawing.ColorTranslator]::FromHtml('#888899')
+    $lblSub.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $lblSub.Text      = ''
+    $win.Controls.Add($lblSub)
+
+    # ── Action button (Download / Install) ───────────────────────────────
+    $btnAction = New-Object System.Windows.Forms.Button
+    $btnAction.Size      = New-Object System.Drawing.Size(180, 30)
+    $btnAction.Location  = New-Object System.Drawing.Point(120, 116)
+    $btnAction.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnAction.BackColor = [System.Drawing.ColorTranslator]::FromHtml('#7744dd')
+    $btnAction.ForeColor = [System.Drawing.Color]::White
+    $btnAction.Font      = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $btnAction.Text      = ''
+    $btnAction.Visible   = $false
+    $btnAction.FlatAppearance.BorderSize = 0
+    $win.Controls.Add($btnAction)
+
+    $btnAction.add_Click({
+        $st = $global:_updateState
+        if     ($st -eq 'available')  { Start-UpdateDownload }
+        elseif ($st -eq 'ready')      { Install-Update }
+    }.GetNewClosure())
+
+    # ── Running-version label (bottom) ────────────────────────────────────
+    $lblVer = New-Object System.Windows.Forms.Label
+    $lblVer.AutoSize  = $false
+    $lblVer.Size      = New-Object System.Drawing.Size(388, 16)
+    $lblVer.Location  = New-Object System.Drawing.Point(16, 168)
+    $lblVer.Font      = New-Object System.Drawing.Font('Segoe UI', 8)
+    $lblVer.ForeColor = [System.Drawing.ColorTranslator]::FromHtml('#555566')
+    $lblVer.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $lblVer.Text      = "Running $script:APP_VERSION"
+    $win.Controls.Add($lblVer)
+
+    # ── 300 ms refresh timer ──────────────────────────────────────────────
+    # Capture APP_VERSION as a local so GetNewClosure() can pick it up.
+    # $script: scope qualifiers don't resolve correctly inside closures fired
+    # from WinForms timer callbacks — the script scope is not the same as
+    # tray.ps1's script scope at that point.
+    $winAppVer = $script:APP_VERSION
+
+    $winTimer          = New-Object System.Windows.Forms.Timer
+    $winTimer.Interval = 300
+
+    $winTimer.add_Tick({
+        # Safety: dispose timer if window was GC'd or closed externally
+        if ($global:_updateWindow -eq $null -or $global:_updateWindow.IsDisposed) {
+            $winTimer.Stop(); $winTimer.Dispose(); return
+        }
+        $st  = $global:_updateState
+        $ver = $global:_updateVersion
+        $dn  = $global:_updateDownloadBytes
+        $tot = $global:_updateDownloadTotal
+
+        switch ($st) {
+            'idle' {
+                $lblStatus.Text   = [char]0x2705 + '  You''re up to date'
+                $lblSub.Text      = "Running $winAppVer"
+                $barFill.Left     = 0
+                $barFill.Width    = 388
+                $btnAction.Visible = $false
+                $global:_updateWinIdleTicks++
+                if ($global:_updateWinIdleTicks -ge 10) {
+                    try { $global:_updateWindow.Close() } catch {}
+                }
+            }
+            'checking' {
+                $lblStatus.Text   = [char]0x231B + '  Checking for updates...'
+                $lblSub.Text      = ''
+                $barFill.Left     = 0
+                $barFill.Width    = 0
+                $btnAction.Visible = $false
+                $global:_updateWinIdleTicks = 0
+            }
+            'available' {
+                $lblStatus.Text    = [char]0x2B07 + "  Update v$ver available"
+                $lblSub.Text       = ''
+                $barFill.Left      = 0
+                $barFill.Width     = 0
+                $btnAction.Text    = [char]0x2B07 + '  Download'
+                $btnAction.Visible = $true
+                $global:_updateWinIdleTicks = 0
+            }
+            'downloading' {
+                if ($tot -gt 0) {
+                    # Determinate: show % fill
+                    $pct  = [int]($dn * 100 / $tot)
+                    $w    = [Math]::Max(0, [Math]::Min(388, [int]($pct * 388 / 100)))
+                    $lblStatus.Text = [char]0x2B07 + "  Downloading  $pct%"
+                    $lblSub.Text    = "$([Math]::Round($dn / 1048576.0, 1)) MB  /  $([Math]::Round($tot / 1048576.0, 1)) MB"
+                    $barFill.Left   = 0
+                    $barFill.Width  = $w
+                } else {
+                    # Indeterminate: 80 px block slides L→R across 388 px track.
+                    # barFill is a child of barBg — negative Left clips naturally.
+                    $global:_updateWinMarqPos = ($global:_updateWinMarqPos + 22) % 468
+                    $lblStatus.Text = [char]0x2B07 + '  Downloading...'
+                    $lblSub.Text    = if ($dn -gt 0) { "$([Math]::Round($dn / 1048576.0, 1)) MB received" } else { '' }
+                    $barFill.Width  = 80
+                    $barFill.Left   = $global:_updateWinMarqPos - 80
+                }
+                $btnAction.Visible = $false
+                $global:_updateWinIdleTicks = 0
+            }
+            'ready' {
+                $lblStatus.Text    = [char]0x2B06 + "  Ready to install v$ver"
+                $lblSub.Text       = ''
+                $barFill.Left      = 0
+                $barFill.Width     = 388
+                $btnAction.Text    = [char]0x2B06 + '  Install'
+                $btnAction.Visible = $true
+                $global:_updateWinIdleTicks = 0
+            }
+            'installing' {
+                $lblStatus.Text    = [char]0x231B + '  Installing...'
+                $lblSub.Text       = 'Restarting shortly...'
+                $barFill.Left      = 0
+                $barFill.Width     = 388
+                $btnAction.Visible = $false
+                $global:_updateWinIdleTicks = 0
+            }
+            default {
+                $lblStatus.Text    = '...'
+                $lblSub.Text       = ''
+                $btnAction.Visible = $false
+            }
+        }
+    }.GetNewClosure())
+
+    $win.add_FormClosed({
+        $winTimer.Stop()
+        $winTimer.Dispose()
+        $global:_updateWindow       = $null
+        $global:_updateWinIdleTicks = 0
+        $global:_updateWinMarqPos   = 0
+    }.GetNewClosure())
+
+    $global:_updateWindow       = $win
+    $global:_updateWinIdleTicks = 0
+    $winTimer.Start()
+    $win.Show()
+}
 
 function Invoke-UpdateCheck {
     # Fire a manifest fetch if we're idle and the HttpClient is ready.
     if ($global:_updateState -ne 'idle') { return }
     if (-not $global:_httpClient) { return }
     try {
-        $global:_updateCheckTask   = $global:_httpClient.GetStringAsync($global:_updateManifestUrl)
+        $cb = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $global:_updateCheckTask   = $global:_httpClient.GetStringAsync("$($global:_updateManifestUrl)?t=$cb")
         $global:_updateState       = 'checking'
         $global:_updateLastCheckMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        Write-UpdateStatus
         Log "Update check fired"
     } catch { LogErr 'Invoke-UpdateCheck' $_ }
 }
 
 function Start-UpdateDownload {
+    # v10.1.4: replaced HttpClient ResponseHeadersRead streaming with WebClient.DownloadDataAsync.
+    # WebClient events (DownloadProgressChanged, DownloadDataCompleted) fire on the WinForms UI
+    # thread via the installed SynchronizationContext, making them reliable in PS 5.1 + WinForms.
     if ($global:_updateState -ne 'available') { return }
     if (-not $global:_updateMsiUrl) { return }
-    # Create a dedicated HttpClient with a long timeout for the MSI binary.
-    if (-not $global:_updateHttpClient) {
-        try {
-            $global:_updateHttpClient         = [System.Net.Http.HttpClient]::new()
-            $global:_updateHttpClient.Timeout = [TimeSpan]::FromMinutes(10)
-        } catch { LogErr 'Start-UpdateDownload init' $_; return }
-    }
     try {
-        $global:_updateDownloadTask = $global:_updateHttpClient.GetByteArrayAsync($global:_updateMsiUrl)
-        $global:_updateState        = 'downloading'
-        Log "Update download started: $($global:_updateMsiUrl)"
-        $tray.ShowBalloonTip(3000, "Master's FM Update", "Downloading v$($global:_updateVersion)...", [System.Windows.Forms.ToolTipIcon]::Info)
+        $wc  = New-Object System.Net.WebClient
+        $ver = $global:_updateVersion
+        $wc.add_DownloadProgressChanged({
+            param($sender, $e)
+            $global:_updateDownloadBytes = $e.BytesReceived
+            $global:_updateDownloadTotal = $e.TotalBytesToReceive
+            Write-UpdateStatus
+        }.GetNewClosure())
+        $wc.add_DownloadDataCompleted({
+            param($sender, $e)
+            try { $sender.Dispose() } catch {}
+            $global:_updateWebClient = $null
+            if ($e.Cancelled -or $e.Error) {
+                $global:_updateState = 'available'
+                Write-UpdateStatus
+                if ($e.Error) { LogErr 'Download' $e.Error }
+                return
+            }
+            $bytes    = $e.Result
+            $tempPath = [System.IO.Path]::Combine(
+                [System.IO.Path]::GetTempPath(),
+                "MastersFM_update_v$($global:_updateVersion).msi")
+            [System.IO.File]::WriteAllBytes($tempPath, $bytes)
+            if ($global:_updateMsiSha256) {
+                $sha    = [System.Security.Cryptography.SHA256]::Create()
+                $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-','').ToLower()
+                $sha.Dispose()
+                if ($actual -ne $global:_updateMsiSha256.ToLower()) {
+                    Log 'Start-UpdateDownload: SHA256 mismatch'
+                    try { [System.IO.File]::Delete($tempPath) } catch {}
+                    $global:_updateState = 'available'
+                    Write-UpdateStatus
+                    return
+                }
+            }
+            $global:_updateMsiPath = $tempPath
+            $global:_updateState   = 'ready'
+            Write-UpdateStatus
+            Log "Download completed+verified: $tempPath"
+            if ($global:_updateAutoInstall) { Install-Update }
+        }.GetNewClosure())
+        $global:_updateDownloadBytes = 0
+        $global:_updateDownloadTotal = 0
+        $global:_updateState         = 'downloading'
+        Write-UpdateStatus
+        $global:_updateWebClient = $wc
+        Log "Update download started (WebClient): $($global:_updateMsiUrl)"
+        $tray.ShowBalloonTip(3000, "Master's FM Update", "Downloading v$ver...", [System.Windows.Forms.ToolTipIcon]::Info)
+        $wc.DownloadDataAsync([Uri]::new($global:_updateMsiUrl))
     } catch { LogErr 'Start-UpdateDownload' $_ }
 }
 
@@ -5065,14 +5413,50 @@ function Install-Update {
         }
     } catch { LogErr 'Install-Update sig' $_; $global:_updateState = 'available'; return }
     $global:_updateState = 'installing'
-    $msiPath = $global:_updateMsiPath
+    Write-UpdateStatus
+    $msiPath    = $global:_updateMsiPath
+    $launchPath = [System.IO.Path]::Combine($env:LOCALAPPDATA, 'MastersFM', 'MastersFM.exe')
     try {
-        # /quiet = no UI, /norestart = don't reboot the OS.
-        # The MSI's LaunchApp custom action will start the new version automatically.
-        Start-Process -FilePath 'msiexec.exe' `
-            -ArgumentList "/i `"$msiPath`" /quiet /norestart" `
-            -WindowStyle Hidden -Wait:$false
-        Log "Install-Update: msiexec launched for $msiPath"
+        # v10.1.8: write a temp PS1 helper that:
+        #   1. Waits 3s so this process has fully exited and files are unlocked
+        #   2. Finds the installed ProductCode via registry (fast — no Win32_Product)
+        #   3. Uninstalls the old version first (avoids Major Upgrade SecureRepair failure
+        #      when the previous MSI was installed from a temp path)
+        #   4. Installs the new MSI
+        #   5. Relaunches the app
+        # Plain "msiexec /i NewVersion.msi" over an existing install fails with 1603
+        # because Windows Installer can't locate the cached source of the prior version.
+        $helperPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'mastersfm_update_helper.ps1')
+        # Embed paths as single-quoted literals at the top of the helper so there are no
+        # quoting ambiguities when the saved .ps1 is later parsed by a fresh PowerShell process.
+        # Array form of -ArgumentList avoids any further shell-splitting of the path.
+        $msiEsc    = $msiPath.Replace("'", "''")
+        $launchEsc = $launchPath.Replace("'", "''")
+        $helperScript = @"
+`$msiFile = '$msiEsc'
+`$launch  = '$launchEsc'
+Start-Sleep -Seconds 3
+`$keys = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)
+`$pc = (Get-ItemProperty `$keys -ErrorAction SilentlyContinue |
+        Where-Object { `$_.DisplayName -like '*Master*FM*' } |
+        Select-Object -First 1).PSChildName
+if (`$pc) {
+    Start-Process msiexec.exe -ArgumentList @('/x', `$pc, '/qn', '/norestart') -Wait -WindowStyle Hidden
+    Start-Sleep -Seconds 1
+}
+Start-Process msiexec.exe -ArgumentList @('/i', `$msiFile, '/quiet', '/norestart') -Wait -WindowStyle Hidden
+Start-Sleep -Seconds 1
+if (Test-Path `$launch) { Start-Process `$launch }
+"@
+        [System.IO.File]::WriteAllText($helperPath, $helperScript, [System.Text.Encoding]::UTF8)
+        Start-Process 'powershell.exe' `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$helperPath`"" `
+            -WindowStyle Hidden
+        Log "Install-Update: helper launched ($helperPath) — exiting now"
+        [System.Windows.Forms.Application]::Exit()
     } catch { $global:_updateState = 'ready'; LogErr 'Install-Update exec' $_ }
 }
 
@@ -5101,14 +5485,32 @@ function Poll-UpdateCheck {
                     $global:_updateMsiSha256   = $json.msi_sha256
                     $global:_updateAutoInstall = [bool]$json.autoInstall
                     $global:_updateState       = 'available'
+                    Write-UpdateStatus
                     Log "Update available: v$($global:_updateVersion) autoInstall=$($global:_updateAutoInstall)"
                     $tray.ShowBalloonTip(6000, "Master's FM Update",
                         "v$($global:_updateVersion) is available. Open tray menu to install.",
                         [System.Windows.Forms.ToolTipIcon]::Info)
                     if ($global:_updateAutoInstall) { Start-UpdateDownload }
                 } else {
-                    Log "Update check: already up to date (remote=$remote local=$local)"
+                    Log "Update check: already up to date (remote=$remote local=$local) userCheck=$($global:_updateUserCheck)"
                     $global:_updateState = 'idle'
+                    Write-UpdateStatus
+                    if ($global:_updateUserCheck) {
+                        Log "Showing up-to-date balloon"
+                        try {
+                            $tray.ShowBalloonTip(4000, "Master's FM", "You're on the latest version (v$($script:APP_VERSION.TrimStart('v'))).", [System.Windows.Forms.ToolTipIcon]::Info)
+                            Log "Balloon shown OK"
+                        } catch {
+                            LogErr 'ShowBalloonTip up-to-date' $_
+                        }
+                        # Also flash the tooltip text — visible even if Windows suppresses the balloon
+                        $prevText = $tray.Text
+                        $tray.Text = [char]0x2705 + " Up to date  (v$($script:APP_VERSION.TrimStart('v')))"
+                        $resetTimer = New-Object System.Windows.Forms.Timer
+                        $resetTimer.Interval = 5000
+                        $resetTimer.add_Tick({ $tray.Text = $prevText; $resetTimer.Stop(); $resetTimer.Dispose() }.GetNewClosure())
+                        $resetTimer.Start()
+                    }
                 }
             } else {
                 $global:_updateState = 'idle'
@@ -5117,48 +5519,17 @@ function Poll-UpdateCheck {
             $global:_updateState = 'idle'
             LogErr 'Poll-UpdateCheck manifest' $_
         } finally {
+            $global:_updateUserCheck = $false
             try { $global:_updateCheckTask.Dispose() } catch {}
             $global:_updateCheckTask = $null
         }
     }
 
-    # ── 3. Collect download result ─────────────────────────────────────────
-    if ($global:_updateState -eq 'downloading' -and
-        $global:_updateDownloadTask -ne $null -and $global:_updateDownloadTask.IsCompleted) {
-        try {
-            if ($global:_updateDownloadTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
-                $bytes    = $global:_updateDownloadTask.Result
-                $tempPath = [System.IO.Path]::Combine(
-                    [System.IO.Path]::GetTempPath(),
-                    "MastersFM_update_v$($global:_updateVersion).msi")
-                [System.IO.File]::WriteAllBytes($tempPath, $bytes)
-                # SHA-256 verification (if manifest provided a hash)
-                if ($global:_updateMsiSha256) {
-                    $sha    = [System.Security.Cryptography.SHA256]::Create()
-                    $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-','').ToLower()
-                    $sha.Dispose()
-                    if ($actual -ne $global:_updateMsiSha256.ToLower()) {
-                        Log "Poll-UpdateCheck: SHA256 mismatch — expected $($global:_updateMsiSha256) got $actual"
-                        try { [System.IO.File]::Delete($tempPath) } catch {}
-                        $global:_updateState = 'available'
-                        return
-                    }
-                }
-                $global:_updateMsiPath = $tempPath
-                $global:_updateState   = 'ready'
-                Log "Update downloaded+verified: $tempPath"
-                if ($global:_updateAutoInstall) { Install-Update }
-            } else {
-                $global:_updateState = 'available'
-            }
-        } catch {
-            $global:_updateState = 'available'
-            LogErr 'Poll-UpdateCheck download' $_
-        } finally {
-            try { $global:_updateDownloadTask.Dispose() } catch {}
-            $global:_updateDownloadTask = $null
-        }
-    }
+    # ── 3. Downloading — handled entirely by WebClient events (v10.1.4) ──────
+    # DownloadProgressChanged / DownloadDataCompleted fire on the WinForms UI thread,
+    # so there is nothing to poll here.  The window timer reads _updateDownloadBytes /
+    # _updateDownloadTotal directly to update the progress bar.
+    if ($global:_updateState -eq 'downloading') { return }
 }
 
 # Await-WinRT — convert a WinRT IAsyncOperation<T> to a .NET Task<T> and block

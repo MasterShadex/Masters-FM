@@ -67,6 +67,25 @@ if ($csc) {
     } else {
         L "  WARN: System.Management.Automation.dll not found - MastersFM_Tray.exe NOT built"
     }
+
+    # tray_native.dll — Pre-compiled P/Invoke + COM types for tray.ps1.
+    # Replaces 5 inline Add-Type/csc.exe calls at every launch (10-25s each run)
+    # with a single Add-Type -Path load (~50ms). Compile once, ship in MSI.
+    L "[1d3/5] Compiling tray_native.dll (pre-compiled tray P/Invoke types)..."
+    $argsN = "/nologo /target:library /out:tray_native.dll /reference:System.dll src\tray_native.cs"
+    $c4 = Start-Process -FilePath $csc -ArgumentList $argsN -WorkingDirectory $root -Wait -PassThru -NoNewWindow
+    if ($c4.ExitCode -eq 0) {
+        L "  tray_native.dll OK"
+        # Sign tray_native.dll with the same cert as the MSI — unsigned DLLs
+        # may be flagged by Defender on testers' machines (new PE on first scan).
+        $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
+        if (Test-Path $signScript) {
+            $dllPath = Join-Path $root 'tray_native.dll'
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $dllPath 2>&1 | ForEach-Object { L "    $_" }
+            } catch { L "  WARN: DLL signing failed: $_" }
+        }
+    } else { L "  WARN: tray_native.dll csc exit=$($c4.ExitCode)" }
 } else {
     L "  WARN: csc.exe not found"
 }

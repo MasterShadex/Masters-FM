@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Master's FM — Update</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f0f1a;
+    color: #e0e0f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 32px;
+  }
+  .card {
+    background: #1a1a2e;
+    border: 1px solid #2a2a45;
+    border-radius: 12px;
+    padding: 40px 48px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+  }
+  .logo {
+    font-size: 13px;
+    color: #7070a0;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .icon {
+    font-size: 48px;
+    line-height: 1;
+    margin-bottom: 18px;
+    display: block;
+  }
+  .headline {
+    font-size: 20px;
+    font-weight: 600;
+    color: #d0d0ee;
+    margin-bottom: 8px;
+  }
+  .sub {
+    font-size: 13px;
+    color: #7070a0;
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+  .progress-wrap {
+    background: #0f0f1a;
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .progress-bar {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #6644cc, #9966ff);
+    transition: width 0.3s ease;
+    min-width: 0;
+  }
+  .progress-bar.pulse {
+    width: 40% !important;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%   { margin-left: -40%; }
+    100% { margin-left: 100%; }
+  }
+  .progress-label {
+    font-size: 12px;
+    color: #5050808;
+    margin-bottom: 24px;
+    color: #6060aa;
+  }
+  .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #444466;
+    margin: 0 3px;
+    vertical-align: middle;
+  }
+  .dot.active { background: #9966ff; }
+  .version-chip {
+    display: inline-block;
+    background: #2a2a45;
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px;
+    color: #9090cc;
+    margin-top: 16px;
+  }
+  .version-chip span { color: #bbbbee; font-weight: 600; }
+  .offline-msg {
+    font-size: 13px;
+    color: #5050808;
+    margin-top: 24px;
+    color: #505080;
+  }
+  .spin {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Master's FM</div>
+  <span class="icon" id="icon">⟳</span>
+  <div class="headline" id="headline">Connecting...</div>
+  <div class="sub" id="sub"></div>
+  <div id="progress-section" style="display:none">
+    <div class="progress-wrap"><div class="progress-bar" id="bar"></div></div>
+    <div class="progress-label" id="progress-label"></div>
+  </div>
+  <div id="version-chip" class="version-chip" style="display:none">
+    Running <span id="current-ver"></span>
+  </div>
+  <div class="offline-msg" id="offline-msg"></div>
+</div>
+
+<script>
+const POLL_MS = 800;
+let lastState = null;
+let offlineCount = 0;
+
+function fmt(bytes) {
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function render(s) {
+  const icon      = document.getElementById('icon');
+  const headline  = document.getElementById('headline');
+  const sub       = document.getElementById('sub');
+  const progSec   = document.getElementById('progress-section');
+  const bar       = document.getElementById('bar');
+  const progLabel = document.getElementById('progress-label');
+  const chip      = document.getElementById('version-chip');
+  const curVer    = document.getElementById('current-ver');
+  const offline   = document.getElementById('offline-msg');
+
+  bar.classList.remove('pulse');
+  progSec.style.display = 'none';
+  offline.textContent = '';
+
+  if (s.current) {
+    chip.style.display = 'inline-block';
+    curVer.textContent = 'v' + s.current.replace(/^v/, '');
+  }
+
+  switch (s.state) {
+    case 'idle':
+      icon.textContent = '✅';
+      icon.classList.remove('spin');
+      headline.textContent = "You're up to date";
+      sub.textContent = s.current ? `v${s.current.replace(/^v/,'')} is the latest version.` : '';
+      break;
+
+    case 'checking':
+      icon.innerHTML = '<span class="spin">⟳</span>';
+      headline.textContent = 'Checking for updates…';
+      sub.textContent = 'Fetching the update manifest from GitHub.';
+      break;
+
+    case 'available':
+      icon.textContent = '⬇️';
+      icon.classList.remove('spin');
+      headline.textContent = s.version ? `v${s.version} available` : 'Update available';
+      sub.textContent = 'Preparing to download…';
+      break;
+
+    case 'downloading': {
+      icon.innerHTML = '<span class="spin">⟳</span>';
+      headline.textContent = s.version ? `Downloading v${s.version}` : 'Downloading…';
+      const pct = s.progress || 0;
+      progSec.style.display = 'block';
+      if (pct > 0) {
+        bar.style.width = pct + '%';
+        const dl  = s.bytesDown  ? fmt(s.bytesDown)  : '…';
+        const tot = s.bytesTotal ? fmt(s.bytesTotal) : '…';
+        progLabel.textContent = `${dl} / ${tot}  (${pct}%)`;
+        sub.textContent = '';
+      } else {
+        bar.classList.add('pulse');
+        bar.style.width = '40%';
+        progLabel.textContent = '';
+        sub.textContent = 'Connecting to GitHub…';
+      }
+      break;
+    }
+
+    case 'ready':
+      icon.textContent = '✅';
+      icon.classList.remove('spin');
+      headline.textContent = s.version ? `v${s.version} downloaded` : 'Download complete';
+      sub.textContent = 'Verified. Installing now…';
+      break;
+
+    case 'installing':
+      icon.innerHTML = '<span class="spin">⟳</span>';
+      headline.textContent = s.version ? `Installing v${s.version}…` : 'Installing…';
+      sub.textContent = 'The app will restart automatically when done.';
+      break;
+
+    default:
+      icon.innerHTML = '<span class="spin">⟳</span>';
+      headline.textContent = 'Waiting…';
+      sub.textContent = '';
+  }
+}
+
+function renderOffline() {
+  document.getElementById('icon').textContent = '🔄';
+  document.getElementById('headline').textContent = 'App restarting…';
+  document.getElementById('sub').textContent = 'Master\'s FM is installing the update and will be back shortly.';
+  document.getElementById('progress-section').style.display = 'none';
+  document.getElementById('offline-msg').textContent = 'This page will refresh automatically once it\'s back online.';
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/update-status', { cache: 'no-store' });
+    if (!r.ok) throw new Error('bad');
+    const s = await r.json();
+    offlineCount = 0;
+    render(s);
+    lastState = s.state;
+  } catch {
+    offlineCount++;
+    if (offlineCount >= 2) {
+      // Server went offline — likely installing + restarting
+      renderOffline();
+      // When server comes back, reload the page
+      setTimeout(tryReload, 3000);
+      return;
+    }
+  }
+  setTimeout(poll, POLL_MS);
+}
+
+async function tryReload() {
+  try {
+    await fetch('/version', { cache: 'no-store' });
+    location.reload();
+  } catch {
+    setTimeout(tryReload, 2000);
+  }
+}
+
+poll();
+</script>
+</body>
+</html>

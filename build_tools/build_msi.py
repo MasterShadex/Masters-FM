@@ -60,6 +60,8 @@ GUID_COMP23  = "{99999999-AAAA-BBBB-CCCC-DDDDDDDDDDDD}"  # System.Numerics.Vecto
 GUID_COMP24  = "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"  # System.Runtime.CompilerServices.Unsafe.dll
 GUID_COMP25  = "{BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF}"  # System.Security.AccessControl.dll
 GUID_COMP26  = "{CCCCCCCC-DDDD-EEEE-FFFF-111111111111}"  # System.Security.Principal.Windows.dll
+GUID_COMP27  = "{DDDDDDDD-EEEE-FFFF-1111-222222222222}"  # update.html
+GUID_COMP28  = "{EEEEEEEE-1111-2222-3333-444444444444}"  # tray_native.dll (pre-compiled P/Invoke types)
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
@@ -88,6 +90,8 @@ FILES = [
     ("System.Runtime.CompilerServices.Unsafe.dll", "System.Runtime.CompilerServices.Unsafe.dll", GUID_COMP24),
     ("System.Security.AccessControl.dll",     "System.Security.AccessControl.dll",     GUID_COMP25),
     ("System.Security.Principal.Windows.dll", "System.Security.Principal.Windows.dll", GUID_COMP26),
+    ("src/update.html",                       "update.html",                           GUID_COMP27),
+    ("tray_native.dll",                       "tray_native.dll",                       GUID_COMP28),  # pre-compiled P/Invoke types (eliminates csc.exe at tray startup)
 ]
 
 MSIDBOPEN_CREATE = ctypes.c_wchar_p(3)
