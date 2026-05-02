@@ -26,6 +26,7 @@ __pycache__/
 *.msi
 *.cab
 setup.rpt
+setup.inf
 # Old bootstrapper EXEs
 Install Master's FM V*.exe
 # Test/scratch EXEs from development sessions
