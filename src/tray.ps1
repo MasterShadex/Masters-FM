@@ -108,7 +108,11 @@ $logFile     = [System.IO.Path]::Combine($scriptDir, "overlay.log")
 $obsFlagFile = [System.IO.Path]::Combine($scriptDir, "obs_configured.flag")
 
 # Start PowerShell transcript  -  captures ALL output, errors, exceptions
+# v11.0.0: truncate transcript.log on each startup (mirrors overlay.log behaviour).
+# Using -Append caused unbounded growth across restarts; after weeks/months the
+# file could reach hundreds of MB. Truncate first so only the current session is kept.
 $transcriptPath = [System.IO.Path]::Combine($scriptDir, "transcript.log")
+try { [System.IO.File]::WriteAllText($transcriptPath, "=== Transcript started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===`r`n") } catch {}
 try {
     Start-Transcript -Path $transcriptPath -Append -ErrorAction Stop
     EarlyLog "Transcript started: $transcriptPath"
@@ -183,6 +187,8 @@ try {
 
 # Truncate the primary overlay.log on each fresh startup (mirrors server.log behaviour)
 try { [System.IO.File]::WriteAllText($logFile, "=== Master's FM started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===`r`n") } catch {}
+# v11.0.0: also truncate menu.log (Invoke-MenuAction appends per-click; never truncated before)
+try { [System.IO.File]::WriteAllText([System.IO.Path]::Combine($script:MFM_LOG_DIR, "menu.log"), "") } catch {}
 
 Log "=== Master's FM started ==="
 Log "scriptDir = $scriptDir"
@@ -237,7 +243,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v10.2.3"
+$script:APP_VERSION = "v11.0.0"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -251,6 +257,14 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.0.0"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'Album art memory leak: artwork cache now has a 200-entry LRU cap. Long shuffle sessions no longer accumulate hundreds of MB of cached album art.' },
+        @{ Tag = "FIXED";    Text = 'Transcript log no longer grows unbounded across restarts — it is now reset on each startup.' },
+        @{ Tag = "FIXED";    Text = 'In-flight update downloads are now properly cancelled when the app exits or restarts.' },
+        @{ Tag = "IMPROVED"; Text = 'Windows Media Player and VLC process lookups are now cached for 5 seconds, reducing per-tick overhead from repeated process enumeration.' },
+        @{ Tag = "IMPROVED"; Text = 'Timer objects (fade animations, OBS auto-add) are now properly disposed after stopping, preventing handle accumulation over many menu interactions.' },
+        @{ Tag = "IMPROVED"; Text = 'Per-tick hashtable allocations eliminated — GC pressure from 72,000 short-lived objects per hour reduced to zero.' }
+    ) },
     @{ Version = "v10.2.3"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "IMPROVED"; Text = 'Auto-update check now runs every 1 hour instead of every 6 hours. You will receive updates faster.' },
         @{ Tag = "IMPROVED"; Text = 'After an automatic update installs and the app restarts, a balloon notification now appears instead of the patch notes window opening automatically. The window is still available any time via "Patch Notes" in the tray menu.' },
@@ -3908,6 +3922,7 @@ function Start-OBSExitWatcher {
         if ($still) { return }
         # OBS just exited - it overwrote the scene JSON with in-memory state
         $global:_obsWatchTimer.Stop()
+        try { $global:_obsWatchTimer.Dispose() } catch {}   # v11.0.0: dispose stopped timer
         $global:_obsWatcherActive = $false
         Log "OBS watcher: OBS exited - re-applying JSON in 1.5s"
         # Short delay timer so OBS finishes writing before we re-write
@@ -3915,6 +3930,7 @@ function Start-OBSExitWatcher {
         $global:_obsDelayTimer.Interval = 1500
         $global:_obsDelayTimer.add_Tick({
             $global:_obsDelayTimer.Stop()
+            try { $global:_obsDelayTimer.Dispose() } catch {}   # v11.0.0: dispose stopped timer
             Log "OBS watcher: re-applying browser source now"
             $r = Add-OBSBrowserSourceDirect
             Log "OBS watcher: re-apply result = $r"
@@ -4005,6 +4021,7 @@ function Try-AddToOBS {
                     $r2 = Add-OBSBrowserSourceDirect
                     if ($r2 -ne "NO_SCENES") {
                         $global:_obsRetryTimer.Stop()
+                        try { $global:_obsRetryTimer.Dispose() } catch {}   # v11.0.0
                         $global:_obsRetryTimer = $null
                         Try-AddToOBS  # let normal logic handle the result
                     }
@@ -4340,9 +4357,10 @@ function Close-TrayMenu {
     $fadeOut = New-Object System.Windows.Forms.Timer
     $fadeOut.Interval = 16
     $fadeOut.add_Tick({
-        if ($fm.IsDisposed) { $fadeOut.Stop(); return }
+        if ($fm.IsDisposed) { $fadeOut.Stop(); try { $fadeOut.Dispose() } catch {}; return }
         $fm.Opacity -= 0.09
-        if ($fm.Opacity -le 0) { $fadeOut.Stop(); $fm.Hide(); $fm.Dispose() }
+        # v11.0.0: Dispose timer when done so WinForms timer handle is released immediately
+        if ($fm.Opacity -le 0) { $fadeOut.Stop(); try { $fadeOut.Dispose() } catch {}; $fm.Hide(); $fm.Dispose() }
     }.GetNewClosure())
     $fadeOut.Start()
 }
@@ -4675,6 +4693,7 @@ function Show-TrayMenu {
             try { if ($global:_mutex) { $global:_mutex.Dispose() }      } catch {}
             $global:_mutex = $null
 
+            try { if ($global:_updateWebClient) { $global:_updateWebClient.CancelAsync(); $global:_updateWebClient.Dispose(); $global:_updateWebClient = $null } } catch {}  # v11.0.0: cancel in-flight download on exit
             [System.Windows.Forms.Application]::Exit()
         } | Out-Null
 
@@ -4769,6 +4788,7 @@ function Show-TrayMenu {
                 $pollTimer.Stop()
                 if ($scrobbleTimer) { $scrobbleTimer.Stop() }
                 $tray.Visible = $false; $tray.Dispose()
+                try { if ($global:_updateWebClient) { $global:_updateWebClient.CancelAsync(); $global:_updateWebClient.Dispose(); $global:_updateWebClient = $null } } catch {}  # v11.0.0
                 [System.Windows.Forms.Application]::Exit()
                 return
             }
@@ -4780,6 +4800,7 @@ function Show-TrayMenu {
             $pollTimer.Stop()
             if ($scrobbleTimer) { $scrobbleTimer.Stop() }
             $tray.Visible = $false; $tray.Dispose()
+            try { if ($global:_updateWebClient) { $global:_updateWebClient.CancelAsync(); $global:_updateWebClient.Dispose(); $global:_updateWebClient = $null } } catch {}  # v11.0.0
             [System.Windows.Forms.Application]::Exit()
         } | Out-Null
 
@@ -4794,6 +4815,7 @@ function Show-TrayMenu {
             if ($server -and -not $server.HasExited) {
                 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
             }
+            try { if ($global:_updateWebClient) { $global:_updateWebClient.CancelAsync(); $global:_updateWebClient.Dispose(); $global:_updateWebClient = $null } } catch {}  # v11.0.0
             [System.Windows.Forms.Application]::Exit()
         } | Out-Null
 
@@ -4805,7 +4827,8 @@ function Show-TrayMenu {
     $hoverPoll = New-Object System.Windows.Forms.Timer
     $hoverPoll.Interval = 80
     $hoverPoll.add_Tick({
-        if ($fm.IsDisposed) { $hoverPoll.Stop(); return }
+        # v11.0.0: Dispose hoverPoll when form is gone so timer handle is released
+        if ($fm.IsDisposed) { $hoverPoll.Stop(); try { $hoverPoll.Dispose() } catch {}; return }
         $fmPt = $fm.PointToClient([System.Windows.Forms.Cursor]::Position)
         if (-not $fm.ClientRectangle.Contains($fmPt)) {
             foreach ($r in $fm.Tag) {
@@ -4851,9 +4874,10 @@ function Show-TrayMenu {
     $fadeIn = New-Object System.Windows.Forms.Timer
     $fadeIn.Interval = 14
     $fadeIn.add_Tick({
-        if ($fm.IsDisposed) { $fadeIn.Stop(); return }
+        if ($fm.IsDisposed) { $fadeIn.Stop(); try { $fadeIn.Dispose() } catch {}; return }
         $fm.Opacity += 0.10
-        if ($fm.Opacity -ge 1.0) { $fm.Opacity = 1.0; $fadeIn.Stop() }
+        # v11.0.0: Dispose fadeIn when animation completes so timer handle is released
+        if ($fm.Opacity -ge 1.0) { $fm.Opacity = 1.0; $fadeIn.Stop(); try { $fadeIn.Dispose() } catch {} }
     }.GetNewClosure())
     $fadeIn.Start()
 }
@@ -4971,6 +4995,7 @@ $obsTimer          = New-Object System.Windows.Forms.Timer
 $obsTimer.Interval = 5000
 $obsTimer.add_Tick({
     $obsTimer.Stop()
+    try { $obsTimer.Dispose() } catch {}  # v11.0.0: one-shot timer — dispose after firing
     Log "Auto OBS timer fired"
     Try-AddToOBS   # handles both OBS-open and OBS-closed via exit watcher
     # v6.0.0 — mark that auto-add has been attempted this session. The tray
@@ -5895,6 +5920,7 @@ function Get-SMTCMediaPropsCached {
 # error so the caller can simply fall through. Cached per (artist|track) to
 # avoid re-reading the stream every tick.
 $global:_smtcArtCache        = @{}
+$global:_smtcArtCacheOrder   = [System.Collections.Generic.Queue[string]]::new()  # v11.0.0: LRU eviction order
 # v9.9.9: deferred extraction state
 $global:_smtcArtPendingKey   = ''
 $global:_smtcArtPendingProps = $null
@@ -5925,6 +5951,18 @@ $global:_smtcArtLoadCts    = $null
 #     extraction is done by Invoke-DeferredThumbExtraction, called from the scrobble
 #     tick AFTER the new-track webhook has already fired. By that point (≥ 400 ms
 #     after the skip) the artwork is always loaded and extraction takes < 10 ms.
+# v11.0.0: LRU-capped write helper — evicts oldest entry when cap (200) is reached.
+# Keeps _smtcArtCache bounded even on long shuffle sessions with many unique tracks.
+function Write-SMTCArtCacheEntry([string]$key, [string]$value) {
+    if ($key -and -not $global:_smtcArtCache.ContainsKey($key)) {
+        $null = $global:_smtcArtCacheOrder.Enqueue($key)
+        if ($global:_smtcArtCacheOrder.Count -gt 200) {
+            $global:_smtcArtCache.Remove($global:_smtcArtCacheOrder.Dequeue())
+        }
+    }
+    $global:_smtcArtCache[$key] = $value
+}
+
 function Get-SMTCThumbnailDataUri {
     param($MediaProps, [string]$CacheKey)
     if (-not $MediaProps) { return '' }
@@ -5965,7 +6003,7 @@ function Invoke-DeferredThumbExtraction {
             try {
                 $thumbRef = $global:_smtcArtPendingProps.Thumbnail
                 if (-not $thumbRef) {
-                    $global:_smtcArtCache[$key] = ''
+                    Write-SMTCArtCacheEntry $key ''
                     $global:_smtcArtPendingKey = ''; $global:_smtcArtPendingProps = $null
                     $global:_smtcArtState = 'idle'; return ''
                 }
@@ -5977,7 +6015,7 @@ function Invoke-DeferredThumbExtraction {
                 $global:_smtcArtOpenCts  = $cts
                 $global:_smtcArtState    = 'opening'
             } catch {
-                $global:_smtcArtCache[$global:_smtcArtPendingKey] = ''
+                Write-SMTCArtCacheEntry $global:_smtcArtPendingKey ''
                 $global:_smtcArtPendingKey = ''; $global:_smtcArtPendingProps = $null
                 $global:_smtcArtState = 'idle'
             }
@@ -6033,12 +6071,12 @@ function Invoke-DeferredThumbExtraction {
                     if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xD8 -and $bytes[2] -eq 0xFF) { $mime = 'image/jpeg' }
                     $b64 = [Convert]::ToBase64String($bytes)
                     $uri = "data:${mime};base64,$b64"
-                    if ($key) { $global:_smtcArtCache[$key] = $uri }
+                    if ($key) { Write-SMTCArtCacheEntry $key $uri }
                     Log ("SMTC thumb (async {0}B): '{1}'" -f $bytes.Length, $key)
                 }
                 # Canceled (500ms CTS): uri stays '', don't cache → retry allowed
             } catch {
-                if ($key) { $global:_smtcArtCache[$key] = '' }
+                if ($key) { Write-SMTCArtCacheEntry $key '' }
             }
             finally {
                 try { $global:_smtcArtReader.Dispose()   } catch {}
@@ -7595,7 +7633,13 @@ namespace MasterFM {
 
 function Get-WMPNowPlayingUIA {
     if (-not (Test-PlatformEnabled 'Windows Media Player')) { return $null }
-    $wmpProc = Get-Process -Name 'wmplayer' -ErrorAction SilentlyContinue | Select-Object -First 1
+    # v11.0.0: cache Get-Process 5s to avoid per-tick enumeration cost
+    $_wmpTick = [Environment]::TickCount
+    if ($null -eq $global:_wmpProcCheckAt -or ($_wmpTick - $global:_wmpProcCheckAt) -gt 5000) {
+        $global:_wmpProcCheckAt = $_wmpTick
+        $global:_wmpProcCached  = @(Get-Process -Name 'wmplayer','MediaPlayer' -ErrorAction SilentlyContinue)
+    }
+    $wmpProc = $global:_wmpProcCached | Where-Object { $_.Name -eq 'wmplayer' } | Select-Object -First 1
     if (-not $wmpProc) { return $null }
     if (-not (Initialize-UIA)) { return $null }
 
@@ -7726,7 +7770,13 @@ function Get-WMPNowPlayingUIA {
 # and log clearly so the overlay.log tells us whether it succeeded or why it failed.
 function Get-WMPNowPlayingCOM {
     if (-not (Test-PlatformEnabled 'Windows Media Player')) { return $null }
-    $wmpProc = Get-Process -Name 'wmplayer' -ErrorAction SilentlyContinue | Select-Object -First 1
+    # v11.0.0: reuse shared 5s-TTL process cache
+    $_wmpTick = [Environment]::TickCount
+    if ($null -eq $global:_wmpProcCheckAt -or ($_wmpTick - $global:_wmpProcCheckAt) -gt 5000) {
+        $global:_wmpProcCheckAt = $_wmpTick
+        $global:_wmpProcCached  = @(Get-Process -Name 'wmplayer','MediaPlayer' -ErrorAction SilentlyContinue)
+    }
+    $wmpProc = $global:_wmpProcCached | Where-Object { $_.Name -eq 'wmplayer' } | Select-Object -First 1
     if (-not $wmpProc) { $global:_wmpComFailedPid = 0; return $null }   # WMP not running at all
     try {
         $wmp   = [Runtime.InteropServices.Marshal]::GetActiveObject('WMPlayer.OCX')
@@ -7861,9 +7911,13 @@ function Get-WMPNowPlayingSMTC {
     if (-not (Test-PlatformEnabled 'Windows Media Player')) { return $null }
     if (-not $global:smtcAvailable) { return $null }
 
-    # Quick bail if wmplayer.exe isn't even running
-    $wmpProc = Get-Process -Name 'wmplayer','MediaPlayer' -ErrorAction SilentlyContinue |
-               Select-Object -First 1
+    # Quick bail if wmplayer.exe isn't even running  (v11.0.0: reuse shared 5s-TTL cache)
+    $_wmpTick = [Environment]::TickCount
+    if ($null -eq $global:_wmpProcCheckAt -or ($_wmpTick - $global:_wmpProcCheckAt) -gt 5000) {
+        $global:_wmpProcCheckAt = $_wmpTick
+        $global:_wmpProcCached  = @(Get-Process -Name 'wmplayer','MediaPlayer' -ErrorAction SilentlyContinue)
+    }
+    $wmpProc = $global:_wmpProcCached | Select-Object -First 1
     if (-not $wmpProc) { return $null }
 
     try {
@@ -7995,8 +8049,13 @@ function Get-WMPNowPlayingSMTC {
 function Get-WMPNowPlaying {
     if (-not (Test-PlatformEnabled 'Windows Media Player')) { return $null }
     try {
-        # Try both process names; prefer Legacy wmplayer if both are open
-        $proc = Get-Process -Name "wmplayer","MediaPlayer" -ErrorAction SilentlyContinue |
+        # Try both process names; prefer Legacy wmplayer if both are open  (v11.0.0: shared 5s-TTL cache)
+        $_wmpTick = [Environment]::TickCount
+        if ($null -eq $global:_wmpProcCheckAt -or ($_wmpTick - $global:_wmpProcCheckAt) -gt 5000) {
+            $global:_wmpProcCheckAt = $_wmpTick
+            $global:_wmpProcCached  = @(Get-Process -Name 'wmplayer','MediaPlayer' -ErrorAction SilentlyContinue)
+        }
+        $proc = $global:_wmpProcCached |
                 Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle.Trim() -ne '' } |
                 Sort-Object -Property @{ Expression = { if ($_.Name -eq 'wmplayer') { 0 } else { 1 } } } |
                 Select-Object -First 1
@@ -8076,7 +8135,13 @@ function Get-WMPNowPlaying {
 function Get-VLCNowPlaying {
     if (-not (Test-PlatformEnabled 'VLC')) { return $null }
     try {
-        $proc = Get-Process -Name "vlc" -ErrorAction SilentlyContinue | Select-Object -First 1
+        # v11.0.0: cache Get-Process 5s to avoid per-tick enumeration cost
+        $_vlcTick = [Environment]::TickCount
+        if ($null -eq $global:_vlcProcCheckAt -or ($_vlcTick - $global:_vlcProcCheckAt) -gt 5000) {
+            $global:_vlcProcCheckAt = $_vlcTick
+            $global:_vlcProcCached  = Get-Process -Name 'vlc' -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        $proc = $global:_vlcProcCached
         if (-not $proc) { return $null }
         $title = $proc.MainWindowTitle.Trim()
         # Only log window title when it changes (VLC fires the detector every 250 ms)
@@ -8264,7 +8329,7 @@ $global:_nullTickCount      = 0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Dump-DiagnosticState — heavy diagnostic snapshot: running media processes +
-# every SMTC session. Called every 10 ticks (~20s) so overlay.log tells us
+# every SMTC session. Called every 600 ticks (~60s) so overlay.log tells us
 # exactly what's visible to the tray when detection fails.
 # ─────────────────────────────────────────────────────────────────────────────
 function Dump-DiagnosticState {
@@ -8376,6 +8441,12 @@ function Invoke-Detector($name, $fn) {
     }
 }
 
+# v11.0.0: pre-allocate per-tick diagnostic hashtables as persistent instances.
+# Previously allocated with @{} on EVERY scrobble tick (10/sec = 72,000/hr).
+# Using .Clear() on a persistent instance eliminates this GC pressure.
+$global:_tickPhaseMs = [System.Collections.Hashtable]::new()
+$global:_detectorMs  = [System.Collections.Hashtable]::new()
+
 $scrobbleTimer          = New-Object System.Windows.Forms.Timer
 # v6.9.6: scrobble timer 50 -> 100 ms. The 50 ms cadence was halving Task
 # Manager's reported CPU into a visible spike under SMTC stress (rapid
@@ -8406,8 +8477,9 @@ $scrobbleTimer.add_Tick({
     # detector-level breakdown so we know which DETECTOR is the actual culprit
     # (not just "detector-chain took 195ms" but "spotify=82ms smtc=98ms").
     $global:_tickPhase = 'tick-start'
-    $global:_tickPhaseMs = @{}
-    $global:_detectorMs = @{}
+    # v11.0.0: .Clear() reuses persistent instance instead of allocating new @{} each tick
+    $global:_tickPhaseMs.Clear()
+    $global:_detectorMs.Clear()
     try {
     $global:_diagTickCount++
 

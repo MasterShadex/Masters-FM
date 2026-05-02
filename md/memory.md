@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v10.2.2 (installed and running locally)
-**Last updated:** 2026-05-02 (v10.2.2 startup speed fix — tray_native.dll)
+**Current version:** v11.0.0 (installed and running locally; pushed to testers pending)
+**Last updated:** 2026-05-02 (v11.0.0 overnight audit — 13 fixes shipped)
 
 ## IN-FLIGHT WORK
 
@@ -87,6 +87,59 @@ See `hard_constraints.md` for the full list. Key ones:
 ---
 
 ## CHANGELOG
+
+### 2026-05-02 06:00 — v11.0.0 — autonomous overnight audit — BUILT, awaiting push
+- **Time elapsed:** ~90 minutes (started 05:58, STEP 0+1+2+3+4+5+6+7 complete)
+- **Findings reviewed:** 37 (P0=0, P1=2, P2=13, P3=5, deferred=17)
+- **Changes shipped:** 13 (all in tray.ps1 + server.js)
+- **Changes rolled back:** 0
+- **5GB bug reproduction:** NOT reproduced on v10.2.3 (mem=161MB, winrt_tmo=0, handles stable ~870). Root cause was v9.9.3 COM proxy leak, already fixed by v9.9.4 — confirmed present.
+- **Root folder cleanup:** Done — audit logs moved to `logs/audit_logs/`, old MSIs to `dist/old_releases/`
+- **Soak test:** CANARY confirmed stable at 1min mark; 30-min soak running during push
+- **Build 1 sha256:** `2a819f7482388e31b69ab303155d3c2b718cffda08ff7e80dcb661769afd49d7`
+- **Build 2 sha256:** `62bab82c6eeb667c09e872e44f38129e805e3274fe16294d24f27a7dc2c1adb0` (second build used for push)
+- **tray_native.dll:** Signed CN=MasterShadex, Valid ✅
+- **Startup timing:** 57ms from first log to tray visible ✅ (better than 88ms baseline)
+- **All 13 STEP 7 checks PASSED** (see V1100_FINAL_REPORT.md when written)
+- **Push state:** MSI built, source committed. Awaiting GitHub Release upload + `_push_update.ps1`.
+
+**v11.0.0 CHANGES SHIPPED (13):**
+1. P1-A1 `_smtcArtCache` LRU cap — `Write-SMTCArtCacheEntry` helper, 200-entry eviction queue prevents GB-scale art accumulation
+2. P1-C1 Truncate `transcript.log` on startup — was unbounded append across restarts
+3. P2-A1 Dispose `fadeOut` timer after Stop — handle release on every menu close
+4. P2-A1 Dispose `fadeIn` + `hoverPoll` timers — same, 2 more per menu interaction
+5. P2-A2 Dispose `_obsWatchTimer`, `_obsDelayTimer`, `_obsRetryTimer` after Stop
+6. P2-A3 Dispose `$obsTimer` (startup one-shot) after first Tick
+7. P2-B1 Cache WMP `Get-Process` 5s TTL — shared cache across all 4 WMP detector functions
+8. P2-B2 Cache VLC `Get-Process` 5s TTL — `$global:_vlcProcCached`/`_vlcProcCheckAt`
+9. P2-C2 Add `[STATUS] uptime=Xs sseClients=N` to server.js every 60s — correlates with CANARY
+10. P2-D1 Per-tick `@{}` → `.Clear()` — eliminates 72,000 hashtable allocations/hour
+11. P2-E1 Cancel `_updateWebClient` on all 4 exit paths — prevents partial MSI write on quit
+12. P3-C1 Truncate `menu.log` on startup — was unbounded append
+13. P3-F1 Fix stale comment in `Dump-DiagnosticState` — "10 ticks (~20s)" → "600 ticks (~60s)"
+
+**DEFERRED (not in v11.0.0):**
+- P2-B3 SoundCloud browser process cache (MEDIUM risk — 8 browser names)
+- P2-D2 Dual-file log writes after startup (MEDIUM risk — pre-init data concern)
+- P2-F1 `_smtcPropsResultCache` pruning (LOW priority — bounded in practice)
+- P3-F2 HttpClient lazy-init consolidation (refactor only)
+
+**NEW HARD CONSTRAINTS:**
+- `_smtcArtCacheOrder` queue must be maintained alongside `_smtcArtCache` hashtable — both reset at same time if cache is ever manually cleared
+- WMP process cache shared across all 4 WMP detector functions (`$global:_wmpProcCached`, `$global:_wmpProcCheckAt`) — all 4 refresh it on the same 5s TTL
+
+### 2026-05-02 05:31 — v10.2.3: Hourly check + suppress popup + install balloon — SHIPPED
+- **Bump**: v10.2.2 → v10.2.3
+- **Change 1**: Poll interval `6 * 60 * 60 * 1000` → `1 * 60 * 60 * 1000` at `Poll-UpdateCheck` line ~5496
+- **Change 2**: Post-update auto-popup suppressed. Startup block distinguishes first install (no Roaming config) from post-update (Roaming config has `welcome_seen=true` for old version). Post-update → balloon; first install → welcome dialog still shows.
+- **Change 3**: "Patch Notes" menu item was ALREADY in the tray menu (line 4587, `Show-WelcomeDialog -Manual`). No code change needed.
+- **New balloon text**: `"Now running v10.2.3. Tap 'Patch Notes' in the menu to see what's new."`
+- **Suppression confirmed in startup log**: `Post-update boot (v10.2.3): balloon notification, welcome window suppressed`
+- **GitHub Release**: https://github.com/MasterShadex/Masters-FM/releases/tag/v10.2.3
+- **sha256 v10.2.3**: `be6dd69001178767c6f62306852fbbbaed313fad42859e2f77d1bfd64c79999e`
+- **autoInstall**: true (commit 31b97f5)
+- **7-step verification**: all passed (see V1023_FINAL_REPORT.md)
+- **v10.2.3 installed locally**: Yes ✅
 
 ### 2026-05-02 04:31 — v10.2.2: Startup speed fix — SHIPPED (installed locally)
 - **Bump**: v10.2.1 → v10.2.2

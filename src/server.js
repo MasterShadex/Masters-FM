@@ -257,6 +257,11 @@ setInterval(() => {
   }
 }, 15000);
 
+// v11.0.0: periodic status log every 60s — sseClients.size visible in server.log for CANARY correlation
+setInterval(() => {
+  flog(`[STATUS] uptime=${Math.floor(process.uptime())}s sseClients=${sseClients.size}`);
+}, 60000);
+
 // ─── Helpers ───────────────────────────────────────────
 
 function log(msg) {
