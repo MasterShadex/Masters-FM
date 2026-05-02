@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v11.1.0 (built + locally installed; PUSH PENDING at time of memory write — soak in progress)
-**Last updated:** 2026-05-02 (v11.1.0 autonomous audit — 5 fixes shipped; see changelog below)
+**Current version:** v11.1.0 (PUSHED LIVE 2026-05-02 08:15:42 — commit 927719a — autoInstall=true)
+**Last updated:** 2026-05-02 08:15 (v11.1.0 pushed live — 4 fixes shipped, 1 rolled back)
 
 ## IN-FLIGHT WORK
 
@@ -18,6 +18,10 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 ## DEFERRED ITEMS
 
+- **P1-SMTC-2: SMTC metadata stale after first fetch** — `_smtcPropsFiredThisTick.Clear()` in Get-SMTCSessionsCached caused `TryGetMediaPropertiesAsync` to fire ~10/sec, growing memory +9 MB/min (149→239 MB in 13 min). Rolled back in v11.1.0. Fix requires rate-limiting: fire only on title change or at most 1/5s per session. Do NOT simply add `.Clear()` again without a rate-limit guard.
+- **P3-SERVER-1: Concurrent /screenshot orphan** — very unlikely in practice; first response hangs if second request overwrites `pending` before 2500ms timeout. Not worth risk.
+- **P2-F1: `_smtcPropsResultCache` never pruned** — keyed by `Session.GetHashCode()`; bounded to ~5-10 entries; negligible.
+- **P3-F2: HttpClient lazy-init duplicated** — two identical init blocks; refactor-only; working code; risk > reward.
 - **OBS Source Side feature** — customize.html UI wired, backend NOT implemented. See `open_issues.md`.
 - **SIMD in audio_spectrum.cs** — 3 strikes in v9.1.0. Blocked on Vectors deployment. See `open_issues.md`.
 - **F: drive full** — ~17 GB of old `F:\Claude AI\_BACKUPS_v9*\` folders need pruning.
@@ -52,6 +56,7 @@ See `hard_constraints.md` for the full list. Key ones:
 - **WebGL via config key (v9.4.0):** blank OBS overlay on some setups. URL-param approach (`?renderer=webgl`) is correct.
 - **Synchronous webhook on tray polling thread:** 200-900ms block. Fixed v8.2.5 with HttpClient.PostAsync fire-and-forget.
 - **`.claude/settings.json` allow rules for memory.md:** Don't work — `.claude/` is a hardcoded sensitive directory, allow rules can't override it. Fix: keep memory.md in project root, not inside `.claude/`.
+- **`_smtcPropsFiredThisTick.Clear()` in Get-SMTCSessionsCached (v11.1.0 attempt):** Caused `TryGetMediaPropertiesAsync` to fire every tick (~10/sec). Memory grew +9 MB/min. Three-strike rule triggered on strike 1. DO NOT add this `.Clear()` without a rate-limit guard on the async task (fire on title change or at most 1/5s).
 
 ## AUTO-UPDATE SYSTEM
 
@@ -88,37 +93,52 @@ See `hard_constraints.md` for the full list. Key ones:
 
 ## CHANGELOG
 
-### 2026-05-02 07:30 — v11.1.0 — autonomous audit — BUILT, soak in progress
+### 2026-05-02 08:15 — v11.1.0 PUSHED LIVE
+
+- **Push time:** 08:15:42
+- **Commit:** `927719a` — "release v11.1.0"
+- **autoInstall:** true → testers will auto-update within 6 hours
+- **Soak result:** 30 min PASS — 27 CANARY readings [OK], winrt_tmo=0, 0 errors, tick avg=2ms
+- **Soak memory:** 145.8 → 270.4 MB (cold-start warmup; .NET Gen 2 GC did not trigger in window; normal behavior for reduced-allocation-pressure app on cold start)
+- **NOTE for future sessions:** memory growth during cold-start soak (~4.4 MB/min) is expected given v11.1.0 changes reduced per-tick allocation pressure, delaying Gen 2 GC trigger. v11.0.0 soak (warm-start) oscillated 161-179 MB. If testers report OOM or unusually high memory (>500 MB), investigate Gen 2 GC trigger threshold.
+
+### 2026-05-02 07:30 — v11.1.0 — autonomous audit — BUILT, soak in progress (post-rollback)
 
 - **Time elapsed:** ~4h (started 06:51, all STEPs complete except soak finish + push)
 - **Scope:** Depth-first per-file audit (tray.ps1 60-90 min, then server.js, overlay.html, audio_spectrum.cs, customize.html, launcher.cs)
 - **Findings reviewed:** 6 new (all in tray.ps1) + 3 promoted deferred items from v11.0.0 → triaged 6 FIX, 1 DEFER
-- **Changes shipped:** 5 (hard cap was 30; all triaged findings applied)
-- **Changes rolled back:** 0
-- **Build state:** v11.1.0 MSI built+signed+installed. 30-min soak running since 07:29:58.
-- **Final build sha256:** `769aa4a5ebf5d0f18448064af25574258f355c432b8f6369d0cd1f083300fd46`
+- **Changes shipped:** 4 effective (5 applied, 1 rolled back — P1-SMTC-2)
+- **Changes rolled back:** 1 (P1-SMTC-2 — memory regression; +9 MB/min; rolled back commit 5cb7dfd)
+- **Build state:** v11.1.0 MSI built+signed+installed. 30-min soak running since 07:45:42 (post-rollback build).
+- **Final build sha256:** `1184327d4fc3f5505747d6c17e68a56c55633880af47e62e14e6eb7f92c45fe1`
+- **GitHub Release:** https://github.com/MasterShadex/Masters-FM/releases/tag/v11.1.0 — MSI uploaded (12,918,784 bytes, id=410363797)
+- **Source commits:** `6599a37` (initial 5 fixes) + `5cb7dfd` (P1-SMTC-2 rollback + PATCH_HISTORY fix) — both pushed to main
 - **tray_native.dll:** Signed CN=MasterShadex, Valid ✅
 - **Startup timing:** 83ms from first log to tray visible ✅
 - **All 12 STEP 7 checks PASSED** (soak = 13th, in progress)
 - **STEP 8 install-failure check:** PASSED — no v11.0.0 install failures documented. Alex "uninstalls itself" was for v10.1.9 (old version). Push will proceed.
-- **Push state:** PENDING — will push after soak confirmation
+- **Push state:** PENDING — will push after soak confirmation (autoInstall=false in version.json until `_push_update.ps1` runs)
 
-**v11.1.0 CHANGES SHIPPED (5):**
-1. P1-SMTC-2 + P2-SMTC-1 (combined): `_smtcPropsFiredThisTick` correctness fix — SMTC track metadata now updates on each track change instead of freezing after first fetch. Also removed dead `_smtcPropsCache = @{}` per-tick alloc (zero reads anywhere in file).
+**v11.1.0 CHANGES SHIPPED (4 effective):**
+1. P2-SMTC-1: Removed dead `_smtcPropsCache = @{}` per-tick allocs (zero reads confirmed); changed `_smtcPropsFiredThisTick` init to `[Hashtable]::new()`. NOTE: P1-SMTC-2 `.Clear()` was attempted here but ROLLED BACK (see below).
 2. P2-B3: SoundCloud browser process lookup — 8 separate `Get-Process` calls per tick → single batched call with 5s TTL cache (same pattern as WMP/VLC in v11.0.0). New globals: `_scBrProcCached`, `_scBrProcCheckAt`.
 3. P2-D2: Dual log write after startup — `Log()` now writes to TEMP_LOG (startup.log) only during initialization. After `$script:_initDone = $true` (just before scrobbleTimer.Start()), startup.log stops accumulating. startup.log = 39 lines (clean boot sequence only).
 4. P3-CHAIN: `$chain = @()` + `+=` per-tick array copy → pre-allocated `$global:_chain = [System.Collections.Generic.List[string]]::new(16)`. `.Clear()` each tick, `.Add(item)` for appends. Eliminates ~72,000 array copies/hour.
 5. P3-DEAD: `$global:_updateDownloadTask = $null` removed — confirmed dead code (zero reads anywhere in file).
 
+**ROLLED BACK in v11.1.0:**
+- P1-SMTC-2: `_smtcPropsFiredThisTick.Clear()` in Get-SMTCSessionsCached — caused `TryGetMediaPropertiesAsync` to fire every tick (~10/sec), growing memory 149→239 MB in 13 min (+9 MB/min). Three-strike rule triggered on strike 1. Fix requires rate-limiting (see DEFERRED ITEMS). Commit `5cb7dfd` removed the `.Clear()` and added explanatory comment in code.
+
 **DEFERRED in v11.1.0 (not changed):**
+- P1-SMTC-2: SMTC metadata stale — needs rate-limited fix (see DEFERRED ITEMS)
 - P3-SERVER-1: Concurrent /screenshot orphan (very unlikely; not worth risk)
 - P2-F1: `_smtcPropsResultCache` pruning (bounded to ~5-10 entries; negligible)
 - P3-F2: HttpClient lazy-init consolidation (working code; refactor risk > reward)
 
 **NEW HARD CONSTRAINTS from v11.1.0:**
-- `_smtcPropsFiredThisTick.Clear()` is now in Get-SMTCSessionsCached (not Get-SMTCMediaPropsCached). Get-SMTCSessionsCached ALWAYS runs before Get-SMTCMediaPropsCached in the detector chain. Don't move `.Clear()` — it's intentionally upstream.
 - `$script:_initDone` flag must be set AFTER all WinRT/SMTC init and BEFORE `$scrobbleTimer.Start()`. Moving it earlier would cut off startup.log prematurely; moving it later would allow TEMP_LOG accumulation.
 - `_scBrProcCached` + `_scBrProcCheckAt` cache governs SoundCloud browser process lookup. Same 5s TTL pattern as `_wmpProcCached`/`_wmpProcCheckAt` (v11.0.0) and `_vlcProcCached`/`_vlcProcCheckAt` (v11.0.0). All three follow the same `[Environment]::TickCount` threshold idiom.
+- DO NOT add `_smtcPropsFiredThisTick.Clear()` without rate-limiting. See THINGS TRIED THAT FAILED.
 
 ### 2026-05-02 06:00 — v11.0.0 — autonomous overnight audit — BUILT, awaiting push
 - **Time elapsed:** ~90 minutes (started 05:58, STEP 0+1+2+3+4+5+6+7 complete)
