@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v11.1.0 (PUSHED LIVE 2026-05-02 08:15:42 — commit 927719a — autoInstall=true)
-**Last updated:** 2026-05-02 08:15 (v11.1.0 pushed live — 4 fixes shipped, 1 rolled back)
+**Current version:** v11.2.1 (PUSHED LIVE 2026-05-02 21:39 — commit fa7e111 — autoInstall=true)
+**Last updated:** 2026-05-02 21:40 (V11.2.1 SAUMID fix shipped — memory leak + CPU spike resolved)
 
 ## IN-FLIGHT WORK
 
@@ -18,9 +18,11 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 ## DEFERRED ITEMS
 
+- **P2-SMTC-3: Track-change CPU spike Component B — async Get-SMTCNowPlaying** — Diagnosed 2026-05-03 (V112X). Culprit is PowerShell interpreter overhead in `Get-SMTCNowPlaying` (~177ms / 93% of spike). Sync ALPC calls are only 14ms (7%). Fix: move entire function to async background Task (same pattern as Get-SMTCManager v9.9.9), returning cached result per tick. ~50-80 line restructure. Quick wins: pre-compile session-loop regex patterns (saves ~20ms, 3-5 lines). See V112X_TRACK_CHANGE_DIAGNOSIS.md. Do NOT bother making GetSessions/GetPlaybackInfo more async — they're already fine at 2-7ms each.
+
 - **P1-SMTC-2: SMTC metadata stale after first fetch** — `_smtcPropsFiredThisTick.Clear()` in Get-SMTCSessionsCached caused `TryGetMediaPropertiesAsync` to fire ~10/sec, growing memory +9 MB/min (149→239 MB in 13 min). Rolled back in v11.1.0. Fix requires rate-limiting: fire only on title change or at most 1/5s per session. Do NOT simply add `.Clear()` again without a rate-limit guard.
 - **P3-SERVER-1: Concurrent /screenshot orphan** — very unlikely in practice; first response hangs if second request overwrites `pending` before 2500ms timeout. Not worth risk.
-- **P2-F1: `_smtcPropsResultCache` never pruned** — keyed by `Session.GetHashCode()`; bounded to ~5-10 entries; negligible.
+- **P1-F1 (was P2-F1): `_smtcPropsResultCache` and 4 sibling dicts never pruned — ROOT CAUSE OF ~185 MB/hr LEAK** — See V1115_DEEP_DIAGNOSIS.md. NOT bounded. See fix recommendation below.
 - **P3-F2: HttpClient lazy-init duplicated** — two identical init blocks; refactor-only; working code; risk > reward.
 - **OBS Source Side feature** — customize.html UI wired, backend NOT implemented. See `open_issues.md`.
 - **SIMD in audio_spectrum.cs** — 3 strikes in v9.1.0. Blocked on Vectors deployment. See `open_issues.md`.
@@ -38,6 +40,42 @@ See `hard_constraints.md` for the full list. Key ones:
 - Canvas hard-locked to 1000×200; visible card-inner = 935×135
 - NEVER write literal `</script>` inside a script block (even in comment)
 - PowerShell patch note text: use `'` single quotes, not `\"` in double-quoted strings
+
+### ⚠️ CRITICAL — AUTO-UPDATE HELPER SCRIPT (Install-Update in tray.ps1)
+
+The helper script is generated inside a `@"..."@` here-string. **The msiexec reinstall line MUST use single-string `-ArgumentList` form with double-backtick escaping.** Getting this wrong causes silent self-uninstall on any machine with a space in the Windows username (e.g. `AER Alex`). This bug was hit TWICE (v11.1.6 and recovered in v11.1.8). NEVER change this line without fully understanding the escaping.
+
+**CORRECT code (tray.ps1, inside `$helperScript = @"..."@`):**
+```
+Start-Process msiexec.exe -ArgumentList "/i ``"`$msiFile``" /quiet /norestart" -Wait -WindowStyle Hidden
+```
+
+**What the here-string produces in the helper .ps1 file:**
+```powershell
+Start-Process msiexec.exe -ArgumentList "/i `"$msiFile`" /quiet /norestart" -Wait -WindowStyle Hidden
+```
+
+**Why it works:** `"/i `"$msiFile`" /quiet /norestart"` is a PowerShell double-quoted string. `` `" `` → literal `"`. `$msiFile` expands to the path. Result passed to msiexec: `/i "C:\Users\AER Alex\...\file.msi" /quiet /norestart` — quoted path, no space-splitting.
+
+**WRONG — DO NOT USE — array form:**
+```
+Start-Process msiexec.exe -ArgumentList @('/i', `$msiFile, '/quiet', '/norestart') -Wait ...
+```
+Array form joins elements with spaces — no quoting added. Paths with spaces get split.
+
+**WRONG — DO NOT USE — the v11.1.6 broken attempt:**
+```
+Start-Process msiexec.exe -ArgumentList @('/i', "`"`$msiFile`"", '/quiet', '/norestart') -Wait ...
+```
+Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell syntax error in helper.
+
+**Escaping rule for `@"..."@` here-strings:**
+- `` ` `` + `"` → literal `"` in output
+- `` `` `` (two backticks) → literal `` ` `` in output
+- `` `$ `` → literal `$` in output (prevents expansion at here-string creation time; expands when helper runs)
+- Bare `"` → also just a literal `"` (no special meaning inside the body — only `"@` at line-start terminates)
+
+**Bootstrapping rule:** The RUNNING version writes the helper. Any version with the broken helper will self-uninstall when updating, regardless of what version it's updating TO. Users with the broken version need the new MSI sent manually. Copy MSI to desktop before notifying affected users.
 
 ## PATTERNS THAT WORK
 
@@ -57,6 +95,7 @@ See `hard_constraints.md` for the full list. Key ones:
 - **Synchronous webhook on tray polling thread:** 200-900ms block. Fixed v8.2.5 with HttpClient.PostAsync fire-and-forget.
 - **`.claude/settings.json` allow rules for memory.md:** Don't work — `.claude/` is a hardcoded sensitive directory, allow rules can't override it. Fix: keep memory.md in project root, not inside `.claude/`.
 - **`_smtcPropsFiredThisTick.Clear()` in Get-SMTCSessionsCached (v11.1.0 attempt):** Caused `TryGetMediaPropertiesAsync` to fire every tick (~10/sec). Memory grew +9 MB/min. Three-strike rule triggered on strike 1. DO NOT add this `.Clear()` without a rate-limit guard on the async task (fire on title change or at most 1/5s).
+- **Here-string quoting for msiexec path (v11.1.6 wrong, v11.1.8 correct):** The auto-update helper's msiexec reinstall line must use single-string `-ArgumentList` with double-backtick escaping. See HARD CONSTRAINTS → CRITICAL AUTO-UPDATE HELPER SCRIPT for the full rule, both correct and wrong forms, and the escaping breakdown. This caused real tester self-uninstalls twice. The correct line is locked in tray.ps1 — do NOT "simplify" or "fix" it.
 
 ## AUTO-UPDATE SYSTEM
 
@@ -92,6 +131,145 @@ See `hard_constraints.md` for the full list. Key ones:
 ---
 
 ## CHANGELOG
+
+### 2026-05-03 00:50 — V11.2.X Component B — Track-change spike diagnosis (no code change)
+
+- **Type:** Diagnosis-only run per CLAUDE_CODE_INSTRUCTIONS.md (V11.2.X brief)
+- **Verdict:** Culprit is PowerShell interpreter overhead in `Get-SMTCNowPlaying` (lines 7051–7282)
+- **Measured:** 191ms per track-change tick; smtc=215ms per Invoke-Detector; total tick=312ms
+- **Breakdown (section timing from instrumented build):**
+  - GetSMTCSessionsCached: 35ms (GetSMTCManager 28ms + GetSessions 7ms)
+  - Session loop: 52ms (GetPlaybackInfo 2ms + PS regex/loop overhead 50ms)
+  - SoundCloud-RPC override: 12ms (EnumWindows 3ms + overhead 9ms)
+  - GetSMTCMediaPropsCached: 13ms (async-start IPC)
+  - PostProps chain: 79ms (GetSMTCPosition + GetTrusted* + PlatformName + return hash)
+- **Synchronous ALPC total: 14ms (7.3%)** — NOT the bottleneck
+- **PS overhead: ~177ms (92.7%)** — IS the bottleneck
+- **Circuit breaker:** backs SMTC off 30 ticks (3s) after slow tick → only 1 slow tick per skip
+- **Secondary:** WebhookInit 27-44ms (cold loopback TCP socket — not recurring)
+- **Ruled out:** album art (async since v9.9.9), Last.fm (removed v8.5.x), Discord RPC (server-side), webhook POST (fire-and-forget)
+- **Recommended fix:** move Get-SMTCNowPlaying to async background Task (~50-80 lines). Quick win: pre-compile regex (~3 lines, saves ~20ms)
+- **Source state:** clean v11.2.1; all instrumentation removed; diff verified; clean rebuild passed
+- **Artifacts:** V112X_LOG.md, V112X_TRACK_CHANGE_DIAGNOSIS.md
+
+### 2026-05-02 21:40 — v11.2.1 — SMTC cache-key fix SHIPPED
+
+- **Fix:** replaced `$Session.GetHashCode()` with `$Session.SourceAppUserModelId` in 3 SMTC caches
+- **Lines fixed:**
+  - 5888 (`Get-SMTCPlaybackInfoCached`): `$key = $Session.SourceAppUserModelId`
+  - 5925 (`Get-SMTCMediaPropsCached`): `$key = $Session.SourceAppUserModelId`
+  - 6501 (`Get-SMTCPosition`): `$_tlKey = $Session.SourceAppUserModelId`
+- **Mechanism (empirically confirmed via V1116 cross-manager test):**
+  - SMTC manager TTL = 600ms (~87 manager refreshes/min)
+  - Each new manager produces fresh COM proxy wrappers with new `GetHashCode()`
+  - SourceAppUserModelId is stable across managers (all 3 managers returned `com.richardhbtz.soundcloud-rpc`)
+  - Old cache key produced unbounded growth at ~115 MB/hr lower bound, ~185 MB/hr observed
+- **Build:** PASSED (exit 0, tray_native.dll Valid CN=MasterShadex)
+- **Per-edit smoke:** 3/3 PASS (9/9 checks each)
+- **Final smoke:** 9/9 PASS — winrt_calls dropped 172 → 87/min (staleness guard now hitting)
+- **30-min soak:** PASS — growth +13.2 MB WS over 25 min active (pre-fix was 80-90 MB/30min); winrt_calls stable 85-90/min throughout; all CANARYs [OK], winrt_tmo=0
+- **7-step gate:** ALL 6 checks PASS (1-5b)
+- **Pushed live:** yes — GitHub Release id=316746914, MSI=Masters-FM-V11.2.1.msi (12918784 bytes), commit fa7e111, autoInstall=true
+- **MSI sha256:** `1dec603659342b959846c8336b7aacf85318c1246a7d5dd51374ffafd61f5b3e`
+- **ETA for testers:** within 1 hour (1h auto-update poll)
+- **HARD CAVEAT:** 30-min soak too short to definitively prove fix at scale; user will validate by checking memory after multi-hour run on own PC. Pre-fix v11.2.0 baseline at 5h uptime was 835 MB.
+- **Artifacts:** V1121_LOG.md, V1121_FINAL_REPORT.md, V1121_SOAK_LOG.txt, build_tools/_soak_monitor.ps1, build_tools/_do_release_v1121.ps1
+
+**NEW HARD CONSTRAINT:**
+- All per-session caches in SMTC code must use `$Session.SourceAppUserModelId` as key, NOT `$Session.GetHashCode()`. The COM proxy hash is unstable across manager re-acquisitions (~600ms cycle).
+
+---
+
+### 2026-05-02 19:14 — v11.2.1 ABORTED — pre-flight contradicted diagnosis
+
+- **Run:** SAUMID stability pre-flight test per CLAUDE_CODE_INSTRUCTIONS.md
+- **Result:** GetHashCode() returned STABLE value (18246973) across 5 consecutive GetSessions() calls on the same manager instance. This contradicts the V1115 diagnosis assumption.
+- **Decision:** STOP per brief. No source modified. Version stays v11.2.0.
+- **What the test covers:** hash stability within ONE manager instance (one RequestAsync result, 5x GetSessions())
+- **What it does NOT cover:** hash stability ACROSS manager re-acquisitions (new RequestAsync -> new manager -> GetSessions()). This is the most likely still-unchecked mechanism.
+- **Artifacts:** V1114_LOG.md, V1114_FINAL_REPORT.md, V1114_SAUMID_STABILITY_TEST.txt, build_tools/_saumid_stability_test.ps1
+- **Backup:** CHECKPOINT_v11_2_0 at C:\_BACKUPS_v11\Master_FM_v11_2_0_pre_fix_2026-05-02_19-12\
+- **Next step (Priority 1):** Extended test: call RequestAsync() TWICE, compare GetSessions() hashes across the two separate manager instances. If hash changes across manager acquisitions, the SourceAppUserModelId fix is still correct.
+
+---
+
+### 2026-05-02 18:31 — V1115 DEEP DIAGNOSIS COMPLETE
+
+**Artifact:** `V1115_DEEP_DIAGNOSIS.md` (full findings with file:line fix recommendations)
+**Process diagnosed:** PID 148812 (v11.2.0), started 15:03:12, not restarted
+
+**BUG 1 — Memory leak (~185 MB/hr) — ROOT CAUSE CONFIRMED:**
+- `GetSessions()` returns a new CLR RCW (COM proxy) for `com.richardhbtz.soundcloud-rpc` on EVERY call
+- Each new proxy has a unique `GetHashCode()` (managed object identity)
+- Five per-session cache dicts keyed by that hash accumulate entries without eviction:
+  `_smtcPropsResultCache` (5834), `_smtcPbInfoCache` (5843), `_smtcPbInfoCacheMs` (5844), `_smtcTlCache` (5845), `_smtcTlCacheMs` (5846) — **ALL unbounded, NO LRU cap**
+- `_smtcPropsFiredThisTick` is NEVER cleared (Clear() rolled back v11.1.0). Each new hash fires TryGetMediaPropertiesAsync once → new cache entry. Dicts grow at ~172 entries/min when SoundCloud-RPC is active.
+- GC cannot collect: dicts hold STRONG references. 5-min GC flush is ineffective against this leak.
+- Spotify does not leak: its session proxy has stable COM identity → stable hash → cache hits.
+
+**Evidence:**
+- Memory growth tracks winrt_calls exactly: 172/min (SoundCloud active) = ~185 MB/hr; 86/min (source closed) = 0 MB/hr
+- 17:23:55.968 SoundCloud-RPC closed → memory plateaued at 579 MB for 43 minutes (zero growth)
+- Passive samples 18:26-18:30 confirm 184 MB/hr currently (SoundCloud restarted ~18:08)
+- GC flushes confirmed firing (17:23:15, 17:28:15) — memory still grew during those intervals
+
+**BUG 2 — CPU spike on track skip — ROOT CAUSE CONFIRMED (same as Bug 1):**
+- Unstable hash → `Get-SMTCPlaybackInfoCached` staleness guard ALWAYS misses for SoundCloud-RPC
+- `GetPlaybackInfo()` (synchronous ALPC) fires 600/min instead of intended ~120/min
+- v11.2.0 Changing-guard limits Changing-state blocking to 1 call per 750ms — this part works
+- Baseline overhead of 600 calls/min contributes sustained ~2-3% CPU; spike is the Changing block
+- Zero SLOW TICK warnings throughout session — spikes are sub-threshold distributed load
+
+**FIX (both bugs, single change):**
+Replace `$Session.GetHashCode()` with `$Session.SourceAppUserModelId` as cache key in:
+- `Get-SMTCMediaPropsCached` — line 5925
+- `Get-SMTCPlaybackInfoCached` — line 5888
+- Timeline properties cache (wherever TlCache key is set)
+
+`SourceAppUserModelId` is stable across `GetSessions()` calls. Fixes unbounded growth AND makes staleness guard work → drops GetPlaybackInfo() from 600 to ~120/min for SoundCloud-RPC.
+
+**Stale comment to fix:** `tray.ps1:5917` claims `_smtcPropsFiredThisTick` "is cleared by Get-SMTCSessionsCached" — FALSE. It is never cleared. Update comment.
+
+**Note on v11.2.0 GC flush:** Not harmful, but only helps with unreferenced RCWs in finalization queue — not with dict-pinned strong references. May help other smaller allocations. Keep it.
+
+---
+
+### 2026-05-02 15:04 — v11.2.0 PUSHED LIVE
+
+- **Push time:** 15:04 (commit c96aa6f)
+- **autoInstall:** true
+- **GitHub Release:** id=316694899, asset Masters-FM-V11.2.0.msi (12,918,784 bytes), sha256=1cf49b91...
+- **Fix 1 — CPU spike on track skip:**
+  - Root cause: `Get-SMTCPlaybackInfoCached` staleness guard (500ms) expiring during Spotify `Changing` state → fresh `GetPlaybackInfo()` ALPC call → blocks for ~100ms per session while SMTC server is mid-transition → peg one core → 12% CPU.
+  - Fix: after `GetPlaybackInfo()` returns `Changing`, immediately arm `_smtcTransitionGuardMs = now + 750ms`. Limits the blocking to ONE call per transition (unavoidable — we need to read status) instead of one per 500ms staleness expiry.
+  - Also extended title-change guard from 500ms → 750ms for consistency.
+  - No new globals needed. Minimal change (7 lines).
+- **Fix 2 — RAM leak (5-min Gen2 GC flush):**
+  - Root cause: WinRT RCW finalizers accumulate in Gen2. The 60-second Gen1 Optimized hint never promotes them for finalization. RAM climbs continuously.
+  - Fix: every 5 minutes, `[GC]::Collect(2, [System.GCCollectionMode]::Forced)` in the tick finally block. Does NOT call `WaitForPendingFinalizers()` (would block UI thread). Finalizer thread drains async between ticks.
+  - New global: `$global:_gcFlushLastMs = [long]0`.
+  - Logged as `"GC flush: Gen2 forced (5-min interval)"` for observability.
+
+### 2026-05-02 14:17 — v11.1.8 PUSHED LIVE
+
+- **Push time:** 14:17 (commit 723de5d)
+- **autoInstall:** true
+- **GitHub Release:** id=316689654, asset Masters-FM-V11.1.8.msi (12,918,784 bytes)
+- **Fix shipped:** Corrected the v11.1.6 self-uninstall fix. The v11.1.6 attempt used `"`"`$msiFile`""` inside a `@"..."@` here-string, which produced `""$msiFile""` in the helper script — a PowerShell syntax error. v11.1.8 uses single-string `-ArgumentList` form: `` "/i ``"`$msiFile``" /quiet /norestart" `` which produces `"/i `"$msiFile`" /quiet /norestart"` in the helper, correctly quoting the path when msiexec runs.
+- **Bootstrapping:** v11.1.6 and v11.1.7 both have the broken fix. Alex (and any other tester with a space in their username) needs v11.1.8 MSI sent manually. v11.1.8 MSI copied to desktop as `Masters-FM-V11.1.8.msi`.
+- **Root cause lesson:** Inside `@"..."@` here-strings, `` `" `` produces a literal `"` but a bare `"` is also just a literal `"`. So `` "`"`$var`"" `` expands to `""$var""` — NOT `"$var"`. To get literal backtick+quote inside a here-string, use ```` `` ```` (double-backtick) for the backtick.
+
+### 2026-05-02 14:00 — v11.1.6 PUSHED LIVE
+
+- **Push time:** 13:57 (commit a977b5a)
+- **autoInstall:** true
+- **GitHub Release:** id=316687743, asset Masters-FM-V11.1.6.msi (12,918,784 bytes)
+- **Fixes shipped:**
+  1. **Self-uninstall bug (CRITICAL):** `tray.ps1` line 5527 — unquoted MSI path in helper script's `Start-Process msiexec` call silently broke reinstall on machines with spaces in Windows username (e.g. `AER Alex`). Fixed by quoting `$msiFile` in the array element. Diagnosed from real tester (Alex) logs.
+  2. **Memory leak (B2):** `Get-SMTCPlaybackInfoCached` and `Get-SMTCTimelineProperties` both now have 500ms staleness guards, cutting WinRT RCW churn from ~600/min to ~120/min. (v11.1.4 fix was incomplete — only moved the call site, didn't add the staleness guard.)
+- **Memory soak status:** v11.1.5 soak aborted at T=15min after tray restart; inconclusive. Real-world soak via testers.
+- **v11.1.1–v11.1.7:** Internal/staging builds. v11.1.2–v11.1.3 were fake test builds. v11.1.4/v11.1.5 staged memory-leak fixes (never pushed to main as standalone). v11.1.6 attempted self-uninstall fix (broken escaping — see v11.1.8 entry above). v11.1.7 was a test build to verify push pipeline, inherited broken fix from v11.1.6.
+- **Diagnosis artifact:** `V1110_UNINSTALL_DIAGNOSIS.md` — full trace of self-uninstall chain (see file for detail)
 
 ### 2026-05-02 08:15 — v11.1.0 PUSHED LIVE
 

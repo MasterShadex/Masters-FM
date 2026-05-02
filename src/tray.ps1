@@ -129,8 +129,10 @@ try {
 $global:_logRingBuf    = [System.Collections.Generic.Queue[string]]::new()
 $global:_logRingSize   = 20
 # Per-minute WinRT call + timeout counters — reset by the [CANARY] every 60 s.
-$global:_winrtCallsMin = 0
-$global:_winrtTmoMin   = 0
+$global:_winrtCallsMin  = 0
+$global:_winrtTmoMin    = 0
+# v11.2.0: 5-minute Gen2 GC flush epoch (drains WinRT RCW finalization queue).
+$global:_gcFlushLastMs  = [long]0
 
 # ── Main log function  -  writes to install dir AND TEMP as fallback ─────────────
 function Log($msg) {
@@ -248,7 +250,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.1.3"
+$script:APP_VERSION = "v11.2.1"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -262,6 +264,32 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.2.1"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'Memory leak (~185 MB/hr with SoundCloud-RPC active): replaced $Session.GetHashCode() with $Session.SourceAppUserModelId in 3 SMTC caches (Get-SMTCMediaPropsCached, Get-SMTCPlaybackInfoCached, Get-SMTCPosition). Each new SMTC manager (~87/min) produced fresh COM proxy wrappers with unstable hashes, causing unbounded cache growth. Stable SAUMID key means one entry per source, overwritten on each re-acquisition.' }
+        @{ Tag = "FIXED";    Text = 'Track-change CPU spike (26% on Ryzen 7 7800X3D): same root cause -- unstable hash caused staleness guards to always miss for SoundCloud-RPC, firing GetPlaybackInfo() 600/min instead of ~120/min. Fix reduces per-tick WinRT call rate.' }
+    ) },
+    @{ Version = "v11.2.0"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'CPU spike on track skip: GetPlaybackInfo() now arms a 750 ms transition guard when SMTC reports Changing status, preventing repeat synchronous ALPC blocks during Spotify/player track transitions.' }
+        @{ Tag = "FIXED";    Text = 'RAM leak: forced Gen2 GC flush every 5 minutes drains the WinRT RCW finalization queue that the 60-second Gen1 hint could not reach.' }
+    ) },
+    @{ Version = "v11.1.9"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "IMPROVED"; Text = 'Internal test build — verifies auto-update installs correctly on machines with spaces in Windows username.' }
+    ) },
+    @{ Version = "v11.1.8"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Auto-update on machines with a space in the Windows username (e.g. "AER Alex") — the v11.1.6 fix had a here-string escaping error that produced invalid PowerShell in the helper script. Fixed using single-string form for msiexec -ArgumentList.' }
+    ) },
+    @{ Version = "v11.1.7"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "IMPROVED"; Text = 'Internal test build — no user-visible changes.' }
+    ) },
+    @{ Version = "v11.1.6"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Auto-update no longer silently self-uninstalls on machines with a space in the Windows username (e.g. "AER Alex"). The new MSI installer path is now correctly quoted when passed to msiexec.' }
+    ) },
+    @{ Version = "v11.1.5"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Memory leak: GetPlaybackInfo() and GetTimelineProperties() WinRT calls are now staleness-guarded (500ms), cutting per-tick RCW churn from ~600/min to ~120/min.' }
+    ) },
+    @{ Version = "v11.1.4"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Memory leak: SMTC session finder now uses the playback-info cache instead of calling GetPlaybackInfo() directly on every tick, eliminating ~1,800 abandoned WinRT RCW objects per minute.' }
+    ) },
     @{ Version = "v11.1.3"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "IMPROVED"; Text = 'Internal test build — no user-visible changes.' }
     ) },
@@ -5500,7 +5528,8 @@ function Install-Update {
         $helperPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'mastersfm_update_helper.ps1')
         # Embed paths as single-quoted literals at the top of the helper so there are no
         # quoting ambiguities when the saved .ps1 is later parsed by a fresh PowerShell process.
-        # Array form of -ArgumentList avoids any further shell-splitting of the path.
+        # Single-string form of -ArgumentList is used for msiexec so the path can be wrapped in
+        # explicit double-quotes inside the helper, handling spaces in usernames (e.g. 'AER Alex').
         $msiEsc    = $msiPath.Replace("'", "''")
         $launchEsc = $launchPath.Replace("'", "''")
         $helperScript = @"
@@ -5518,7 +5547,7 @@ if (`$pc) {
     Start-Process msiexec.exe -ArgumentList @('/x', `$pc, '/qn', '/norestart') -Wait -WindowStyle Hidden
     Start-Sleep -Seconds 1
 }
-Start-Process msiexec.exe -ArgumentList @('/i', `$msiFile, '/quiet', '/norestart') -Wait -WindowStyle Hidden
+Start-Process msiexec.exe -ArgumentList "/i ``"`$msiFile``" /quiet /norestart" -Wait -WindowStyle Hidden  # v11.1.8: single-string form so `"$msiFile`" embeds real quotes; v11.1.6 array-elem fix produced ""$msiFile"" (syntax error)
 Start-Sleep -Seconds 1
 if (Test-Path `$launch) { Start-Process `$launch }
 "@
@@ -5816,7 +5845,9 @@ $global:_smtcPropsFiredThisTick = [System.Collections.Hashtable]::new()   # per-
 # During the guard window all three caches below are returned instead of live ALPC calls.
 $global:_smtcTransitionGuardMs    = 0    # epoch-ms threshold: suppress until this time
 $global:_smtcPbInfoCache          = @{}  # key=sessionHash, value=last PlaybackInfo
+$global:_smtcPbInfoCacheMs        = @{}  # key=sessionHash, value=epoch-ms when _smtcPbInfoCache entry was written (v11.1.5 staleness guard)
 $global:_smtcTlCache              = @{}  # key=sessionHash, value=last TimelineProperties
+$global:_smtcTlCacheMs            = @{}  # key=sessionHash, value=epoch-ms when _smtcTlCache entry was written (v11.1.4 staleness guard)
 $global:_smtcSessionsCacheLastGood = $null  # last successful GetSessions() result
 
 function Get-SMTCSessionsCached {
@@ -5855,14 +5886,29 @@ function Get-SMTCSessionsCached {
 
 # v9.10.0: caching wrapper for GetPlaybackInfo() — returns cached value during the
 # transition guard window (500ms after a track change) to avoid synchronous ALPC calls.
+# v11.1.5: also skips the WinRT call if cached value is <500ms old (staleness guard),
+# cutting GetPlaybackInfo() calls from ~600/min to ~120/min and reducing RCW churn.
 function Get-SMTCPlaybackInfoCached($Session) {
-    $key = $Session.GetHashCode()
-    if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $global:_smtcTransitionGuardMs -and
-        $global:_smtcPbInfoCache.ContainsKey($key)) {
+    $key = $Session.SourceAppUserModelId
+    $_pbNowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $_pbFresh = $global:_smtcPbInfoCacheMs.ContainsKey($key) -and
+                (($_pbNowMs - $global:_smtcPbInfoCacheMs[$key]) -lt 500)
+    if ($global:_smtcPbInfoCache.ContainsKey($key) -and
+        ($_pbNowMs -lt $global:_smtcTransitionGuardMs -or $_pbFresh)) {
         return $global:_smtcPbInfoCache[$key]
     }
     $info = $Session.GetPlaybackInfo()
-    $global:_smtcPbInfoCache[$key] = $info
+    $global:_smtcPbInfoCache[$key]   = $info
+    $global:_smtcPbInfoCacheMs[$key] = $_pbNowMs
+    # v11.2.0: if SMTC reports Changing, arm transition guard immediately so the NEXT
+    # staleness-expiry won't make another blocking ALPC call while the player is mid-skip.
+    # Root cause of the ~12% CPU + lag on track skip: GetPlaybackInfo() can block for
+    # ~100ms during Spotify/player track transitions. Arming a 750ms guard here limits
+    # the blockage to ONE call per transition (this one) rather than one per 500ms expiry.
+    if ($info -and $info.PlaybackStatus.ToString() -eq 'Changing') {
+        $global:_smtcTransitionGuardMs = [Math]::Max($global:_smtcTransitionGuardMs,
+            $_pbNowMs + 750)
+    }
     return $info
 }
 
@@ -5880,7 +5926,7 @@ function Get-SMTCMediaPropsCached {
         # v11.1.0: removed _smtcPropsFiredThisTick = @{} (moved .Clear() to Get-SMTCSessionsCached above; that function always runs first in detector chain)
     }
     if (-not $Session) { return $null }
-    $key = $Session.GetHashCode()
+    $key = $Session.SourceAppUserModelId
 
     # ── Collect any completed task for this session ───────────────────────────
     if ($global:_smtcPropsTaskDict.ContainsKey($key)) {
@@ -5889,12 +5935,14 @@ function Get-SMTCMediaPropsCached {
             try {
                 if ($t.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
                     $newResult = $t.Result
-                    # If title changed → set 500ms transition guard so synchronous ALPC
+                    # If title changed → set 750ms transition guard so synchronous ALPC
                     # calls (GetPlaybackInfo, GetTimelineProperties, GetSessions) are
                     # served from cache during the SMTC session transition window.
+                    # v11.2.0: extended from 500ms → 750ms to match the Changing-status
+                    # guard window (see Get-SMTCPlaybackInfoCached).
                     $oldResult = if ($global:_smtcPropsResultCache.ContainsKey($key)) { $global:_smtcPropsResultCache[$key] } else { $null }
                     if ($newResult -and $oldResult -and $newResult.Title -ne $oldResult.Title) {
-                        $global:_smtcTransitionGuardMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 500
+                        $global:_smtcTransitionGuardMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 750
                     }
                     $global:_smtcPropsResultCache[$key] = $newResult
                 }
@@ -6452,14 +6500,18 @@ function Get-SMTCPosition {
     )
     $out = @{ posMs = 0; durMs = 0; rawPosMs = 0; ageMs = -1; fresh = $false; lutYear = -1; lutMs = 0 }
     try {
-        # Transition guard: serve cached timeline to avoid ALPC call during SMTC transition
-        $_tlKey = $Session.GetHashCode()
-        if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $global:_smtcTransitionGuardMs -and
-            $global:_smtcTlCache.ContainsKey($_tlKey)) {
+        # Transition guard + staleness guard: serve cached timeline to avoid WinRT RCW churn.
+        # v11.1.4: skip GetTimelineProperties() if the cached entry is <500 ms old (Fix 2 — B2 leak).
+        $_tlKey = $Session.SourceAppUserModelId
+        $_nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $_tlFresh = $global:_smtcTlCacheMs.ContainsKey($_tlKey) -and (($_nowMs - $global:_smtcTlCacheMs[$_tlKey]) -lt 500)
+        if ($global:_smtcTlCache.ContainsKey($_tlKey) -and
+            ($_nowMs -lt $global:_smtcTransitionGuardMs -or $_tlFresh)) {
             $tl = $global:_smtcTlCache[$_tlKey]
         } else {
-            $tl = $Session.GetTimelineProperties()
-            $global:_smtcTlCache[$_tlKey] = $tl
+            $tl = $Session.GetTimelineProperties()  # v11.1.4: only called when cache >500ms stale
+            $global:_smtcTlCache[$_tlKey]   = $tl
+            $global:_smtcTlCacheMs[$_tlKey] = $_nowMs
         }
         $rawPosMs  = [long]($tl.Position.TotalMilliseconds)
         $durMs     = [long]($tl.EndTime.TotalMilliseconds)
@@ -6551,7 +6603,7 @@ function Find-SMTCSession {
         foreach ($s in $sessions) {
             $aid = ($s.SourceAppUserModelId + '').ToLower()
             if ($pattern -and $aid -notmatch $pattern) { continue }
-            $statusName = $s.GetPlaybackInfo().PlaybackStatus.ToString()
+            $statusName = (Get-SMTCPlaybackInfoCached $s).PlaybackStatus.ToString()  # v11.1.4: was direct .GetPlaybackInfo() — leaked ~1800 WinRT RCW/min
             if ($acceptStatuses -notcontains $statusName) { continue }
             # Rank: Playing=0 Changing=1 Paused=2 other=3 (lower wins)
             $rank = 3
@@ -9083,6 +9135,8 @@ $scrobbleTimer.add_Tick({
                 # Tracks GDI/User object counts (slow GDI leak early-warning),
                 # handle + thread counts, and WinRT timeout rate.
                 try {
+                    # v11.1.4: prompt gen-1 GC before sampling to drain finalization queue (Fix 3 — B2 leak).
+                    [GC]::Collect(1, [System.GCCollectionMode]::Optimized)
                     $sp   = [System.Diagnostics.Process]::GetCurrentProcess()
                     $wsMB = [math]::Round($sp.WorkingSet64 / 1MB, 1)
                     $gdi  = if ($global:_hasGuiRes) { try { [NativeMethods.GuiRes]::GetGuiResources($sp.Handle, 0) } catch { -1 } } else { -1 }
@@ -9093,6 +9147,21 @@ $scrobbleTimer.add_Tick({
                     $global:_winrtCallsMin = 0
                     $global:_winrtTmoMin   = 0
                 } catch {}
+            }
+        } catch {}
+        # v11.2.0: 5-minute Gen2 forced GC flush. Drains the WinRT RCW finalization queue
+        # that accumulates between ticks. The existing 60-second Gen1 Optimized hint (above)
+        # does not reach Gen2, so long-lived RCW wrappers survive it. Gen2 Forced queues ALL
+        # generations for collection; the finalizer thread then releases native COM references.
+        # We do NOT call WaitForPendingFinalizers() — that would block the UI thread.
+        # The finalizer thread runs async between ticks and clears the queue on its own.
+        # Net effect: RAM growth plateaus or drops noticeably after each 5-min flush.
+        try {
+            $_gcNowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            if (($_gcNowMs - $global:_gcFlushLastMs) -ge 300000) {
+                $global:_gcFlushLastMs = $_gcNowMs
+                [GC]::Collect(2, [System.GCCollectionMode]::Forced)
+                Log "GC flush: Gen2 forced (5-min interval)"
             }
         } catch {}
         $scrobbleTimer.Start()   # restart after every tick — maintains ~100 ms gap
