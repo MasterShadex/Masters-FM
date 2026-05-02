@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v11.0.0 (installed locally + LIVE — pushed with autoInstall=true 2026-05-02 06:33)
-**Last updated:** 2026-05-02 (v11.0.0 overnight audit — 13 fixes shipped, live on GitHub)
+**Current version:** v11.1.0 (built + locally installed; PUSH PENDING at time of memory write — soak in progress)
+**Last updated:** 2026-05-02 (v11.1.0 autonomous audit — 5 fixes shipped; see changelog below)
 
 ## IN-FLIGHT WORK
 
@@ -72,7 +72,7 @@ See `hard_constraints.md` for the full list. Key ones:
 **MSI URL pattern:** `https://github.com/MasterShadex/Masters-FM/releases/download/v{ver}/Masters-FM-V{ver}.msi`
 **Git state:** repo initialized, initial commit `a1c99e6`, branch `main`, remote `origin` → https://github.com/MasterShadex/Masters-FM.git
 **Git state:** PUSHED — commit `21ca108`, branch `main` tracking `origin/main`
-**Update state globals:** `_updateState` (idle/checking/available/downloading/ready/installing), `_updateVersion`, `_updateMsiUrl`, `_updateMsiSha256`, `_updateAutoInstall`, `_updateLastCheckMs`, `_updateMsiPath`, `_updateCheckTask`, `_updateDownloadTask`, `_updateHttpClient`
+**Update state globals:** `_updateState` (idle/checking/available/downloading/ready/installing), `_updateVersion`, `_updateMsiUrl`, `_updateMsiSha256`, `_updateAutoInstall`, `_updateLastCheckMs`, `_updateMsiPath`, `_updateCheckTask`, `_updateHttpClient` (`_updateDownloadTask` removed v11.1.0 — was legacy dead code)
 **Menu item:** appears in tray menu between "View Log" sep and "Restart" — label changes based on `_updateState`
 
 ## USER PREFERENCES
@@ -87,6 +87,38 @@ See `hard_constraints.md` for the full list. Key ones:
 ---
 
 ## CHANGELOG
+
+### 2026-05-02 07:30 — v11.1.0 — autonomous audit — BUILT, soak in progress
+
+- **Time elapsed:** ~4h (started 06:51, all STEPs complete except soak finish + push)
+- **Scope:** Depth-first per-file audit (tray.ps1 60-90 min, then server.js, overlay.html, audio_spectrum.cs, customize.html, launcher.cs)
+- **Findings reviewed:** 6 new (all in tray.ps1) + 3 promoted deferred items from v11.0.0 → triaged 6 FIX, 1 DEFER
+- **Changes shipped:** 5 (hard cap was 30; all triaged findings applied)
+- **Changes rolled back:** 0
+- **Build state:** v11.1.0 MSI built+signed+installed. 30-min soak running since 07:29:58.
+- **Final build sha256:** `769aa4a5ebf5d0f18448064af25574258f355c432b8f6369d0cd1f083300fd46`
+- **tray_native.dll:** Signed CN=MasterShadex, Valid ✅
+- **Startup timing:** 83ms from first log to tray visible ✅
+- **All 12 STEP 7 checks PASSED** (soak = 13th, in progress)
+- **STEP 8 install-failure check:** PASSED — no v11.0.0 install failures documented. Alex "uninstalls itself" was for v10.1.9 (old version). Push will proceed.
+- **Push state:** PENDING — will push after soak confirmation
+
+**v11.1.0 CHANGES SHIPPED (5):**
+1. P1-SMTC-2 + P2-SMTC-1 (combined): `_smtcPropsFiredThisTick` correctness fix — SMTC track metadata now updates on each track change instead of freezing after first fetch. Also removed dead `_smtcPropsCache = @{}` per-tick alloc (zero reads anywhere in file).
+2. P2-B3: SoundCloud browser process lookup — 8 separate `Get-Process` calls per tick → single batched call with 5s TTL cache (same pattern as WMP/VLC in v11.0.0). New globals: `_scBrProcCached`, `_scBrProcCheckAt`.
+3. P2-D2: Dual log write after startup — `Log()` now writes to TEMP_LOG (startup.log) only during initialization. After `$script:_initDone = $true` (just before scrobbleTimer.Start()), startup.log stops accumulating. startup.log = 39 lines (clean boot sequence only).
+4. P3-CHAIN: `$chain = @()` + `+=` per-tick array copy → pre-allocated `$global:_chain = [System.Collections.Generic.List[string]]::new(16)`. `.Clear()` each tick, `.Add(item)` for appends. Eliminates ~72,000 array copies/hour.
+5. P3-DEAD: `$global:_updateDownloadTask = $null` removed — confirmed dead code (zero reads anywhere in file).
+
+**DEFERRED in v11.1.0 (not changed):**
+- P3-SERVER-1: Concurrent /screenshot orphan (very unlikely; not worth risk)
+- P2-F1: `_smtcPropsResultCache` pruning (bounded to ~5-10 entries; negligible)
+- P3-F2: HttpClient lazy-init consolidation (working code; refactor risk > reward)
+
+**NEW HARD CONSTRAINTS from v11.1.0:**
+- `_smtcPropsFiredThisTick.Clear()` is now in Get-SMTCSessionsCached (not Get-SMTCMediaPropsCached). Get-SMTCSessionsCached ALWAYS runs before Get-SMTCMediaPropsCached in the detector chain. Don't move `.Clear()` — it's intentionally upstream.
+- `$script:_initDone` flag must be set AFTER all WinRT/SMTC init and BEFORE `$scrobbleTimer.Start()`. Moving it earlier would cut off startup.log prematurely; moving it later would allow TEMP_LOG accumulation.
+- `_scBrProcCached` + `_scBrProcCheckAt` cache governs SoundCloud browser process lookup. Same 5s TTL pattern as `_wmpProcCached`/`_wmpProcCheckAt` (v11.0.0) and `_vlcProcCached`/`_vlcProcCheckAt` (v11.0.0). All three follow the same `[Environment]::TickCount` threshold idiom.
 
 ### 2026-05-02 06:00 — v11.0.0 — autonomous overnight audit — BUILT, awaiting push
 - **Time elapsed:** ~90 minutes (started 05:58, STEP 0+1+2+3+4+5+6+7 complete)

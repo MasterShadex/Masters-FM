@@ -137,7 +137,12 @@ function Log($msg) {
     $line = "[$(Get-Date -Format 'HH:mm:ss.fff')] $msg"
     # AppendAllText opens-writes-closes atomically: no partial lines from timer events
     try { [System.IO.File]::AppendAllText($logFile, "$line`r`n", [System.Text.Encoding]::UTF8) } catch {}
-    try { [System.IO.File]::AppendAllText($TEMP_LOG, "$line`r`n", [System.Text.Encoding]::UTF8) } catch {}
+    # v11.1.0: skip TEMP_LOG write after init completes — TEMP_LOG (startup.log) is for
+    # pre-init crash diagnosis only; $script:_initDone is set just before the timer starts.
+    # The crash trap at line 4069 still references $TEMP_LOG for pre-init crashes.
+    if (-not $script:_initDone) {
+        try { [System.IO.File]::AppendAllText($TEMP_LOG, "$line`r`n", [System.Text.Encoding]::UTF8) } catch {}
+    }
     Write-Host $line
     # v9.10.0: feed ring buffer for SLOW TICK context snapshots
     try {
@@ -243,7 +248,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.0.0"
+$script:APP_VERSION = "v11.1.0"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -257,6 +262,11 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.1.0"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'SMTC track metadata now updates correctly when a track changes while the same app session remains open. Previously, title and artist would freeze after the first fetch for the lifetime of the player session.' },
+        @{ Tag = "IMPROVED"; Text = 'SoundCloud playback detection now uses a single batched process lookup with a 5-second cache instead of 8 individual lookups per tick, reducing per-tick overhead.' },
+        @{ Tag = "IMPROVED"; Text = 'Startup log (startup.log) no longer accumulates all session log lines after initialisation — it now captures only the boot sequence, keeping it compact for crash diagnostics.' }
+    ) },
     @{ Version = "v11.0.0"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "FIXED";    Text = 'Album art memory leak: artwork cache now has a 200-entry LRU cap. Long shuffle sessions no longer accumulate hundreds of MB of cached album art.' },
         @{ Tag = "FIXED";    Text = 'Transcript log no longer grows unbounded across restarts — it is now reset on each startup.' },
@@ -5018,7 +5028,7 @@ $global:_pollTimerTask = $null
 # ── Auto-updater globals (v10.0.0) ────────────────────────────────────────────
 $global:_updateManifestUrl  = 'https://raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json'
 $global:_updateCheckTask    = $null    # Task<string>  — manifest fetch in flight
-$global:_updateDownloadTask = $null    # Task<byte[]>  — MSI download in flight (legacy, unused)
+# v11.1.0: _updateDownloadTask removed — confirmed dead code (zero reads anywhere in file)
 $global:_updateState        = 'idle'   # idle|checking|available|downloading|ready|installing
 $global:_updateVersion      = $null    # e.g. "10.1.0"
 $global:_updateMsiUrl       = $null
@@ -5794,7 +5804,7 @@ $global:_smtcPropsCache       = @{}   # legacy (kept for compat)
 $global:_smtcPropsResultCache   = @{}   # persistent: key=sessionHash, value=props
 $global:_smtcPropsTaskDict      = @{}   # key=sessionHash, value=Task<MediaProps>
 $global:_smtcPropsCtsDict       = @{}   # key=sessionHash, value=CTS
-$global:_smtcPropsFiredThisTick = @{}   # per-tick dedup: cleared when _smtcCacheTickId rolls
+$global:_smtcPropsFiredThisTick = [System.Collections.Hashtable]::new()   # per-tick dedup: cleared when _smtcCacheTickId rolls
 # v9.10.0: transition guard — suppresses synchronous SMTC ALPC calls for 500ms after a
 # track change is detected. GetPlaybackInfo() + GetTimelineProperties() each take ~15ms
 # during SMTC session transitions; with 4 such calls per tick the skip tick hits 60ms.
@@ -5810,7 +5820,7 @@ function Get-SMTCSessionsCached {
     if ($global:_smtcCacheTickId -ne $global:_diagTickCount) {
         $global:_smtcCacheTickId   = $global:_diagTickCount
         $global:_smtcSessionsCache = $null
-        $global:_smtcPropsCache    = @{}
+        $global:_smtcPropsFiredThisTick.Clear()   # v11.1.0: clear per-tick task-dedup table here (Get-SMTCSessionsCached always runs before Get-SMTCMediaPropsCached in the detector chain)
     }
     if ($null -eq $global:_smtcSessionsCache) {
         $mgr = Get-SMTCManager
@@ -5854,12 +5864,12 @@ function Get-SMTCMediaPropsCached {
     # for a session). The task completes between ticks via WinForms SynchronizationContext;
     # caller gets fresh data on the next tick. Zero UI-thread blocking.
     param($Session, [int]$TimeoutMs = 150)
-    # Per-tick housekeeping (sessions cache + per-tick dedup flag reset)
+    # Per-tick housekeeping (sessions cache reset — _smtcPropsFiredThisTick is cleared by Get-SMTCSessionsCached which always runs first)
     if ($global:_smtcCacheTickId -ne $global:_diagTickCount) {
         $global:_smtcCacheTickId        = $global:_diagTickCount
         $global:_smtcSessionsCache      = $null
-        $global:_smtcPropsCache         = @{}   # legacy compat
-        $global:_smtcPropsFiredThisTick = @{}
+        # v11.1.0: removed dead _smtcPropsCache = @{} (zero reads; was allocating @{} twice per tick path for no reason)
+        # v11.1.0: removed _smtcPropsFiredThisTick = @{} (moved .Clear() to Get-SMTCSessionsCached above; that function always runs first in detector chain)
     }
     if (-not $Session) { return $null }
     $key = $Session.GetHashCode()
@@ -6891,17 +6901,22 @@ function Get-BrowserMediaNowPlaying {
 function Get-SoundCloudNowPlaying {
     if (-not (Test-PlatformEnabled 'SoundCloud')) { return $null }
     try {
-        foreach ($browser in @('chrome','msedge','firefox','opera','brave','vivaldi','arc','iexplore')) {
-            $procs = Get-Process -Name $browser -ErrorAction SilentlyContinue
-            foreach ($p in $procs) {
-                $wt = ($p.MainWindowTitle + '').Trim()
-                if (-not $wt) { continue }
-                if ($wt -notmatch 'soundcloud') { continue }
-                # Skip SoundCloud homepage / generic pages (no song info)
-                if ($wt -match '^SoundCloud\s*[-–|]') { continue }
-                if ($wt -ieq 'SoundCloud') { continue }
+        # v11.1.0: single batched Get-Process call with 5s TTL (same pattern as WMP/VLC caches).
+        # Previously called Get-Process 8 times per tick when SoundCloud fallback was active.
+        $_scTick = [Environment]::TickCount
+        if ($null -eq $global:_scBrProcCheckAt -or ($_scTick - $global:_scBrProcCheckAt) -gt 5000) {
+            $global:_scBrProcCheckAt = $_scTick
+            $global:_scBrProcCached  = @(Get-Process -Name 'chrome','msedge','firefox','opera','brave','vivaldi','arc','iexplore' -ErrorAction SilentlyContinue)
+        }
+        foreach ($p in $global:_scBrProcCached) {
+            $wt = ($p.MainWindowTitle + '').Trim()
+            if (-not $wt) { continue }
+            if ($wt -notmatch 'soundcloud') { continue }
+            # Skip SoundCloud homepage / generic pages (no song info)
+            if ($wt -match '^SoundCloud\s*[-–|]') { continue }
+            if ($wt -ieq 'SoundCloud') { continue }
 
-                Log "SoundCloud tab found [$browser]: '$wt'"
+            Log "SoundCloud tab found [$($p.Name)]: '$wt'"
 
                 # Strip play indicator and trailing site tag
                 $cleaned = $wt -replace '^[▶►]\s*', ''
@@ -6946,7 +6961,6 @@ function Get-SoundCloudNowPlaying {
                     duration   = [double]($durMs / 1000.0)
                     isPaused   = $scPaused
                 }
-            }
         }
     } catch { Log "SoundCloud window detection error: $_" }
     return $null
@@ -8446,6 +8460,9 @@ function Invoke-Detector($name, $fn) {
 # Using .Clear() on a persistent instance eliminates this GC pressure.
 $global:_tickPhaseMs = [System.Collections.Hashtable]::new()
 $global:_detectorMs  = [System.Collections.Hashtable]::new()
+# v11.1.0: pre-allocate detector chain tag list. Previously $chain = @() + $chain += tag
+# per tick (array-copy on every append, ~10 copies/tick = 72,000 allocs/hr).
+$global:_chain = [System.Collections.Generic.List[string]]::new(16)
 
 $scrobbleTimer          = New-Object System.Windows.Forms.Timer
 # v6.9.6: scrobble timer 50 -> 100 ms. The 50 ms cadence was halving Task
@@ -8533,7 +8550,7 @@ $scrobbleTimer.add_Tick({
     #         Both paused → first in chain wins (stable, no flipping).
     $np       = $null   # first Playing/Changing result found
     $npPaused = $null   # first Paused result found (fallback)
-    $chain    = @()
+    $global:_chain.Clear()   # v11.1.0: reuse pre-allocated List[string] instead of @() per tick
     # v8.2.4 perf — tick-budget short-circuit. Per-detector circuit breaker
     # (Invoke-Detector / SLOW_MS=150) already throttles individually-slow
     # detectors, but during rapid track-change bursts MULTIPLE detectors can
@@ -8571,10 +8588,10 @@ $scrobbleTimer.add_Tick({
             } else {
                 # Playing / Changing — wins, stop the chain
                 $np = $r.result
-                $chain += $r.tag
+                $global:_chain.Add($r.tag)
             }
         } else {
-            $chain += $r.tag
+            $global:_chain.Add($r.tag)
         }
     }
     $global:_tickPhaseMs['detector-chain'] = [int]$tickSw.ElapsedMilliseconds
@@ -8583,7 +8600,7 @@ $scrobbleTimer.add_Tick({
     if (-not $np -and $npPaused) { $np = $npPaused }
     # DETECT chain line: ~every 10 s (100 ticks at 100 ms)
     if (($global:_diagTickCount % 100) -eq 1) {
-        Log ("DETECT: " + ($chain -join ' '))
+        Log ("DETECT: " + ($global:_chain -join ' '))
     }
 
     # ── Song-epoch tracker ─────────────────────────────────────────────────────
@@ -9073,6 +9090,7 @@ $scrobbleTimer.add_Tick({
         $scrobbleTimer.Start()   # restart after every tick — maintains ~100 ms gap
     }
 })
+$script:_initDone = $true   # v11.1.0: signals Log() to stop mirroring to TEMP_LOG (startup.log)
 $scrobbleTimer.Start()
 Log "Multi-platform scrobble timer started (osu! → Spotify → SMTC → Browser → WMP → VLC)"
 
