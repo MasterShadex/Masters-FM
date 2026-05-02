@@ -248,7 +248,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.1.2"
+$script:APP_VERSION = "v11.1.3"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -262,6 +262,9 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.1.3"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "IMPROVED"; Text = 'Internal test build — no user-visible changes.' }
+    ) },
     @{ Version = "v11.1.2"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "IMPROVED"; Text = 'Internal test build — no user-visible changes.' }
     ) },
