@@ -98,6 +98,11 @@ See `hard_constraints.md` for the full list. Key ones:
 - **sha256 v10.2.2**: `7bd4a92effa41389cb1457a2b5ab60a7815084dc9d6c03cf2ca26ec49cbed048`
 - **v10.2.2 installed locally**: Yes ✅
 - **Desktop bundle**: `Master's FM V10.2.2.msi` + INSTALL.bat + MastersFM_publisher.cer
+- **GitHub Release**: https://github.com/MasterShadex/Masters-FM/releases/tag/v10.2.2
+- **autoInstall**: true (pushed via _push_update.ps1, commit 213d8e5)
+- **Source committed**: commit 432a6d0 — tray_native.cs, update.html, tray.ps1, _full_rebuild.ps1, build_msi.py, package.json, server.js
+- **Pre-push checks all passed**: backup ✅, reproducibility ✅, DLL signed (CN=MasterShadex Valid) ✅, clean install 88ms startup ✅, all 5 types functional ✅
+- **Signing integrated into pipeline**: _full_rebuild.ps1 now signs tray_native.dll immediately after csc.exe compilation
 
 ### 2026-05-02 04:00 — v10.1.4: WebClient download fix — SHIPPED; v10.1.5 test pushed
 - **Bump**: v10.1.3 (test) → v10.1.4 (fix) → v10.1.5 (test, not installed locally)

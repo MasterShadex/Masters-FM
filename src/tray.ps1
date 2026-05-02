@@ -237,7 +237,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v10.2.2"
+$script:APP_VERSION = "v10.2.3"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -251,6 +251,11 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v10.2.3"; Date = "2026-05-02"; Notes = @(
+        @{ Tag = "IMPROVED"; Text = 'Auto-update check now runs every 1 hour instead of every 6 hours. You will receive updates faster.' },
+        @{ Tag = "IMPROVED"; Text = 'After an automatic update installs and the app restarts, a balloon notification now appears instead of the patch notes window opening automatically. The window is still available any time via "Patch Notes" in the tray menu.' },
+        @{ Tag = "NEW";      Text = '"Patch Notes" tray menu item — opens the patch notes window on demand.' }
+    ) },
     @{ Version = "v10.2.2"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "IMPROVED"; Text = 'Startup time reduced by 10-25 seconds on first launch after install. Five inline C# compilations (Add-Type) that each invoked csc.exe have been replaced by a single pre-compiled tray_native.dll that loads in ~50ms.' }
     ) },
@@ -4111,12 +4116,38 @@ Log "Tray visible"
 $welcomeSeen = Get-WelcomeSeen
 Log "Startup state: welcome_seen=$welcomeSeen"
 if (-not $welcomeSeen) {
-    Log "First run detected — invoking welcome flow"
+    # Distinguish post-update boot from genuine first install.
+    # Roaming config survives MSI reinstalls, so after an auto-update
+    # welcome_seen=true (set by the prior version) but welcome_seen_version
+    # doesn't match the new APP_VERSION. On first-ever install there is no
+    # config yet — welcome_seen is missing/false.
+    $__isPostUpdate = $false
     try {
-        Show-WelcomeDialog
-        Log "Welcome flow returned successfully"
-    } catch {
-        Log "Welcome dialog threw: $_"
+        $__pcfg = Get-UserCfgPath
+        if (Test-Path $__pcfg) {
+            $__j = Get-Content $__pcfg -Raw | ConvertFrom-Json
+            $__isPostUpdate = ($__j.welcome_seen -eq $true)
+        }
+    } catch {}
+
+    if ($__isPostUpdate) {
+        # v10.2.3: post-update boot — balloon only, no auto-popup window.
+        # User can open patch notes any time via "Patch Notes" in the tray menu.
+        Log "Post-update boot ($($script:APP_VERSION)): balloon notification, welcome window suppressed"
+        try {
+            $tray.ShowBalloonTip(6000, "Master's FM updated",
+                "Now running $($script:APP_VERSION). Tap 'Patch Notes' in the menu to see what's new.",
+                [System.Windows.Forms.ToolTipIcon]::Info)
+        } catch { LogErr 'post-update balloon' $_ }
+    } else {
+        # Genuine first install — show the welcome / patch-notes dialog.
+        Log "First run detected — invoking welcome flow"
+        try {
+            Show-WelcomeDialog
+            Log "Welcome flow returned successfully"
+        } catch {
+            Log "Welcome dialog threw: $_"
+        }
     }
     Save-ConfigField 'welcome_seen' $true
     Save-ConfigField 'welcome_seen_version' $script:APP_VERSION
@@ -5462,7 +5493,7 @@ if (Test-Path `$launch) { Start-Process `$launch }
 
 function Poll-UpdateCheck {
     $nowMs      = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $intervalMs = 6 * 60 * 60 * 1000   # 6 hours
+    $intervalMs = 1 * 60 * 60 * 1000   # 1 hour (v10.2.3: was 6 hours)
 
     # ── 1. Trigger a periodic manifest check ──────────────────────────────
     if ($global:_updateState -eq 'idle' -and $global:_httpClient -ne $null -and
