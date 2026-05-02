@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v11.0.0 (installed and running locally; pushed to testers pending)
-**Last updated:** 2026-05-02 (v11.0.0 overnight audit — 13 fixes shipped)
+**Current version:** v11.0.0 (installed locally + LIVE — pushed with autoInstall=true 2026-05-02 06:33)
+**Last updated:** 2026-05-02 (v11.0.0 overnight audit — 13 fixes shipped, live on GitHub)
 
 ## IN-FLIGHT WORK
 
@@ -101,7 +101,11 @@ See `hard_constraints.md` for the full list. Key ones:
 - **tray_native.dll:** Signed CN=MasterShadex, Valid ✅
 - **Startup timing:** 57ms from first log to tray visible ✅ (better than 88ms baseline)
 - **All 13 STEP 7 checks PASSED** (see V1100_FINAL_REPORT.md when written)
-- **Push state:** MSI built, source committed. Awaiting GitHub Release upload + `_push_update.ps1`.
+- **Push state:** LIVE ✅ — GitHub Release uploaded, `_push_update.ps1` ran, autoInstall=true
+- **GitHub Release:** https://github.com/MasterShadex/Masters-FM/releases/tag/v11.0.0
+- **Source commit:** `07b0af6` — all 13 fixes + log cleanup
+- **Release commit:** `3b87bef` — version.json autoInstall=true
+- **Manifest verified live:** version=11.0.0, autoInstall=true, sha256=62bab82c...
 
 **v11.0.0 CHANGES SHIPPED (13):**
 1. P1-A1 `_smtcArtCache` LRU cap — `Write-SMTCArtCacheEntry` helper, 200-entry eviction queue prevents GB-scale art accumulation
