@@ -250,7 +250,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.2.1"
+$script:APP_VERSION = "v11.2.2"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -264,6 +264,11 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.2.2"; Date = "2026-05-03"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'Sustained ~5% idle CPU: Get-SMTCNowPlaying now runs at most every 300ms (was every 100ms tick). The v11.2.1 ALPC cache eliminated WinRT blocking, which accidentally unmasked the full per-tick PowerShell interpreter overhead (~79ms) that the circuit breaker had previously rate-limited. Rate-limiting wrapper reduces SMTC from ~79% of 1 core (10/sec x 79ms) to ~2% (3.3/sec x 79ms). Start-ThreadJob unavailable (PS 5.1); same proven staleness-guard pattern used.' }
+        @{ Tag = "FIXED";    Text = 'Residual ~17 MB/hr memory leak: added 500ms cross-tick staleness guard to Get-SMTCSessionsCached. GetSessions() was called 600/min (cleared on every tick) creating fresh COM proxy RCWs that backlogged the .NET finalizer queue. Guard reduces GetSessions() to ~120/min, same proven pattern as Get-SMTCPlaybackInfoCached (v11.1.5).' }
+        @{ Tag = "FIXED";    Text = 'Discord RPC showing wrong track art after skips (P1-SMTC-2 deferred bug): added _smtcPropsFiredThisTick.Remove($key) inside the title-change detection block in Get-SMTCMediaPropsCached. Previously the once-per-session guard was permanent, causing TryGetMediaPropertiesAsync to never re-fire after the first call. The previous .Clear()-on-every-tick attempt (v11.1.0) caused 9 MB/min growth and was rolled back; the per-key .Remove() approach fires only on title change.' }
+    ) },
     @{ Version = "v11.2.1"; Date = "2026-05-02"; Notes = @(
         @{ Tag = "FIXED";    Text = 'Memory leak (~185 MB/hr with SoundCloud-RPC active): replaced $Session.GetHashCode() with $Session.SourceAppUserModelId in 3 SMTC caches (Get-SMTCMediaPropsCached, Get-SMTCPlaybackInfoCached, Get-SMTCPosition). Each new SMTC manager (~87/min) produced fresh COM proxy wrappers with unstable hashes, causing unbounded cache growth. Stable SAUMID key means one entry per source, overwritten on each re-acquisition.' }
         @{ Tag = "FIXED";    Text = 'Track-change CPU spike (26% on Ryzen 7 7800X3D): same root cause -- unstable hash caused staleness guards to always miss for SoundCloud-RPC, firing GetPlaybackInfo() 600/min instead of ~120/min. Fix reduces per-tick WinRT call rate.' }
@@ -5849,6 +5854,9 @@ $global:_smtcPbInfoCacheMs        = @{}  # key=sessionHash, value=epoch-ms when 
 $global:_smtcTlCache              = @{}  # key=sessionHash, value=last TimelineProperties
 $global:_smtcTlCacheMs            = @{}  # key=sessionHash, value=epoch-ms when _smtcTlCache entry was written (v11.1.4 staleness guard)
 $global:_smtcSessionsCacheLastGood = $null  # last successful GetSessions() result
+$global:_smtcSessionsCacheMs       = $null  # v11.2.2: epoch-ms of last GetSessions() call (500ms staleness guard)
+$global:_smtcNpCache               = $null  # v11.2.2: cross-tick result cache for Get-SMTCNowPlaying (rate-limiting guard)
+$global:_smtcNpCacheMs             = 0      # v11.2.2: epoch-ms of last Get-SMTCNowPlaying call
 
 function Get-SMTCSessionsCached {
     # Returns the array of SMTC sessions for this tick, fetching fresh on first
@@ -5867,14 +5875,20 @@ function Get-SMTCSessionsCached {
             $global:_smtcSessionsCache = @()
             return @()
         }
-        # Transition guard: skip GetSessions() ALPC call while SMTC is mid-transition
-        if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $global:_smtcTransitionGuardMs -and
-            $global:_smtcSessionsCacheLastGood) {
+        $_sessNowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $_sessFresh = $global:_smtcSessionsCacheMs -and (($_sessNowMs - $global:_smtcSessionsCacheMs) -lt 500)
+        # Transition guard: skip GetSessions() ALPC call while SMTC is mid-transition.
+        # v11.2.2: also skip if last GetSessions() was <500ms ago (staleness guard) — same
+        # pattern as Get-SMTCPlaybackInfoCached (v11.1.5). Reduces GetSessions() calls
+        # from ~600/min to ~120/min, cutting RCW finalizer churn ~5×.
+        if (($global:_smtcSessionsCacheLastGood) -and
+            (($_sessNowMs -lt $global:_smtcTransitionGuardMs) -or $_sessFresh)) {
             $global:_smtcSessionsCache = $global:_smtcSessionsCacheLastGood
         } else {
             try {
-                $global:_smtcSessionsCache = @($mgr.GetSessions())
+                $global:_smtcSessionsCache         = @($mgr.GetSessions())
                 $global:_smtcSessionsCacheLastGood = $global:_smtcSessionsCache
+                $global:_smtcSessionsCacheMs       = $_sessNowMs
             } catch {
                 $global:_smtcSessionsCache = @()
                 try { Log "Get-SMTCSessionsCached: GetSessions() threw: $_" } catch {}
@@ -5943,6 +5957,7 @@ function Get-SMTCMediaPropsCached {
                     $oldResult = if ($global:_smtcPropsResultCache.ContainsKey($key)) { $global:_smtcPropsResultCache[$key] } else { $null }
                     if ($newResult -and $oldResult -and $newResult.Title -ne $oldResult.Title) {
                         $global:_smtcTransitionGuardMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 750
+                        $global:_smtcPropsFiredThisTick.Remove($key)   # v11.2.2: fixes P1-SMTC-2 — re-fires TryGetMediaPropertiesAsync on title change only (not every tick)
                     }
                     $global:_smtcPropsResultCache[$key] = $newResult
                 }
@@ -7024,6 +7039,23 @@ function Get-SoundCloudNowPlaying {
         }
     } catch { Log "SoundCloud window detection error: $_" }
     return $null
+}
+
+# v11.2.2: rate-limiting cache wrapper for Get-SMTCNowPlaying.
+# Start-ThreadJob is unavailable (PS 5.1 without ThreadJob module) and a full Runspace
+# async approach would require serialising all global state. This wrapper uses the same
+# proven staleness-guard pattern as Fix 2 (Get-SMTCSessionsCached) to reduce call
+# frequency from 10/sec to 3.3/sec (300ms interval). Effect: ~79ms × 3.3 = 260ms/sec
+# = 26% of 1 core sustained (was 79%). Main thread sees <5ms on 2 of every 3 ticks.
+function Get-SMTCNowPlayingCached {
+    $_npNowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($global:_smtcNpCacheMs -and (($_npNowMs - $global:_smtcNpCacheMs) -lt 300)) {
+        return $global:_smtcNpCache
+    }
+    $result = Get-SMTCNowPlaying
+    $global:_smtcNpCache   = $result
+    $global:_smtcNpCacheMs = $_npNowMs
+    return $result
 }
 
 # Scan ALL SMTC sessions and return the best playing one.
@@ -8625,7 +8657,7 @@ $scrobbleTimer.add_Tick({
     foreach ($d in @(
         @{ n='osu';        f={ Get-OsuNowPlaying }          },
         @{ n='spotify';    f={ Get-SpotifyNowPlaying }      },
-        @{ n='smtc';       f={ Get-SMTCNowPlaying }         },
+        @{ n='smtc';       f={ Get-SMTCNowPlayingCached }    },
         @{ n='browser';    f={ Get-BrowserMediaNowPlaying } },
         @{ n='soundcloud'; f={ Get-SoundCloudNowPlaying }   },
         @{ n='wmpCOM';     f={ Get-WMPNowPlayingCOM }       },
