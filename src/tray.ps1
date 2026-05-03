@@ -250,7 +250,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.2.2"
+$script:APP_VERSION = "v11.2.3"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -264,6 +264,9 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v11.2.3"; Date = "2026-05-03"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'Album art now refreshes on every track change. v11.2.2 Fix 3 introduced a circular deadlock: _smtcPropsFiredThisTick.Remove($key) was inside the title-change branch, but no new task could fire to detect the title change while the key was still set. Fix: moved Remove to the task finally block (unconditional cleanup) so the key clears after every completed task. Added 500ms rate limit on TryGetMediaPropertiesAsync per source to prevent the v11.1.0 memory regression. Title and artist updates were already working in v11.2.2 (they read a live MediaProperties RCW); only art was stuck (deferred thumbnail extraction never re-fired).' }
+    ) },
     @{ Version = "v11.2.2"; Date = "2026-05-03"; Notes = @(
         @{ Tag = "FIXED";    Text = 'Sustained ~5% idle CPU: Get-SMTCNowPlaying now runs at most every 300ms (was every 100ms tick). The v11.2.1 ALPC cache eliminated WinRT blocking, which accidentally unmasked the full per-tick PowerShell interpreter overhead (~79ms) that the circuit breaker had previously rate-limited. Rate-limiting wrapper reduces SMTC from ~79% of 1 core (10/sec x 79ms) to ~2% (3.3/sec x 79ms). Start-ThreadJob unavailable (PS 5.1); same proven staleness-guard pattern used.' }
         @{ Tag = "FIXED";    Text = 'Residual ~17 MB/hr memory leak: added 500ms cross-tick staleness guard to Get-SMTCSessionsCached. GetSessions() was called 600/min (cleared on every tick) creating fresh COM proxy RCWs that backlogged the .NET finalizer queue. Guard reduces GetSessions() to ~120/min, same proven pattern as Get-SMTCPlaybackInfoCached (v11.1.5).' }
@@ -5843,7 +5846,8 @@ $global:_smtcPropsCache       = @{}   # legacy (kept for compat)
 $global:_smtcPropsResultCache   = @{}   # persistent: key=sessionHash, value=props
 $global:_smtcPropsTaskDict      = @{}   # key=sessionHash, value=Task<MediaProps>
 $global:_smtcPropsCtsDict       = @{}   # key=sessionHash, value=CTS
-$global:_smtcPropsFiredThisTick = [System.Collections.Hashtable]::new()   # per-tick dedup: cleared when _smtcCacheTickId rolls
+$global:_smtcPropsFiredThisTick = [System.Collections.Hashtable]::new()   # in-flight dedup: key present while task is running; cleared in finally (v11.2.3: no longer per-tick)
+$global:_smtcPropsLastFiredMs   = [System.Collections.Hashtable]::new()   # v11.2.3: epoch-ms of last TryGetMediaPropertiesAsync fire per SAUMID — 500ms rate limit prevents v11.1.0 memory regression
 # v9.10.0: transition guard — suppresses synchronous SMTC ALPC calls for 500ms after a
 # track change is detected. GetPlaybackInfo() + GetTimelineProperties() each take ~15ms
 # during SMTC session transitions; with 4 such calls per tick the skip tick hits 60ms.
@@ -5957,7 +5961,6 @@ function Get-SMTCMediaPropsCached {
                     $oldResult = if ($global:_smtcPropsResultCache.ContainsKey($key)) { $global:_smtcPropsResultCache[$key] } else { $null }
                     if ($newResult -and $oldResult -and $newResult.Title -ne $oldResult.Title) {
                         $global:_smtcTransitionGuardMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 750
-                        $global:_smtcPropsFiredThisTick.Remove($key)   # v11.2.2: fixes P1-SMTC-2 — re-fires TryGetMediaPropertiesAsync on title change only (not every tick)
                     }
                     $global:_smtcPropsResultCache[$key] = $newResult
                 }
@@ -5968,19 +5971,25 @@ function Get-SMTCMediaPropsCached {
                 try { $t.Dispose() } catch {}
                 $global:_smtcPropsTaskDict.Remove($key)
                 $global:_smtcPropsCtsDict.Remove($key)
+                $global:_smtcPropsFiredThisTick.Remove($key)   # v11.2.3: unconditional cleanup — allows next task to re-fire after rate limit (moved from title-change branch; was circular deadlock in v11.2.2)
             }
         }
     }
 
     # ── Fire new async request (once per session per tick, only when idle) ────
+    $_propsNowMs  = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $_propsLastMs = if ($global:_smtcPropsLastFiredMs.ContainsKey($key)) { $global:_smtcPropsLastFiredMs[$key] } else { 0 }
+    $_propsRateOk = ($_propsNowMs - $_propsLastMs) -ge 500   # v11.2.3: at most 2/sec per SAUMID
     if (-not $global:_smtcPropsTaskDict.ContainsKey($key) -and
         -not $global:_smtcPropsFiredThisTick.ContainsKey($key) -and
+        $_propsRateOk -and
         $global:_awaitAsTaskGenericCts) {
         try {
             $cts  = [System.Threading.CancellationTokenSource]::new($TimeoutMs)
             $meth = $global:_awaitAsTaskGenericCts.MakeGenericMethod(
                       [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
             $t    = $meth.Invoke($null, @($Session.TryGetMediaPropertiesAsync(), $cts.Token))
+            $global:_smtcPropsLastFiredMs[$key]   = $_propsNowMs   # record firing time before task runs
             $global:_smtcPropsTaskDict[$key]      = $t
             $global:_smtcPropsCtsDict[$key]       = $cts
             $global:_smtcPropsFiredThisTick[$key] = $true
