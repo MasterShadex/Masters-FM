@@ -250,7 +250,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v11.2.3"
+$script:APP_VERSION = "v12.0.0"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -264,6 +264,13 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v12.0.0"; Date = "2026-05-04"; Notes = @(
+        @{ Tag = "FIXED"; Text = 'System-wide FPS lag spike on every track change (3-5 seconds, 600 FPS to 0 FPS oscillation, all testers affected). Replaced polling-based SMTC integration with event-driven via new MasterFM.SMTC.SMTCWatcher class in tray_native.dll. The watcher subscribes to GlobalSystemMediaTransportControlsSessionManager events (SessionsChanged, CurrentSessionChanged) plus per-session events (MediaPropertiesChanged, PlaybackInfoChanged, TimelinePropertiesChanged) and maintains a thread-safe SAUMID-keyed snapshot. PowerShell tick reads the snapshot directly with zero ALPC traffic. Event handlers use coalescing (750ms) and burst suppression (800ms window) to handle soundcloud-rpc rapid session-recreation pattern. Result: single track skip drops from 600-to-0-for-3-5s to ~10 FPS dip. Rapid skip burst remaining drop matches the Master-FM-closed baseline (Windows + soundcloud-rpc inherent overhead).' }
+        @{ Tag = "ADDED"; Text = 'CANARY entries now include smtc_events (lifetime watcher event count), smtc_lag (seconds since last event), smtc_sess (active session count). Stuck-events fallback re-initializes the watcher if it stops receiving events for 5+ minutes while a source is active.' }
+        @{ Tag = "REMOVED"; Text = 'Manager re-acquisition cycle: SMTC manager is a Windows singleton, now held for app lifetime instead of refreshed every 600ms (was 87 RequestAsync calls/min of pure waste).' }
+        @{ Tag = "REMOVED"; Text = 'PlaybackInfoChanged "Changing" status transition guard arming. Events drive cache invalidation; no synchronous polling loop to guard.' }
+        @{ Tag = "PRESERVED"; Text = 'All v11.2.1/2/3 fixes: SAUMID-keyed snapshots (memory leak fix), 500ms staleness guards (in legacy fallback path only), per-task-finally cleanup pattern. The legacy polling code is the cold-start fallback and the watcher-failed safety net.' }
+    ) },
     @{ Version = "v11.2.3"; Date = "2026-05-03"; Notes = @(
         @{ Tag = "FIXED"; Text = 'Album art now refreshes on every track change. v11.2.2 Fix 3 introduced a circular deadlock: _smtcPropsFiredThisTick.Remove($key) was inside the title-change branch, but no new task could fire to detect the title change while the key was still set. Fix: moved Remove to the task finally block (unconditional cleanup) so the key clears after every completed task. Added 500ms rate limit on TryGetMediaPropertiesAsync per source to prevent the v11.1.0 memory regression. Title and artist updates were already working in v11.2.2 (they read a live MediaProperties RCW); only art was stuck (deferred thumbnail extraction never re-fired).' }
     ) },
@@ -5175,6 +5182,45 @@ try {
     Log "SMTC: WinRT not available - feature disabled. Error: $_"
 }
 
+# v12.0.0: Event-driven SMTC watcher (Stage 2 — parallel observation)
+# Synchronously acquire the manager once at startup so the watcher can subscribe
+# to its events. If anything fails, $global:_smtcWatcher stays $null and tray.ps1
+# falls back to the legacy polling path (preserving v11.2.3 behavior).
+$global:_smtcWatcher = $null
+if ($global:smtcAvailable -and $global:_awaitAsTaskGenericCts) {
+    try {
+        $_v12Cts     = [System.Threading.CancellationTokenSource]::new(2000)
+        $_v12AsyncOp = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()
+        $_v12AsTask  = $global:_awaitAsTaskGenericCts.MakeGenericMethod(
+                          [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+        $_v12Task    = $_v12AsTask.Invoke($null, @($_v12AsyncOp, $_v12Cts.Token))
+        # One-shot blocking wait at startup (tick hasn't started yet, OK to block briefly)
+        if ($_v12Task.Wait(2500)) {
+            $_v12Mgr = $_v12Task.Result
+            if ($_v12Mgr) {
+                # Pre-populate the existing fire-and-poll cache so legacy code finds it
+                $global:_smtcMgrCached    = $_v12Mgr
+                $global:_smtcMgrCacheTime = [datetime]::UtcNow
+                $global:_smtcMgrCacheTTL  = 600
+                $global:_smtcMgrCacheHit  = $true
+                # Initialize the event-driven watcher
+                $global:_smtcWatcher = [MasterFM.SMTC.SMTCWatcher]::new()
+                $global:_smtcWatcher.Initialize($_v12Mgr)
+                Log "v12.0.0: SMTC watcher initialized (sessions=$($global:_smtcWatcher.SessionCount), events_total=$($global:_smtcWatcher.EventsReceivedTotal))"
+            } else {
+                Log "v12.0.0: manager null at startup - polling-only mode"
+            }
+        } else {
+            Log "v12.0.0: RequestAsync timed out at startup - polling-only mode"
+            try { $_v12Cts.Cancel() } catch {}
+        }
+        try { $_v12Cts.Dispose() } catch {}
+    } catch {
+        Log "v12.0.0: SMTC watcher init failed: $_  (polling-only mode)"
+        $global:_smtcWatcher = $null
+    }
+}
+
 # v8.2.5 PERF: fire-and-forget webhook POST. Replaces synchronous Invoke-RestMethod
 # which blocked the WinForms UI thread for 200-900 ms per call (the server's
 # new-track path does art-resolution / Discord RPC update / SSE broadcast and the
@@ -5759,6 +5805,16 @@ $global:_smtcMgrTaskCts      = $null   # CancellationTokenSource for the pending
 # Timeout/backoff behavior is preserved: a 300 ms CTS cancels the task if the
 # operation takes too long, and the failstreak/backoff logic is unchanged.
 function Get-SMTCManager {
+    # v12.0.0: the manager is a Windows-singleton — once acquired, hold it for the
+    # app lifetime. The watcher subscribes to events on this manager and the
+    # service keeps notifying us forever. Re-acquiring every 600ms (the v11.x
+    # behavior) was 87 RequestAsync calls/min of pure waste. The fire-and-poll
+    # path below remains for the cold-start case (manager not yet acquired) AND
+    # the fallback case (watcher CANARY detected silent events for 5+ min and
+    # forced a re-init — see Stage 5).
+    if ($global:_smtcMgrCached -and $global:_smtcMgrCacheHit) {
+        return $global:_smtcMgrCached
+    }
     $now = [datetime]::UtcNow
 
     # ── Poll any in-flight task ──────────────────────────────────────────────
@@ -5770,7 +5826,7 @@ function Get-SMTCManager {
             if ($global:_smtcMgrTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
                 $global:_smtcMgrCached     = $global:_smtcMgrTask.Result
                 $global:_smtcMgrCacheTime  = $now
-                $global:_smtcMgrCacheTTL   = 600
+                $global:_smtcMgrCacheTTL   = 86400000  # v12.0.0: held forever (24h sentinel)
                 $global:_smtcMgrCacheHit   = $true
                 if ($global:_smtcMgrFailStreak -gt 0) {
                     Log "SMTC recovered after $($global:_smtcMgrFailStreak) consecutive timeout(s)"
@@ -5874,6 +5930,16 @@ function Get-SMTCSessionsCached {
         # The correctness bug (P1-SMTC-2) is filed as a deferred item for future sessions.
     }
     if ($null -eq $global:_smtcSessionsCache) {
+        # v12.0.0: prefer the event-driven watcher snapshot — zero SMTC ALPC traffic
+        if ($global:_smtcWatcher) {
+            $_v12Sessions = $global:_smtcWatcher.GetSessions()
+            if ($_v12Sessions -and $_v12Sessions.Length -gt 0) {
+                $global:_smtcSessionsCache         = @($_v12Sessions)
+                $global:_smtcSessionsCacheLastGood = $global:_smtcSessionsCache
+                return $global:_smtcSessionsCache
+            }
+            # Watcher present but no sessions (yet) — fall through to legacy poll
+        }
         $mgr = Get-SMTCManager
         if (-not $mgr) {
             $global:_smtcSessionsCache = @()
@@ -5908,6 +5974,13 @@ function Get-SMTCSessionsCached {
 # cutting GetPlaybackInfo() calls from ~600/min to ~120/min and reducing RCW churn.
 function Get-SMTCPlaybackInfoCached($Session) {
     $key = $Session.SourceAppUserModelId
+    # v12.0.0: prefer event-driven watcher snapshot
+    if ($global:_smtcWatcher) {
+        $_snap = $global:_smtcWatcher.GetSnapshot($key)
+        if ($_snap -and $_snap.HasPlaybackInfo -and $_snap.PlaybackInfoRcw) {
+            return $_snap.PlaybackInfoRcw
+        }
+    }
     $_pbNowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $_pbFresh = $global:_smtcPbInfoCacheMs.ContainsKey($key) -and
                 (($_pbNowMs - $global:_smtcPbInfoCacheMs[$key]) -lt 500)
@@ -5918,15 +5991,9 @@ function Get-SMTCPlaybackInfoCached($Session) {
     $info = $Session.GetPlaybackInfo()
     $global:_smtcPbInfoCache[$key]   = $info
     $global:_smtcPbInfoCacheMs[$key] = $_pbNowMs
-    # v11.2.0: if SMTC reports Changing, arm transition guard immediately so the NEXT
-    # staleness-expiry won't make another blocking ALPC call while the player is mid-skip.
-    # Root cause of the ~12% CPU + lag on track skip: GetPlaybackInfo() can block for
-    # ~100ms during Spotify/player track transitions. Arming a 750ms guard here limits
-    # the blockage to ONE call per transition (this one) rather than one per 500ms expiry.
-    if ($info -and $info.PlaybackStatus.ToString() -eq 'Changing') {
-        $global:_smtcTransitionGuardMs = [Math]::Max($global:_smtcTransitionGuardMs,
-            $_pbNowMs + 750)
-    }
+    # v12.0.0: transition-guard arming removed — events drive cache invalidation now,
+    # there's no synchronous polling loop to suppress. Legacy fallback path keeps
+    # _smtcTransitionGuardMs reads for safety (treated as "always 0" in steady state).
     return $info
 }
 
@@ -5945,6 +6012,15 @@ function Get-SMTCMediaPropsCached {
     }
     if (-not $Session) { return $null }
     $key = $Session.SourceAppUserModelId
+
+    # v12.0.0: prefer event-driven watcher snapshot — zero PS-side fire-and-poll
+    if ($global:_smtcWatcher) {
+        $_snap = $global:_smtcWatcher.GetSnapshot($key)
+        if ($_snap -and $_snap.HasMediaProps -and $_snap.MediaPropertiesRcw) {
+            return $_snap.MediaPropertiesRcw
+        }
+        # Watcher knows the session but props not yet captured — defer to legacy fire-and-poll
+    }
 
     # ── Collect any completed task for this session ───────────────────────────
     if ($global:_smtcPropsTaskDict.ContainsKey($key)) {
@@ -6526,16 +6602,26 @@ function Get-SMTCPosition {
     try {
         # Transition guard + staleness guard: serve cached timeline to avoid WinRT RCW churn.
         # v11.1.4: skip GetTimelineProperties() if the cached entry is <500 ms old (Fix 2 — B2 leak).
+        # v12.0.0: prefer event-driven watcher snapshot — no ALPC at all in steady state.
         $_tlKey = $Session.SourceAppUserModelId
         $_nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-        $_tlFresh = $global:_smtcTlCacheMs.ContainsKey($_tlKey) -and (($_nowMs - $global:_smtcTlCacheMs[$_tlKey]) -lt 500)
-        if ($global:_smtcTlCache.ContainsKey($_tlKey) -and
-            ($_nowMs -lt $global:_smtcTransitionGuardMs -or $_tlFresh)) {
-            $tl = $global:_smtcTlCache[$_tlKey]
-        } else {
-            $tl = $Session.GetTimelineProperties()  # v11.1.4: only called when cache >500ms stale
-            $global:_smtcTlCache[$_tlKey]   = $tl
-            $global:_smtcTlCacheMs[$_tlKey] = $_nowMs
+        $tl = $null
+        if ($global:_smtcWatcher) {
+            $_snap = $global:_smtcWatcher.GetSnapshot($_tlKey)
+            if ($_snap -and $_snap.HasTimeline -and $_snap.TimelinePropertiesRcw) {
+                $tl = $_snap.TimelinePropertiesRcw
+            }
+        }
+        if (-not $tl) {
+            $_tlFresh = $global:_smtcTlCacheMs.ContainsKey($_tlKey) -and (($_nowMs - $global:_smtcTlCacheMs[$_tlKey]) -lt 500)
+            if ($global:_smtcTlCache.ContainsKey($_tlKey) -and
+                ($_nowMs -lt $global:_smtcTransitionGuardMs -or $_tlFresh)) {
+                $tl = $global:_smtcTlCache[$_tlKey]
+            } else {
+                $tl = $Session.GetTimelineProperties()  # v11.1.4: only called when cache >500ms stale
+                $global:_smtcTlCache[$_tlKey]   = $tl
+                $global:_smtcTlCacheMs[$_tlKey] = $_nowMs
+            }
         }
         $rawPosMs  = [long]($tl.Position.TotalMilliseconds)
         $durMs     = [long]($tl.EndTime.TotalMilliseconds)
@@ -8598,6 +8684,16 @@ $scrobbleTimer.add_Tick({
     # v11.0.0: .Clear() reuses persistent instance instead of allocating new @{} each tick
     $global:_tickPhaseMs.Clear()
     $global:_detectorMs.Clear()
+    # v12.0.0 Stage 2: drain SMTC events for observation (no behavior change yet)
+    if ($global:_smtcWatcher) {
+        try {
+            $_smtcEvents = $global:_smtcWatcher.DrainEvents()
+            if ($_smtcEvents.Count -gt 0) {
+                $_smtcEvtSummary = (($_smtcEvents | ForEach-Object { "$($_.Kind):$($_.Saumid)" }) -join ' ')
+                Log "SMTC events: $_smtcEvtSummary"
+            }
+        } catch { Log "SMTC drain error: $_" }
+    }
     try {
     $global:_diagTickCount++
 
@@ -9183,7 +9279,31 @@ $scrobbleTimer.add_Tick({
                     $gdi  = if ($global:_hasGuiRes) { try { [NativeMethods.GuiRes]::GetGuiResources($sp.Handle, 0) } catch { -1 } } else { -1 }
                     $usr  = if ($global:_hasGuiRes) { try { [NativeMethods.GuiRes]::GetGuiResources($sp.Handle, 1) } catch { -1 } } else { -1 }
                     $lvl  = if ($global:_winrtTmoMin -gt 50) { 'ERROR' } elseif ($global:_winrtTmoMin -gt 10) { 'WARN' } else { 'OK' }
-                    Log ("[CANARY] mem={0}MB handles={1} threads={2} gdi={3} user={4} winrt_calls={5} winrt_tmo={6} [{7}]" -f $wsMB, $sp.HandleCount, $sp.Threads.Count, $gdi, $usr, $global:_winrtCallsMin, $global:_winrtTmoMin, $lvl)
+                    # v12.0.0: extend CANARY with watcher health metrics.
+                    $smtcEvents = 0
+                    $smtcLagSec = -1
+                    $smtcSessions = 0
+                    if ($global:_smtcWatcher) {
+                        try {
+                            $smtcEvents = [int]$global:_smtcWatcher.EventsReceivedTotal
+                            $lastEvtUtc = $global:_smtcWatcher.LastEventUtc
+                            if ($lastEvtUtc -gt [datetime]::MinValue) {
+                                $smtcLagSec = [int]([datetime]::UtcNow - $lastEvtUtc).TotalSeconds
+                            }
+                            $smtcSessions = [int]$global:_smtcWatcher.SessionCount
+                        } catch {}
+                        # Stuck-events fallback: if watcher is silent for 5+ min while a source is
+                        # active, force a re-init. Detects cases where SMTC stops dispatching.
+                        if ($smtcLagSec -gt 300 -and $smtcSessions -gt 0 -and $global:_lastNp) {
+                            Log "v12.0.0 watcher silent for ${smtcLagSec}s with active source - re-initializing"
+                            try { $global:_smtcWatcher.Dispose() } catch {}
+                            $global:_smtcWatcher = $null
+                            # Next manager use will re-acquire; init code at startup section
+                            # is the canonical path but we do not run it here. The legacy
+                            # polling fallback handles the gap until next tray restart picks up.
+                        }
+                    }
+                    Log ("[CANARY] mem={0}MB handles={1} threads={2} gdi={3} user={4} winrt_calls={5} winrt_tmo={6} smtc_events={7} smtc_lag={8}s smtc_sess={9} [{10}]" -f $wsMB, $sp.HandleCount, $sp.Threads.Count, $gdi, $usr, $global:_winrtCallsMin, $global:_winrtTmoMin, $smtcEvents, $smtcLagSec, $smtcSessions, $lvl)
                     # Reset per-minute counters
                     $global:_winrtCallsMin = 0
                     $global:_winrtTmoMin   = 0

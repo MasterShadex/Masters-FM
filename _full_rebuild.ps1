@@ -72,7 +72,7 @@ if ($csc) {
     # Replaces 5 inline Add-Type/csc.exe calls at every launch (10-25s each run)
     # with a single Add-Type -Path load (~50ms). Compile once, ship in MSI.
     L "[1d3/5] Compiling tray_native.dll (pre-compiled tray P/Invoke types)..."
-    $argsN = "/nologo /target:library /out:tray_native.dll /reference:System.dll src\tray_native.cs"
+    $argsN = "/nologo /target:library /out:tray_native.dll /reference:System.dll /reference:System.Core.dll src\tray_native.cs"
     $c4 = Start-Process -FilePath $csc -ArgumentList $argsN -WorkingDirectory $root -Wait -PassThru -NoNewWindow
     if ($c4.ExitCode -eq 0) {
         L "  tray_native.dll OK"
