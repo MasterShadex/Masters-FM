@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v12.0.0 (PUSHED LIVE 2026-05-04 ~01:00 — commit 46067a8 — autoInstall=true)
-**Last updated:** 2026-05-04 01:00 (V12.0.0 SMTC architecture refactor — event-driven via tray_native.dll watcher; FPS lag fixed)
+**Current version:** v12.0.1 (PUSHED LIVE 2026-05-04 ~03:16 — commit 84cd20e — autoInstall=true)
+**Last updated:** 2026-05-04 03:16 (V12.0.1 patch notes virtualization + crash hardening + new versioning policy)
 
 ## IN-FLIGHT WORK
 
@@ -133,6 +133,44 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-04 03:16 — v12.0.1 — Patch notes performance + crash hardening + Versioning policy SHIPPED
+
+- **Patch release** per the new versioning policy (see VERSIONING_POLICY.md). Bug A/B/C fixes were originally built locally as v12.1.0 by the first Ruflo swarm coordinated task; the user established the new versioning policy mid-flight and the in-progress build was renumbered to v12.0.1 before push.
+- **Bug A (first-launch hang):** Resolved as a side-effect of Bug B fix. Pre-v12.0.1 the first-install path called `Show-WelcomeDialog` right after the tray icon appeared, but the 10-13s render block visually masked the icon. With virtualized rendering the welcome dialog now appears in <2s — first install feels instantaneous. NO REORDER NEEDED — the icon-before-welcome ordering at tray.ps1:4185 vs 4221 was already correct (Phase 1 Agent 1 confirmed the diagnostic at V1200_PATCH_NOTES_CRASH_DIAGNOSIS.md was wrong about ordering being the cause).
+- **Bug B (patch notes 10+ sec slow):** `Show-WelcomeDialog` rendering loop at tray.ps1:1881-1979 replaced with owner-draw scrollable Panel. Pre-flatten PATCH_HISTORY into a row layout array (text measurements only — no controls). Paint event handler renders ONLY rows intersecting the clip rectangle. Eliminates ~683 control creations and ~427 per-iteration Font allocations. Render: 10-13s → <2s.
+- **Bug C (close crashes):** Defensive cleanup applied per V1200 diagnosis (which classified Bug C as likely Bug B perception artifact). `tickTimer.Stop()/Dispose()` in FormClosed handler now wrapped in try/catch.
+- **Build:** v12.0.1, sha256=`551011ad360226942cf9133027e1f208ea57a1b7ad772b0127409a3104596973`, MSI 12.3 MB, DLL signed Valid CN=MasterShadex (two clean reproducible builds verified).
+- **Smoke:** WebGL 200/8649b, all 4 procs alive, watcher subscribed (`local=12.0.1`), no errors.
+- **Gate:** Abbreviated (fully passed at v12.1.0 build, re-verified version-switched build). Patch notes <2s confirmed in user 5a test on v12.1.0 build before renumbering.
+- **GitHub release:** id=316959799, tag v12.0.1, asset `Masters-FM-V12.0.1.msi` uploaded. Source commit `19f9fd8`, release commit `84cd20e`. version.json on main: version=12.0.1 + autoInstall=true. Testers auto-update within 1-6 hours.
+- **Backup:** `C:\_BACKUPS_v12\Master FM_v12_0_1_pre_switch_2026-05-04_03-13\` (pre-version-switch source + local v12.1.0 MSI archived).
+- **First Ruflo coordinated task:** 4 parallel read-only agents (startup analyzer, virtualization designer; Bug C reproduction agent and memory.db audit agent partially completed), 1 coordinator (this Claude main loop), 1 sequential editor. Findings stored to `.swarm` memory via `ruflo memory store`.
+
+**NEW HARD CONSTRAINT — Versioning policy (see VERSIONING_POLICY.md):**
+- **Patch always:** 12.0.0 → 12.0.1 → 12.0.2 → ... → 12.0.9 (every routine update is a patch)
+- **Minor only when patch rolls over from .9:** 12.0.9 → 12.1.0 → 12.1.1
+- **Major only for architectural refactors where a whole subsystem is replaced:** v11.x → v12.0.0 was SMTC polling → event-driven (canonical example). Future arch refactors must clear that bar.
+- **If unsure whether a change is "architectural enough" for major:** it's not. Ship as patch.
+- This policy was established AFTER v12.0.0 shipped. v11.2.x history is grandfathered.
+- Future Ruflo agents and Claude Code sessions MUST read VERSIONING_POLICY.md as part of context.
+- If a session proposes a major bump, it must STOP and ask before proceeding.
+
+**NEW HARD CONSTRAINT — Ruflo swarm pattern (validated by first run):**
+- 4-agent parallel read-only investigation → 1 coordinator → 1 sequential editor for shared-file work. This pattern is reusable.
+- Agent tool (Claude Code) is the actual execution mechanism even when Ruflo MCP isn't running in-session — `ruflo memory store/search` and `ruflo hooks route` work via CLI as orchestration aids.
+- Ruflo CLI tools used in v12.0.1 run: `ruflo init --force`, `ruflo memory init`, `ruflo swarm init`, `ruflo memory store`, `ruflo hooks route`. All worked.
+
+**DEFERRED:**
+- Migrate event-driven pattern to other detectors (foobar2000, WMP, VLC) — none reported as needing it.
+- The watcher's missed-session-add behavior (Spotify session not subscribed mid-session in v12.0.0) — legacy fallback handles detection, not user-visible. Investigate later if reported.
+
+**POST-SHIP MONITORING (next 48h):**
+- Watch for tester reports of patch notes regression (still slow) — would mean the virtualization didn't survive on some configs
+- Watch for FormClosed exception reports (Bug C) — would mean the defensive try/catch caught something real
+- Watch for memory growth (subscription leak from v12.0.0) — would mean watcher disposal still has gaps
+
+---
 
 ### 2026-05-04 01:00 — v12.0.0 — SMTC architectural refactor SHIPPED
 
