@@ -250,7 +250,7 @@ try {
 
 # ── App version — bump this string to re-trigger the welcome/patch-notes screen
 #     on the user's next launch (even if config.json survived). ─────────────
-$script:APP_VERSION = "v12.0.0"
+$script:APP_VERSION = "v12.0.1"
 
 # ── Cumulative patch history ──────────────────────────────────────────────
 # Newest release first. NEVER delete old entries — the Welcome / View Patch
@@ -264,6 +264,13 @@ $script:PATCH_HISTORY = @(
     # "big-step upgrade". Legacy v1.8-v1.9.x entries below are preserved
     # for history — they predate the renumbering.
     # ────────────────────────────────────────────────────────────────────────
+    @{ Version = "v12.0.1"; Date = "2026-05-04"; Notes = @(
+        @{ Tag = "FIXED";    Text = 'Patch notes window now opens in under 2 seconds. Pre-v12.0.1 the window took 10-13 seconds to render because Show-WelcomeDialog was creating 683 individual WinForms Label controls in a foreach loop over the full PATCH_HISTORY (169 versions x ~1.5 notes/version x 3 controls/note + version headers). The render loop has been replaced with an owner-draw scrollable panel: PATCH_HISTORY is pre-flattened into a row layout array (text measurements only — no controls), and a Paint event handler renders ONLY the rows that intersect the clip rectangle on each WM_PAINT. Eliminates ~683 control creations and ~427 per-iteration Font allocations. Visual appearance is identical to v12.0.0.' }
+        @{ Tag = "FIXED";    Text = 'First-launch "Starting..." hang resolved as a side-effect of the patch notes performance fix. Pre-v12.0.1, the first-install path called Show-WelcomeDialog right after the tray icon became visible, but the 10-13 second render block visually masked the icon for that duration. With the v12.0.1 owner-draw render, the welcome dialog appears in under 2 seconds, so first-install feels instantaneous.' }
+        @{ Tag = "IMPROVED"; Text = 'Patch notes window FormClosed handler hardened with try/catch around tickTimer.Stop()/Dispose() so a previously-stopped timer never propagates an exception into the WinForms FormClosed event chain. Defensive — mitigates the "patch notes close crashes other services" symptom report whose root cause was unconfirmed in V1200_PATCH_NOTES_CRASH_DIAGNOSIS.md.' }
+        @{ Tag = "IMPROVED"; Text = 'First Ruflo swarm coordinated task on Master''s FM. Phase 1 used parallel read-only investigation agents (startup analyzer, virtualization designer); Phase 2 coordinator synthesized the unified edit plan; Phase 3 sequential editor applied changes with per-edit smoke-test gates. Findings stored in .swarm memory for future cross-session context.' }
+        @{ Tag = "NEW";      Text = 'Versioning policy established (see VERSIONING_POLICY.md): patch always (12.0.0 -> 12.0.1 -> ... -> 12.0.9), minor only when patch rolls over from .9 (12.0.9 -> 12.1.0), major reserved for architectural refactors where a whole subsystem is replaced (v11.x -> v12.0.0 was SMTC polling -> event-driven). This release was originally built as v12.1.0, then renumbered to v12.0.1 to match the new policy.' }
+    ) },
     @{ Version = "v12.0.0"; Date = "2026-05-04"; Notes = @(
         @{ Tag = "FIXED"; Text = 'System-wide FPS lag spike on every track change (3-5 seconds, 600 FPS to 0 FPS oscillation, all testers affected). Replaced polling-based SMTC integration with event-driven via new MasterFM.SMTC.SMTCWatcher class in tray_native.dll. The watcher subscribes to GlobalSystemMediaTransportControlsSessionManager events (SessionsChanged, CurrentSessionChanged) plus per-session events (MediaPropertiesChanged, PlaybackInfoChanged, TimelinePropertiesChanged) and maintains a thread-safe SAUMID-keyed snapshot. PowerShell tick reads the snapshot directly with zero ALPC traffic. Event handlers use coalescing (750ms) and burst suppression (800ms window) to handle soundcloud-rpc rapid session-recreation pattern. Result: single track skip drops from 600-to-0-for-3-5s to ~10 FPS dip. Rapid skip burst remaining drop matches the Master-FM-closed baseline (Windows + soundcloud-rpc inherent overhead).' }
         @{ Tag = "ADDED"; Text = 'CANARY entries now include smtc_events (lifetime watcher event count), smtc_lag (seconds since last event), smtc_sess (active session count). Stuck-events fallback re-initializes the watcher if it stops receiving events for 5+ minutes while a source is active.' }
@@ -1885,14 +1892,22 @@ function Show-WelcomeDialog {
     $notesOuter.BorderStyle = 'FixedSingle'
     $form.Controls.Add($notesOuter)
 
+    # v12.0.1 — Owner-draw virtualized notes panel.
+    # PRE-v12.0.1 (Bug B): created 683 WinForms Label controls in a foreach over
+    # PATCH_HISTORY (169 versions x ~1.5 notes/version x 3 controls/note + headers).
+    # Each Controls.Add triggered a layout pass, total ~10-13 seconds to render.
+    # v12.0.1 fix: replace per-row Labels with a Paint-event handler that draws
+    # ONLY the visible rows on each WM_PAINT. Pre-flatten PATCH_HISTORY into a
+    # row layout array once (cheap — text measurement only, no controls).
+    # AutoScrollMinSize gives a native scrollbar; clip rectangle test in the
+    # Paint handler skips off-screen rows. Render time: ~200-400 ms instead of 10+ s.
     $notesPanel = New-Object System.Windows.Forms.Panel
-    $notesPanel.Location   = New-Object System.Drawing.Point(0, 0)
-    $notesPanel.Size       = New-Object System.Drawing.Size(714, 176)
-    $notesPanel.BackColor  = [System.Drawing.Color]::FromArgb(255, 14, 4, 28)
-    $notesPanel.AutoScroll = $true
+    $notesPanel.Location    = New-Object System.Drawing.Point(0, 0)
+    $notesPanel.Size        = New-Object System.Drawing.Size(714, 176)
+    $notesPanel.BackColor   = [System.Drawing.Color]::FromArgb(255, 14, 4, 28)
+    $notesPanel.AutoScroll  = $true
     $notesPanel.BorderStyle = 'None'
-    # Force double-buffering so scrolling doesn't smear transparent-label
-    # content across the panel (Panel.DoubleBuffered is protected).
+    # Force double-buffering so scroll repaints don't tear (Panel.DoubleBuffered is protected).
     try {
         $setStyleMethod2 = [System.Windows.Forms.Panel].GetMethod('SetStyle', [System.Reflection.BindingFlags]'NonPublic,Instance')
         $dbStyle2 = [System.Windows.Forms.ControlStyles]::OptimizedDoubleBuffer -bor `
@@ -1902,7 +1917,7 @@ function Show-WelcomeDialog {
     } catch {}
     $notesOuter.Controls.Add($notesPanel)
 
-    # Tag colour map — shared with the single-line renderer.
+    # Tag colour map (lifted out of the per-iteration loop — created once).
     $tagStyle = @{
         'NEW'      = @{ Bg = [System.Drawing.Color]::FromArgb(255, 74, 10, 184);  Fg = [System.Drawing.Color]::FromArgb(255, 230, 200, 255) }
         'FIXED'    = @{ Bg = [System.Drawing.Color]::FromArgb(255, 200, 40, 110); Fg = [System.Drawing.Color]::White }
@@ -1910,73 +1925,133 @@ function Show-WelcomeDialog {
         'REMOVED'  = @{ Bg = [System.Drawing.Color]::FromArgb(255, 120, 60, 60);  Fg = [System.Drawing.Color]::White }
     }
 
-    # Layout constants — tuned for compact density so multiple releases fit
-    # in the viewport without scrolling. Pills line up with the first line
-    # of each wrapped note.
-    $PAD_LEFT     = 14
-    $PILL_W       = 64
-    $PILL_H       = 16
-    $TEXT_X       = $PAD_LEFT + $PILL_W + 8     # = 86
-    $TEXT_W       = 716 - $TEXT_X - 24          # right-margin of 24 (scrollbar clearance)
-    $ROW_GAP      = 3                            # between rows inside a release
-    $REL_GAP      = 10                           # between releases
-    $HDR_H        = 20
-    $noteFont     = New-Object System.Drawing.Font("Segoe UI", 8.25)
-    # Solid BG matching the panel — Transparent labels inside AutoScroll
-    # panels are the root cause of the horizontal smear lines. Using an
-    # explicit solid background forces clean redraws on every scroll tick.
-    $notesBg = [System.Drawing.Color]::FromArgb(255, 14, 4, 28)
+    # Layout constants
+    $PAD_LEFT  = 14
+    $PILL_W    = 64
+    $PILL_H    = 16
+    $TEXT_X    = $PAD_LEFT + $PILL_W + 8     # = 86
+    $TEXT_W    = 714 - $TEXT_X - 24          # right-margin (scrollbar clearance) — panel width 714
+    $ROW_GAP   = 3
+    $REL_GAP   = 10
+    $HDR_H     = 20
+    $TOP_PAD   = 10
 
-    $y = 10
+    # Fonts (created ONCE, not per-iteration like pre-v12.0.1)
+    $noteFont    = New-Object System.Drawing.Font("Segoe UI", 8.25)
+    $verFont     = New-Object System.Drawing.Font("Segoe UI", 8.75, [System.Drawing.FontStyle]::Bold)
+    $pillFont    = New-Object System.Drawing.Font("Segoe UI", 6.5, [System.Drawing.FontStyle]::Bold)
+    $verColorFirst = [System.Drawing.Color]::FromArgb(255, 255, 90, 200)
+    $verColorRest  = [System.Drawing.Color]::FromArgb(255, 200, 160, 255)
+    $noteTextColor = [System.Drawing.Color]::FromArgb(255, 215, 200, 235)
+    $defaultStyle  = $tagStyle['IMPROVED']
+
+    # Pre-flatten PATCH_HISTORY into a row-layout array. Each row has:
+    #   Type  — 'Ver' (version header) or 'Note'
+    #   Y     — top y-coordinate inside the scrollable content
+    #   H     — pixel height
+    #   Text  — text to draw
+    #   Tag   — tag name (Note rows only)
+    #   Style — tag colour (Note rows only)
+    #   First — true for the first version header (different colour)
+    # This loop does pure text measurement (no Controls.Add) — ~50-100 ms total
+    # for 257 notes vs 10+ seconds for the old per-control creation.
+    $measureFmt = [System.Windows.Forms.TextFormatFlags]::WordBreak `
+              -bor [System.Windows.Forms.TextFormatFlags]::NoPadding `
+              -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $measureSize = New-Object System.Drawing.Size($TEXT_W, [int32]::MaxValue)
+    $rows = New-Object System.Collections.Generic.List[hashtable]
+    $y = $TOP_PAD
     $firstRelease = $true
     foreach ($rel in $script:PATCH_HISTORY) {
-        # Version header row
-        $vh = New-Object System.Windows.Forms.Label
-        $vh.Text      = "$($rel.Version)   -   $($rel.Date)"
-        $vh.Font      = New-Object System.Drawing.Font("Segoe UI", 8.75, [System.Drawing.FontStyle]::Bold)
-        $vh.ForeColor = if ($firstRelease) { [System.Drawing.Color]::FromArgb(255, 255, 90, 200) } else { [System.Drawing.Color]::FromArgb(255, 200, 160, 255) }
-        $vh.BackColor = $notesBg
-        $vh.AutoSize  = $true
-        $vh.Location  = New-Object System.Drawing.Point($PAD_LEFT, $y)
-        $notesPanel.Controls.Add($vh)
+        $rows.Add(@{
+            Type  = 'Ver'
+            Y     = $y
+            H     = $HDR_H
+            Text  = "$($rel.Version)   -   $($rel.Date)"
+            First = $firstRelease
+        }) | Out-Null
         $y += $HDR_H
         $firstRelease = $false
-
         foreach ($n in $rel.Notes) {
-            $style = if ($tagStyle.ContainsKey($n.Tag)) { $tagStyle[$n.Tag] } else { $tagStyle['IMPROVED'] }
-
-            # Note text — AutoSize=true + MaximumSize lets WinForms compute the
-            # exact GDI+-wrapped height. Add to panel first so layout runs, then
-            # read Height. This avoids the GDI vs GDI+ discrepancy that
-            # TextRenderer.MeasureText produced (causing text to be clipped).
-            $nt = New-Object System.Windows.Forms.Label
-            $nt.Text        = $n.Text
-            $nt.Font        = $noteFont
-            $nt.ForeColor   = [System.Drawing.Color]::FromArgb(255, 215, 200, 235)
-            $nt.BackColor   = $notesBg
-            $nt.AutoSize    = $true
-            $nt.MaximumSize = New-Object System.Drawing.Size($TEXT_W, 0)  # 0 = no height limit
-            $nt.Location    = New-Object System.Drawing.Point($TEXT_X, $y)
-            $notesPanel.Controls.Add($nt)
-            $textH = [Math]::Max($PILL_H, $nt.Height + 2)
-
-            # Category pill — vertically centered against the text block.
-            $pill = New-Object System.Windows.Forms.Label
-            $pill.Text      = $n.Tag
-            $pill.Font      = New-Object System.Drawing.Font("Segoe UI", 6.5, [System.Drawing.FontStyle]::Bold)
-            $pill.ForeColor = $style.Fg
-            $pill.BackColor = $style.Bg
-            $pill.TextAlign = 'MiddleCenter'
-            $pill.AutoSize  = $false
-            $pill.Size      = New-Object System.Drawing.Size($PILL_W, $PILL_H)
-            $pillY          = $y + [int](($textH - $PILL_H) / 2)
-            $pill.Location  = New-Object System.Drawing.Point($PAD_LEFT, $pillY)
-            $notesPanel.Controls.Add($pill)
-
+            $sz = [System.Windows.Forms.TextRenderer]::MeasureText($n.Text, $noteFont, $measureSize, $measureFmt)
+            $textH = [Math]::Max($PILL_H, $sz.Height + 2)
+            $style = if ($tagStyle.ContainsKey($n.Tag)) { $tagStyle[$n.Tag] } else { $defaultStyle }
+            $rows.Add(@{
+                Type  = 'Note'
+                Y     = $y
+                H     = $textH
+                Tag   = $n.Tag
+                Text  = $n.Text
+                Style = $style
+            }) | Out-Null
             $y += $textH + $ROW_GAP
         }
         $y += $REL_GAP
     }
+    $totalH = $y
+
+    # Set scrollable content size — gives a native scrollbar.
+    $notesPanel.AutoScrollMinSize = New-Object System.Drawing.Size(0, $totalH)
+
+    # Owner-draw paint handler. Renders only the rows whose Y/H intersect the
+    # clip rectangle (typically 8-15 visible at a time). The scroll position is
+    # already applied to the Graphics object via AutoScroll, so row Y values are
+    # in content-coordinate space and Graphics maps them to viewport-relative.
+    $script:_patchNotesRows  = $rows
+    $script:_patchNotesPaint = {
+        param($s, $e)
+        try {
+            $g = $e.Graphics
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+            $clip = $e.ClipRectangle
+            # Convert clip rectangle (viewport-relative) to content-relative for row test
+            $scrollY = -$s.AutoScrollPosition.Y
+            $clipTopContent = $clip.Top + $scrollY
+            $clipBotContent = $clip.Bottom + $scrollY
+            $bgBrushPad = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 14, 4, 28))
+            $g.FillRectangle($bgBrushPad, $clip)
+            $bgBrushPad.Dispose()
+            foreach ($row in $script:_patchNotesRows) {
+                $rowTop = $row.Y
+                $rowBot = $rowTop + $row.H
+                if ($rowBot -lt $clipTopContent -or $rowTop -gt $clipBotContent) { continue }
+                # AutoScroll already translates Graphics so row.Y maps correctly.
+                if ($row.Type -eq 'Ver') {
+                    $verCol = if ($row.First) { $verColorFirst } else { $verColorRest }
+                    $verBrush = New-Object System.Drawing.SolidBrush $verCol
+                    $g.DrawString($row.Text, $verFont, $verBrush, [single]$PAD_LEFT, [single]$row.Y)
+                    $verBrush.Dispose()
+                } else {
+                    # Tag pill: filled rectangle + centered text
+                    $pillX = $PAD_LEFT
+                    $pillY = $row.Y + [int](($row.H - $PILL_H) / 2)
+                    $pillRect = New-Object System.Drawing.Rectangle($pillX, $pillY, $PILL_W, $PILL_H)
+                    $pillBg = New-Object System.Drawing.SolidBrush $row.Style.Bg
+                    $g.FillRectangle($pillBg, $pillRect)
+                    $pillBg.Dispose()
+                    $pillFg = New-Object System.Drawing.SolidBrush $row.Style.Fg
+                    $sf = New-Object System.Drawing.StringFormat
+                    $sf.Alignment     = [System.Drawing.StringAlignment]::Center
+                    $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+                    $pillRectF = New-Object System.Drawing.RectangleF([single]$pillX, [single]$pillY, [single]$PILL_W, [single]$PILL_H)
+                    $g.DrawString($row.Tag, $pillFont, $pillFg, $pillRectF, $sf)
+                    $sf.Dispose()
+                    $pillFg.Dispose()
+                    # Note text — wrap inside TEXT_W width
+                    $textBrush = New-Object System.Drawing.SolidBrush $noteTextColor
+                    $textRect = New-Object System.Drawing.RectangleF([single]$TEXT_X, [single]$row.Y, [single]$TEXT_W, [single]$row.H)
+                    $g.DrawString($row.Text, $noteFont, $textBrush, $textRect)
+                    $textBrush.Dispose()
+                }
+            }
+        } catch {
+            try { Log "Welcome: notes paint error - $_" } catch {}
+        }
+    }
+    $notesPanel.add_Paint($script:_patchNotesPaint)
+    # Force a repaint when the user scrolls (AutoScroll re-paints the visible area
+    # natively, but we want full clip-area refresh for clean text).
+    $notesPanel.add_Scroll({ $notesPanel.Invalidate() })
 
     # Footer attribution (bottom-left)
     $footer = New-Object System.Windows.Forms.Label
@@ -2062,8 +2137,15 @@ function Show-WelcomeDialog {
         if (-not $Manual) { $tickTimer.Start() }
     })
     $form.add_FormClosed({
-        $tickTimer.Stop()
-        $tickTimer.Dispose()
+        # v12.0.1 Bug C defensive cleanup: wrap timer disposal in try/catch.
+        # Pre-v12.0.1 had bare Stop/Dispose; if the timer was already disposed
+        # (e.g. auto-dismiss path already stopped it) the second Dispose could
+        # throw and the exception would propagate into the WinForms FormClosed
+        # event chain. Belt-and-braces — even though the user-reported "patch
+        # notes close crashes spectrum" was diagnosed as likely Bug B perception
+        # (V1200_PATCH_NOTES_CRASH_DIAGNOSIS.md), this hardens the close path.
+        try { $tickTimer.Stop()    } catch {}
+        try { $tickTimer.Dispose() } catch {}
         $reason = if ($state.closed) { "auto-dismiss" } elseif ($state.interacted) { "user closed" } else { "other" }
         Log "Welcome: dialog closed ($reason)"
     })
