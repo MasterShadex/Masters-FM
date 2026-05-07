@@ -9,12 +9,34 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v12.0.1 (PUSHED LIVE 2026-05-04 ~03:16 — commit 84cd20e — autoInstall=true)
-**Last updated:** 2026-05-04 03:16 (V12.0.1 patch notes virtualization + crash hardening + new versioning policy)
+**Current version:** v14.0.0-rc.1 (LOCAL TAG -- pre-release pending GitHub Pre-release publication; auto-update path remains v12.0.1)
+**Last updated:** 2026-05-07 (v14.0.0-rc.1 cumulative .NET 8 migration RC)
 
 ## IN-FLIGHT WORK
 
-*(none)*
+**v14.0.0-rc.1 -- Cumulative .NET 8 migration RC (pending GitHub Pre-release publication)**
+- Scope: Stages 1-3 + Stage 4 (4.1-4.11) + Stage 5 MINIMAL
+- Status: LOCAL TAG; commits + tag exist locally; not yet pushed
+- Deferred: Stage 6 (folded into Stage 7), Stage 7 (tray.ps1 to C# port), Stage 8 (build pipeline cleanup)
+- Next step: GitHub Pre-release publication, tester announcement in #v14-rc-feedback channel, await tester feedback before promoting to stable v14.0.0
+
+## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
+- **Overlay is WebGL-only** (canvas2d removed in v9.4.0). If GPU can't do WebGL -> blank overlay. Consider adding graceful WebGL-unavailable message in overlay.html.
+- **.NET 8 migration**: planned in 2026-04-30 as a 2025-2026 effort to eliminate SMTC reflection hackery (native WinRT on .NET 8), enable faster startup, modern features. Executed as V14 (Stages 1-7); see V14_NET8_MIGRATION_PLAN.md. Stages 1-5 shipped in v14.0.0-rc.1.
+- **Performance characteristics (v12.x baseline)**: 100ms tick, 150ms circuit-breaker budget, Gen2 GC flush every 5min, burst-window coalescing on SMTC events. v14.0.0-rc.1 .NET 8 server has its own profile (see V14_RC1_VALIDATION.md baseline).
+
+## V14 .NET 8 MIGRATION PLAN (2026-05-04)
+
+**v14 .NET 8 migration plan drafted — see `V14_NET8_MIGRATION_PLAN.md`**
+
+- 5 researcher agents ran in parallel (R1: inventory, R2: behaviors, R3: integrations, R4: build, R5: PowerShell)
+- Opus system-architect consolidated into the plan
+- Key finding: ~925h realistic total (~12 months solo evenings) — staged migration recommended
+- Stage 0 first: pkg → @yao-pkg/pkg patch (~2h) as v12.0.2
+- Stage 1: launcher.cs → .NET 8 + .csproj (~16h) as v12.1.0, then evaluate
+- Full plan ends: `MIGRATION REQUIRES USER DECISION` — cost too large to auto-commit
+- Researcher files: `V14_RES_1_INVENTORY.md` through `V14_RES_5_POWERSHELL.md` (project root)
+- No code written this run, no source files modified, v12.0.1 is still live
 
 ## DEFERRED ITEMS
 
@@ -84,7 +106,9 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 - Smoke test after every rebuild: `tests/_smoke.ps1`
 - `.md` files live in `md/` (memory=`md/memory.md`, tools=`md/tools.md`, save-tokens=`md/save-tokens.md`, onboard=`md/onboard.md`). CLAUDE.md stays at root.
 - Visual debugging: `preview_start` → **resize to 1280×800 first** → `preview_eval` / `preview_screenshot`
-- Version bump: bump `APP_VERSION` in `tray.ps1` AND prepend `PATCH_HISTORY` entry
+- Version bump: bump `$script:APP_VERSION` in `src/tray.ps1` AND prepend a new `$script:PATCH_HISTORY` entry
+- PS 5.1 in `.ps1` files: NEVER use `} else {` on same line inside a block -- use `if (-not x) {}` on separate line
+- Em-dashes in `.ps1` and build scripts cause PS 5.1 to misread UTF-8 bytes as CP1252 and crash -- use `--` instead
 
 ## THINGS TRIED THAT FAILED — DO NOT RETRY
 
@@ -133,6 +157,13 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-07 ~23:35 -- v14.0.0-rc.1 -- LOCAL TAG ONLY (NOT PUSHED)
+
+Cumulative migration to .NET 8: Stages 1-3 + Stage 4 + Stage 5 MINIMAL. RC1 release candidate;
+manual download only; auto-update path stays on v12.0.1 (version.json on main unchanged).
+See `RELEASE_NOTES_v14.0.0-rc.1.md` for full details, `V14_RC1_VALIDATION.md` for STEP 5
+results, `V14_RC1_HOTFIX_PLAYBOOK.md` for RC2 cut process.
 
 ### 2026-05-04 03:16 — v12.0.1 — Patch notes performance + crash hardening + Versioning policy SHIPPED
 
