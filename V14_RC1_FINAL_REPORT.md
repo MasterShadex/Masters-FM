@@ -276,3 +276,13 @@ I confirm that:
     pushes have been executed yet (STEP 8 halts for Orken approval per addition #5).
 
 End of v14.0.0-rc.1 final report.
+
+---
+
+## Push deferred (2026-05-07 decision)
+
+v14.0.0-rc.1 will not be pushed as a standalone RC. Decision made 2026-05-07: complete
+Stages 7 + 8 first, then ship cumulative v14.0.0 (or v14.0.0-rc.1 with full migration scope)
+as one release. Local commits + tag preserved as Stage 1-5 checkpoint. All RC1 deliverables
+(release notes, tester announcement, hotfix playbook, validation, baseline) reusable for
+eventual ship.
