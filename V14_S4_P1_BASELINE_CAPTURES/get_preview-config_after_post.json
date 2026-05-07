@@ -1,0 +1,20 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/preview-config",
+    "note":  "after POST - should return previewConfig",
+    "timestamp_utc":  "2026-05-04T08:28:21.9538690Z",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "application/json",
+                                     "Date":  "Mon, 04 May 2026 08:28:21 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  "{\"fontFamily\":\"Inter\",\"fontSize\":16,\"showArtist\":true,\"showAlbumArt\":true}"
+                 }
+}

@@ -1,0 +1,11 @@
+﻿{
+    "state_after":  "{\"artist\":\"Tony Morales\",\"track\":\"Richard Meet Reacher\",\"trackArt\":\"https://i1.sndcdn.com/artworks-a5g3nBMO1bF4-0-t500x500.jpg\",\"duration\":3341056,\"originUrl\":\"\",\"startedAt\":1778071053694,\"source\":\"SoundCloud\",\"isPaused\":false,\"pausedAt\":0,\"_setAt\":1778071053799}",
+    "note":  "pause webhook → isPaused=true, pausedAt\u003e0",
+    "method":  "POST",
+    "response":  {
+                     "body":  "OK",
+                     "status":  200
+                 },
+    "request_body":  "{\"artist\":\"PauseTest Artist\",\"track\":\"PauseTest Track\",\"duration\":200,\"positionMs\":45000,\"trackArt\":\"\",\"originUrl\":\"\",\"source\":\"Test44\",\"isPaused\":true,\"seek\":false}",
+    "url":  "http://127.0.0.1:4242/webhook"
+}

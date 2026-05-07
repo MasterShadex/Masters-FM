@@ -1,0 +1,22 @@
+﻿{
+    "method":  "DELETE",
+    "url":  "http://127.0.0.1:4242/current",
+    "note":  "DELETE /current (only GET allowed)",
+    "timestamp_utc":  "2026-05-04T08:28:58.3503040Z",
+    "request_body":  null,
+    "response":  {
+                     "status":  405,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Allow":  "GET",
+                                     "Content-Type":  "text/plain",
+                                     "Date":  "Mon, 04 May 2026 08:28:58 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  "Method Not Allowed. Allowed: GET"
+                 }
+}

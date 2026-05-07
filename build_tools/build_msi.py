@@ -14,6 +14,13 @@ def _parse_app_version():
     # the Major-Upgrade machinery (Upgrade table + RemoveExistingProducts)
     # detects older installs as "older". Falls back to a low version on
     # any parse failure so the build never crashes silently.
+    #
+    # v14.0.0-rc.1: also strip SemVer pre-release suffix (-rc.N, -beta.N,
+    # -alpha.N, -pre.N) from MSI ProductVersion. Windows Installer's
+    # ProductVersion field requires numeric Major.Minor.Build only and
+    # rejects non-numeric segments. The display form (with suffix) is
+    # used elsewhere (filename, GitHub URL, version.json); only the
+    # MSI internal ProductVersion gets the suffix stripped.
     tray_path = os.path.join(SRC, 'src', 'tray.ps1')
     try:
         with open(tray_path, 'r', encoding='utf-8') as f:
@@ -22,6 +29,7 @@ def _parse_app_version():
                 if m:
                     disp = m.group(1)
                     msi  = disp[1:] if disp.startswith('v') else disp
+                    msi  = re.sub(r'-(?:rc|beta|alpha|pre)\.?\d*$', '', msi)
                     return disp, msi
     except Exception:
         pass
@@ -62,6 +70,27 @@ GUID_COMP25  = "{BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF}"  # System.Security.Acces
 GUID_COMP26  = "{CCCCCCCC-DDDD-EEEE-FFFF-111111111111}"  # System.Security.Principal.Windows.dll
 GUID_COMP27  = "{DDDDDDDD-EEEE-FFFF-1111-222222222222}"  # update.html
 GUID_COMP28  = "{EEEEEEEE-1111-2222-3333-444444444444}"  # tray_native.dll (pre-compiled P/Invoke types)
+# Stage 1 (.NET 8 launcher) - extra artifacts produced by dotnet publish
+GUID_COMP29  = "{FFFFFFFF-2222-3333-4444-555555555556}"  # MastersFM.dll (.NET 8 managed assembly)
+GUID_COMP30  = "{11111111-FFFF-3333-4444-555555555556}"  # MastersFM.runtimeconfig.json
+GUID_COMP31  = "{22222222-FFFF-3333-4444-555555555556}"  # MastersFM.deps.json
+# Stage 2 (.NET 8 audio_spectrum) - extra artifacts produced by dotnet publish
+GUID_COMP32  = "{33333333-FFFF-4444-5555-666666666667}"  # audio_spectrum.dll (.NET 8 managed assembly)
+GUID_COMP33  = "{44444444-FFFF-5555-6666-777777777778}"  # audio_spectrum.runtimeconfig.json
+GUID_COMP34  = "{55555555-FFFF-6666-7777-888888888889}"  # audio_spectrum.deps.json
+# Stage 3a (.NET 8 customize) - extra artifacts produced by dotnet publish
+GUID_COMP35  = "{66666666-FFFF-7777-8888-99999999999A}"  # customize.dll (.NET 8 managed assembly)
+GUID_COMP36  = "{77777777-FFFF-8888-9999-AAAAAAAAAAAB}"  # customize.runtimeconfig.json
+GUID_COMP37  = "{88888888-FFFF-9999-AAAA-BBBBBBBBBBBC}"  # customize.deps.json
+# Stage 4 (.NET 10 server) - extra artifacts produced by dotnet publish (server.exe already in GUID_COMP1)
+GUID_COMP38  = "{99999999-FFFF-AAAA-BBBB-CCCCCCCCCCD0}"  # server.dll (.NET ASP.NET Core managed assembly)
+GUID_COMP39  = "{AAAAAAAA-FFFF-BBBB-CCCC-DDDDDDDDDDE1}"  # server.deps.json
+GUID_COMP40  = "{BBBBBBBB-FFFF-CCCC-DDDD-EEEEEEEEEEF2}"  # server.runtimeconfig.json
+GUID_COMP41  = "{CCCCCCCC-FFFF-DDDD-EEEE-FFFFFFFFFFF3}"  # server.staticwebassets.endpoints.json
+GUID_COMP42  = "{DDDDDDDD-FFFF-EEEE-FFFF-000000000004}"  # web.config (IIS hosting shim)
+# Stage 4.10 (Discord RPC) - Lachee.DiscordRPC NuGet runtime DLL + transitive Newtonsoft.Json
+GUID_COMP43  = "{EEEEEEEE-FFFF-FFFF-0000-111111111115}"  # DiscordRPC.dll (Lachee.DiscordRPC 1.2.1.24)
+GUID_COMP44  = "{FFFFFFFF-FFFF-0000-1111-222222222226}"  # Newtonsoft.Json.dll (DiscordRPC transitive dep)
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
@@ -93,6 +122,55 @@ FILES = [
     ("src/update.html",                       "update.html",                           GUID_COMP27),
     ("tray_native.dll",                       "tray_native.dll",                       GUID_COMP28),  # pre-compiled P/Invoke types (eliminates csc.exe at tray startup)
 ]
+
+# Stage 1: .NET 8 launcher produces extra artifacts alongside MastersFM.exe.
+# Conditionally appended so the legacy csc.exe build (UseDotnet8Launcher=false) still works.
+_net8_launcher_dll = os.path.join(SRC, "MastersFM.dll")
+if os.path.exists(_net8_launcher_dll):
+    FILES.extend([
+        ("MastersFM.dll",                "MastersFM.dll",                GUID_COMP29),
+        ("MastersFM.runtimeconfig.json", "MastersFM.runtimeconfig.json", GUID_COMP30),
+        ("MastersFM.deps.json",          "MastersFM.deps.json",          GUID_COMP31),
+    ])
+
+# Stage 2: .NET 8 audio_spectrum produces extra artifacts alongside audio_spectrum.exe.
+# Conditionally appended so the legacy csc.exe build (UseDotnet8AudioSpectrum=false) still works.
+_net8_spectrum_dll = os.path.join(SRC, "audio_spectrum.dll")
+if os.path.exists(_net8_spectrum_dll):
+    FILES.extend([
+        ("audio_spectrum.dll",                "audio_spectrum.dll",                GUID_COMP32),
+        ("audio_spectrum.runtimeconfig.json", "audio_spectrum.runtimeconfig.json", GUID_COMP33),
+        ("audio_spectrum.deps.json",          "audio_spectrum.deps.json",          GUID_COMP34),
+    ])
+
+# Stage 3a: .NET 8 customize produces extra artifacts alongside customize.exe.
+# Conditionally appended so the legacy csc.exe build (UseDotnet8Customize=false) still works.
+# WebView2 DLLs (Core, WinForms, Loader) are already in FILES above (GUID_COMP11-13) and
+# are updated in-place from the dotnet publish output by _full_rebuild.ps1.
+_net8_customize_dll = os.path.join(SRC, "customize.dll")
+if os.path.exists(_net8_customize_dll):
+    FILES.extend([
+        ("customize.dll",                "customize.dll",                GUID_COMP35),
+        ("customize.runtimeconfig.json", "customize.runtimeconfig.json", GUID_COMP36),
+        ("customize.deps.json",          "customize.deps.json",          GUID_COMP37),
+    ])
+
+# Stage 4: .NET ASP.NET Core server produces extra artifacts alongside server.exe.
+# Conditionally appended so the legacy Node pkg build (UseDotnet8Server=false) still works.
+# server.exe itself is already in FILES above (GUID_COMP1) and is updated in-place by _full_rebuild.ps1.
+_net10_server_dll = os.path.join(SRC, "server.dll")
+if os.path.exists(_net10_server_dll):
+    _optional = [
+        ("server.dll",                               "server.dll",                               GUID_COMP38),
+        ("server.deps.json",                         "server.deps.json",                         GUID_COMP39),
+        ("server.runtimeconfig.json",                "server.runtimeconfig.json",                GUID_COMP40),
+        ("server.staticwebassets.endpoints.json",    "server.staticwebassets.endpoints.json",    GUID_COMP41),
+        ("web.config",                               "web.config",                               GUID_COMP42),
+        # Stage 4.10 Discord RPC runtime deps (RC1 fix: previously missing from MSI -> server crash on launch)
+        ("DiscordRPC.dll",                           "DiscordRPC.dll",                           GUID_COMP43),
+        ("Newtonsoft.Json.dll",                      "Newtonsoft.Json.dll",                      GUID_COMP44),
+    ]
+    FILES.extend([(s, d, g) for s, d, g in _optional if os.path.exists(os.path.join(SRC, s))])
 
 MSIDBOPEN_CREATE = ctypes.c_wchar_p(3)
 

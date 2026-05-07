@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Stage 3b: install_bootstrapper.cs ported to net8.0-windows (R2R, framework-dependent, x64) -->
+    <!-- Original build: csc.exe /target:exe with /resource: flags to embed the MSI + cert payload -->
+    <!-- .NET 8 path: no external NuGet deps; uses Win32 + BCL only -->
+    <!--   NOTE: The bootstrapper build is currently DISABLED in _full_rebuild.ps1 ($UseDotnet8Bootstrapper=$false) -->
+    <!--   Reason: self-signed bootstrapper pattern trips Bitdefender behavioural heuristics. -->
+    <!--   Re-enable with a real CA cert (e.g. Certum). The csproj is ready to activate. -->
+    <!--   Embedded resources (payload.msi + publisher.cer) must be added via EmbeddedResource -->
+    <!--   items in a build-time override or a wrapper build script when the bootstrapper is activated. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>install_bootstrapper</AssemblyName>
+    <!-- Suppress SDK-generated [assembly:] attributes: install_bootstrapper.cs has its own -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>..\assets\MastersFM.ico</ApplicationIcon>
+    <!-- No UseWindowsForms: install_bootstrapper is a console app (Console.Write, Process, X509) -->
+    <!-- BaseIntermediateOutputPath is set by src/Directory.Build.props via $(MSBuildProjectName) -->
+    <!-- Release config set on dotnet publish command line -->
+  </PropertyGroup>
+
+  <!-- Only compile install_bootstrapper.cs: prevent SDK from globbing other .cs files in src/ -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="install_bootstrapper.cs" />
+  </ItemGroup>
+
+  <!-- No external NuGet packages: uses Win32 P/Invoke + .NET BCL (System.Security.Cryptography, -->
+  <!-- System.Diagnostics.Process, System.Reflection.Assembly) only -->
+</Project>

@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    Set BaseIntermediateOutputPath BEFORE Microsoft.Common.props is imported (MSB3539 fix).
+    Directory.Build.props is evaluated at the very start of the MSBuild pipeline, before any
+    SDK imports, so this is the correct place for this property.
+
+    Why per-project paths are needed:
+    launcher.csproj and audio_spectrum.csproj share the same src/ directory and both target
+    net8.0-windows / win-x64 / Release. Without separate intermediate paths they share
+    src\obj\Release\net8.0-windows\win-x64\apphost.exe. Publishing one project stamps that
+    apphost with its DLL name; an incremental publish of the other then reuses the stale
+    apphost, corrupting the output binary (the apphost cross-contamination bug, v12.2.0).
+
+    $(MSBuildProjectName) resolves to the filename without extension:
+      launcher          -> ..\obj\launcher\
+      audio_spectrum    -> ..\obj\audio_spectrum\
+  -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>..\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

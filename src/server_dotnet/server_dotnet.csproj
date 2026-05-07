@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <!-- Stage 4: server.js port to ASP.NET Core minimal API (net8.0, framework-dependent, x64) -->
+    <!-- net8.0 matches all other V14 components (launcher, audio_spectrum, customize, bootstrapper). -->
+    <!-- Requires Microsoft.AspNetCore.App 8.0.x runtime (installed 2026-05-05, currently 8.0.26). -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>MastersFM.Server</RootNamespace>
+    <AssemblyName>server</AssemblyName>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- GenerateAssemblyInfo disabled: we control version info via attributes when needed -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- BaseIntermediateOutputPath is set in src/Directory.Build.props via $(MSBuildProjectName) -->
+    <!-- to prevent apphost cross-contamination. See Directory.Build.props for full rationale. -->
+  </PropertyGroup>
+
+  <!-- Only compile listed files: prevents SDK glob from picking up stray .cs files in src/ subfolders -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="ServerState.cs" />
+    <Compile Include="SseClient.cs" />
+    <Compile Include="HeartbeatService.cs" />
+    <Compile Include="SseStatusLogService.cs" />
+    <Compile Include="WebhookHandler.cs" />
+    <Compile Include="ConfigDeepMerge.cs" />
+    <Compile Include="ConfigHandler.cs" />
+    <Compile Include="PresetHandler.cs" />
+    <Compile Include="ArtProxyHandler.cs" />
+    <Compile Include="ClientLogHandler.cs" />
+    <Compile Include="ScreenshotHandler.cs" />
+    <Compile Include="HttpHelpers.cs" />
+    <Compile Include="TextNormalization.cs" />
+    <Compile Include="ArtCache.cs" />
+    <Compile Include="ArtSources\IArtSource.cs" />
+    <Compile Include="ArtSources\SmtcSource.cs" />
+    <Compile Include="ArtSources\SoundCloudDirectSource.cs" />
+    <Compile Include="ArtSources\WebhookArtSource.cs" />
+    <Compile Include="ArtSources\DeezerSource.cs" />
+    <Compile Include="ArtSources\ItunesSource.cs" />
+    <Compile Include="ArtSources\MusicBrainzSource.cs" />
+    <Compile Include="ArtSources\SoundCloudScraper.cs" />
+    <Compile Include="ArtSources\SoundCloudOembedSource.cs" />
+    <Compile Include="ArtSources\OsuScraperSource.cs" />
+    <Compile Include="ArtSources\YouTubeSource.cs" />
+    <Compile Include="ArtSources\BingImageSource.cs" />
+    <Compile Include="ArtSources\SmtcFallbackSource.cs" />
+    <Compile Include="ArtCascade.cs" />
+    <Compile Include="DurationResolver.cs" />
+
+    <Compile Include="DiscordRpcThrottle.cs" />
+    <Compile Include="DiscordRpcService.cs" />
+  </ItemGroup>
+
+  <!--
+    Discord RPC integration (sub-stage 4.10).
+    This is the ONLY new runtime dependency added during V14 migration.
+    Justification: Discord IPC requires a managed library; .NET 8 has no built-in named-pipe
+    Discord IPC client. Lachee.DiscordRPC handles the handshake, framing, and pipe enumeration.
+    License: MIT (https://github.com/Lachee/discord-rpc-csharp/blob/master/LICENSE)
+  -->
+  <ItemGroup>
+    <PackageReference Include="DiscordRichPresence" Version="1.2.1.24" />
+  </ItemGroup>
+
+  <!-- ASP.NET Core framework reference is implicit in Microsoft.NET.Sdk.Web -->
+  <!-- Kestrel, routing, middleware are all part of Microsoft.AspNetCore.App -->
+
+</Project>

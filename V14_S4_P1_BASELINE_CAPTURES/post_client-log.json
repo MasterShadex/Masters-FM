@@ -1,0 +1,21 @@
+﻿{
+    "method":  "POST",
+    "url":  "http://127.0.0.1:4242/client-log",
+    "note":  "fire-and-forget log relay",
+    "timestamp_utc":  "2026-05-04T08:28:21.8825221Z",
+    "request_body":  "{\"level\":\"INFO\",\"msg\":\"Phase 1 baseline capture test\"}",
+    "response":  {
+                     "status":  204,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Date":  "Mon, 04 May 2026 08:28:21 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  [
+
+                              ]
+                 }
+}

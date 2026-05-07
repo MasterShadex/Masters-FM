@@ -1,0 +1,23 @@
+﻿{
+    "method":  "POST",
+    "url":  "http://127.0.0.1:4242/reload-config",
+    "note":  "reload Discord RPC config",
+    "timestamp_utc":  "2026-05-04T08:28:21.9311827Z",
+    "request_body":  "",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Date":  "Mon, 04 May 2026 08:28:21 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  [
+                                  79,
+                                  75
+                              ]
+                 }
+}

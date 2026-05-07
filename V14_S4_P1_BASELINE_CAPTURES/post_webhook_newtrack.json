@@ -1,0 +1,23 @@
+﻿{
+    "method":  "POST",
+    "url":  "http://127.0.0.1:4242/webhook",
+    "note":  "new track webhook (triggers setTrack, art resolution, SSE broadcast)",
+    "timestamp_utc":  "2026-05-04T08:29:51.1348331Z",
+    "request_body":  "{\"artist\":\"Test Artist\",\"track\":\"Test Track Phase1 Capture\",\"duration\":240,\"positionMs\":0,\"trackArt\":\"\",\"originUrl\":\"\",\"source\":\"Phase1Test\",\"isPaused\":false,\"seek\":false}",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Date":  "Mon, 04 May 2026 08:29:51 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  [
+                                  79,
+                                  75
+                              ]
+                 }
+}

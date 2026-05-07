@@ -1,0 +1,10 @@
+﻿{
+    "method":  "POST",
+    "url":  "http://127.0.0.1:4242/webhook",
+    "note":  "malformed JSON → 400 Bad Request",
+    "request_body":  "not json at all {{{",
+    "response":  {
+                     "body":  "Bad Request",
+                     "status":  400
+                 }
+}

@@ -207,6 +207,55 @@ class MastersFM
         catch (Exception ex) { Log("SetWindowAumid best-effort path failed: " + ex.Message); /* grouping degrades to flat but nothing else breaks */ }
     }
 
+    // ── Port-clearing (mirrors tray.ps1 lines 5075-5086) ────────────────────
+    // Kills the first process found listening on port 4242, then waits 400 ms
+    // for the port to release.  Mirrors tray.ps1 exactly:
+    //   netstat -ano | Select-String ":4242 " | split[-1] | Select -First 1
+    //   Stop-Process -Id $existing -Force; Start-Sleep -Milliseconds 400
+    // Called inside the $skipServerLaunch path (launcher path) before server.exe
+    // spawn.  Without this, Kestrel silently fails to bind if the legacy Node
+    // server.exe is still in LISTENING/TIME_WAIT on 4242 (Hypothesis C, 4.1).
+    static void ClearPort4242()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("netstat.exe", "-ano")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true
+            };
+            string output;
+            using (var netstat = Process.Start(psi))
+            {
+                if (netstat == null) return;
+                output = netstat.StandardOutput.ReadToEnd();
+                netstat.WaitForExit();
+            }
+            foreach (var line in output.Split('\n'))
+            {
+                // Mirror tray.ps1: Select-String ":4242 " (note trailing space)
+                if (!line.Contains(":4242 ")) continue;
+
+                // Split on whitespace, take last element = PID (mirrors ($_ -split "\s+")[-1])
+                var parts = line.Trim().Split(new char[]{' '}, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0) continue;
+                if (!int.TryParse(parts[parts.Length - 1], out int pid) || pid <= 4) continue;
+
+                // Kill only the first match (mirrors Select-Object -First 1)
+                try
+                {
+                    Process.GetProcessById(pid).Kill();
+                    Log("ClearPort4242: killed PID=" + pid + " on :4242 (mirrors tray.ps1:5083)");
+                    Thread.Sleep(400);   // mirrors Start-Sleep -Milliseconds 400
+                }
+                catch (Exception ex) { Log("ClearPort4242: Kill PID=" + pid + " failed: " + ex.Message); }
+                break;
+            }
+        }
+        catch (Exception ex) { Log("ClearPort4242: netstat check failed: " + ex.Message); }
+    }
+
     // ── Entry point ──────────────────────────────────────────────────────────
     [STAThread]
     static void Main()
@@ -277,6 +326,10 @@ class MastersFM
         Process srv = null;
         if (File.Exists(server))
         {
+            // Clear port 4242 before spawning (Hypothesis C fix, sub-stage 4.11).
+            // Mirrors tray.ps1:5075-5086: kill anything on :4242, wait 400 ms.
+            ClearPort4242();
+
             var srvPsi = new ProcessStartInfo
             {
                 FileName        = server,

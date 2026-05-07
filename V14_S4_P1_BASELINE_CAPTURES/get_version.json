@@ -1,0 +1,20 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/version",
+    "timestamp_utc":  "2026-05-04T08:27:50.1567437Z",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "application/json",
+                                     "Date":  "Mon, 04 May 2026 08:27:50 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Cache-Control":  "no-store",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  "{\"bootId\":1777880701695}"
+                 }
+}

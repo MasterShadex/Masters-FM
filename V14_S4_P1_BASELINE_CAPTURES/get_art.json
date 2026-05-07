@@ -1,0 +1,22 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/art?t=\u003ctimestamp\u003e",
+    "timestamp_utc":  "2026-05-04T08:28:09.4722151Z",
+    "note":  "art endpoint - returns binary image or 404",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "image/jpeg",
+                                     "Date":  "Mon, 04 May 2026 08:28:09 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Cache-Control":  "no-store",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body_length_bytes":  82505,
+                     "body_preview":  "(binary image data - image/jpeg)"
+                 }
+}

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Stage 2: audio_spectrum.cs ported to net8.0-windows (R2R, framework-dependent, x64) -->
+    <!-- Original build: csc.exe /target:exe with /reference: to each NAudio DLL + netstandard.dll facade -->
+    <!-- .NET 8 path: NuGet NAudio 2.2.1 supports net8.0-windows natively; no netstandard.dll facade needed -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>audio_spectrum</AssemblyName>
+    <!-- Suppress SDK-generated [assembly:] attributes: audio_spectrum.cs has its own at top of file -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Nullable enable per Stage 2 instructions: warnings triaged but not all suppressed -->
+    <Nullable>enable</Nullable>
+    <!-- Disable implicit usings: audio_spectrum.cs has explicit using directives -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>..\assets\MastersFM.ico</ApplicationIcon>
+    <!-- No UseWindowsForms: audio_spectrum has no WinForms dependency -->
+    <!-- BaseIntermediateOutputPath is set in src/Directory.Build.props (imported before Microsoft.Common.props) -->
+    <!-- to prevent apphost cross-contamination with launcher.csproj. See that file for full rationale. -->
+    <!-- Release config set on dotnet publish command line -->
+  </PropertyGroup>
+
+  <!-- Only compile audio_spectrum.cs: prevent SDK from globbing other .cs files in src/ -->
+  <!-- (launcher.cs, customize.cs, tray_native.cs, etc. are separate exes with different refs) -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="audio_spectrum.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Individual NAudio 2.2.1 packages: only the four backends actually used -->
+    <!-- WasapiLoopbackCapture + WasapiCapture (excl) -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <!-- WaveInEvent (MME legacy) -->
+    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+    <!-- AsioOut (Steinberg ASIO) -->
+    <PackageReference Include="NAudio.Asio" Version="2.2.1" />
+    <!-- NAudio.Core is a transitive dep of the above but listed explicitly for clarity -->
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+  </ItemGroup>
+</Project>

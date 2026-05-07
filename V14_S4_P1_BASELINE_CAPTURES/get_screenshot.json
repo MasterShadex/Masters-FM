@@ -1,0 +1,22 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/screenshot",
+    "note":  "screenshot - captures via SSE round-trip to overlay",
+    "timestamp_utc":  "2026-05-04T08:29:15.1331175Z",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "image/png",
+                                     "Date":  "Mon, 04 May 2026 08:29:15 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Cache-Control":  "no-cache",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body_type":  "image/png",
+                     "body_length_bytes":  7744
+                 }
+}

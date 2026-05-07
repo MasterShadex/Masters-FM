@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Stage 3a: customize.cs ported to net8.0-windows (R2R, framework-dependent, x64) -->
+    <!-- Original build: csc.exe /target:winexe with /reference: to WebView2 managed DLLs -->
+    <!-- .NET 8 path: Microsoft.Web.WebView2 NuGet 1.0.2420.47 supports net8.0-windows natively -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>customize</AssemblyName>
+    <!-- Suppress SDK-generated [assembly:] attributes: customize.cs has its own at top of file -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Nullable enabled: warnings triaged, not blanket-suppressed -->
+    <Nullable>enable</Nullable>
+    <!-- Disable implicit usings: customize.cs has explicit using directives -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>..\assets\MastersFM.ico</ApplicationIcon>
+    <!-- UseWindowsForms: customize uses WinForms (Form, Application.Run, etc.) -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- BaseIntermediateOutputPath is set by src/Directory.Build.props via $(MSBuildProjectName) -->
+    <!-- DO NOT set it here: Directory.Build.props prevents apphost cross-contamination -->
+    <!-- Release config set on dotnet publish command line -->
+  </PropertyGroup>
+
+  <!-- Only compile customize.cs: prevent SDK from globbing other .cs files in src/ -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="customize.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WebView2 NuGet 1.0.2420.47: matches the DLLs already shipped in the MSI -->
+    <!-- Brings in: Microsoft.Web.WebView2.Core.dll, Microsoft.Web.WebView2.WinForms.dll, WebView2Loader.dll -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+  </ItemGroup>
+</Project>

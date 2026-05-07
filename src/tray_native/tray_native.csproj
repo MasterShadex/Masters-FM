@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      Sub-stage 5.1 (V14 MINIMAL scope): migrate tray_native build from csc.exe to dotnet SDK.
+      Target: netstandard2.0
+      Reason: Must load in Windows PowerShell 5.1 (.NET Framework 4.x) via Add-Type -Path.
+      User decision Q1=C (2026-05-07): netstandard2.0 keeps PS5.1 compatibility and preserves
+      a future PS7 / net8.0-windows10.0.x path without commitment now.
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>tray_native</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!--
+      GenerateAssemblyInfo disabled: tray_native.cs contains no assembly-level attributes
+      and the current csc.exe build does not set them. Keeping parity with csc.exe output.
+      Pattern follows server_dotnet.csproj.
+    -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      AppendTargetFrameworkToOutputPath=false prevents a netstandard2.0\ subdirectory
+      in the output path when building without an explicit -o flag.
+      _full_rebuild.ps1 passes -o to dotnet build to direct output to the project root.
+    -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!--
+      CopyLocalLockFileAssemblies=false: tray_native has no NuGet runtime dependencies.
+      Prevents netstandard.dll or other facade assemblies from being copied to output.
+    -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!--
+      BaseIntermediateOutputPath is set in src/Directory.Build.props via $(MSBuildProjectName)
+      to src\obj\tray_native\ (prevents cross-contamination with other projects in src\).
+    -->
+  </PropertyGroup>
+
+  <!--
+    Only compile the explicitly listed file.
+    Prevents SDK glob from picking up any stray .cs files that land in src/tray_native/.
+    Pattern follows server_dotnet.csproj.
+  -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="tray_native.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/update-status",
+    "timestamp_utc":  "2026-05-04T08:27:57.3225200Z",
+    "request_body":  null,
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "application/json",
+                                     "Date":  "Mon, 04 May 2026 08:27:57 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Cache-Control":  "no-store",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body":  "ï»¿{\"current\":\"v12.3.0\",\"version\":null,\"ts\":1777880706296,\"bytesDown\":0,\"state\":\"idle\",\"bytesTotal\":0,\"progress\":0}"
+                 }
+}

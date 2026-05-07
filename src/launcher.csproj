@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Stage 1 — launcher.cs ported to net8.0-windows (R2R, framework-dependent, x64) -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>MastersFM</AssemblyName>
+    <!-- Keep the in-source [assembly: ...] attributes; don't let the SDK re-emit them -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- WinForms brings in System.Windows.Forms + System.Drawing automatically -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Keep existing code unchanged — no nullable/implicit-using surprises -->
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>..\assets\MastersFM.ico</ApplicationIcon>
+    <!-- BaseIntermediateOutputPath is set in src/Directory.Build.props (imported before Microsoft.Common.props) -->
+    <!-- to prevent apphost cross-contamination with audio_spectrum.csproj. See that file for full rationale. -->
+    <!-- Release config is set on the dotnet publish command line -->
+  </PropertyGroup>
+
+  <!-- Only compile launcher.cs — the other .cs files in src/ are separate exes
+       built by csc.exe directly in _full_rebuild.ps1 and have their own refs. -->
+  <ItemGroup>
+    <Compile Remove="**\*.cs" />
+    <Compile Include="launcher.cs" />
+  </ItemGroup>
+</Project>

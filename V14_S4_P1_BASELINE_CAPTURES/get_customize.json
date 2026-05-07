@@ -1,0 +1,20 @@
+﻿{
+    "method":  "GET",
+    "url":  "http://127.0.0.1:4242/customize",
+    "timestamp_utc":  "2026-05-04T08:28:09.7127983Z",
+    "response":  {
+                     "status":  200,
+                     "headers":  {
+                                     "Access-Control-Allow-Headers":  "Content-Type",
+                                     "Transfer-Encoding":  "chunked",
+                                     "Keep-Alive":  "timeout=5",
+                                     "Content-Type":  "text/html",
+                                     "Date":  "Mon, 04 May 2026 08:28:09 GMT",
+                                     "Access-Control-Allow-Methods":  "GET, POST, OPTIONS",
+                                     "Connection":  "keep-alive",
+                                     "Access-Control-Allow-Origin":  "*"
+                                 },
+                     "body_length":  206284,
+                     "body_preview":  "\u003c!DOCTYPE html\u003e\n\u003chtml lang=\"en\"\u003e\n\u003chead\u003e\n\u003cmeta charset=\"UTF-8\"\u003e\n\u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"\u003e\n\u003ctitle\u003eMaster\u0027s FM â Overlay Customizer\u003c/title\u003e\n\u003clink rel=\"icon\" type=\"image/x-icon\" href=\"/MastersFM.ico\"\u003e\n\u003clink rel=\"shortcut icon\" href=\"/MastersFM.ico\"\u003e\n\u003clink r"
+                 }
+}

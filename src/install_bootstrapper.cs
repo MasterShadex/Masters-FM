@@ -57,7 +57,10 @@ class Bootstrapper
         {
             var psi = new ProcessStartInfo
             {
-                FileName  = Assembly.GetEntryAssembly().Location,
+                // .NET 8: Assembly.GetEntryAssembly().Location returns the .dll path on
+                // framework-dependent publish, not the .exe apphost. Use Environment.ProcessPath
+                // (available .NET 6+) to get the running .exe path for self-elevation.
+                FileName  = Environment.ProcessPath ?? string.Empty,
                 Arguments = string.Join(" ", args),
                 Verb      = "runas",
                 UseShellExecute = true
@@ -156,8 +159,8 @@ class Bootstrapper
             return 0;
         }
 
-        string tempMsi = null;
-        string tempCer = null;
+        string? tempMsi = null;
+        string? tempCer = null;
         try
         {
             Console.WriteLine("[1/3] Extracting installer files...");
@@ -178,7 +181,8 @@ class Bootstrapper
                 Arguments = "/i \"" + tempMsi + "\" /passive /norestart",
                 UseShellExecute = false
             };
-            var proc = Process.Start(psi);
+            // .NET 8: Process.Start returns Process? — guard against null (msiexec launch failure).
+            var proc = Process.Start(psi) ?? throw new InvalidOperationException("msiexec.exe failed to start");
             proc.WaitForExit();
             int exit = proc.ExitCode;
             Console.WriteLine();
