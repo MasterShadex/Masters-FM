@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.1 (LOCAL TAG -- pre-release pending GitHub Pre-release publication; auto-update path remains v12.0.1)
-**Last updated:** 2026-05-07 (v14.0.0-rc.1 cumulative .NET 8 migration RC)
+**Current version:** v12.0.1 (PUBLIC) / v14.0.0-rc.1 (LOCAL CHECKPOINT, push deferred until Stages 7+8 complete)
+**Last updated:** 2026-05-07 (Stages 1-5 .NET 8 migration validated locally; full ship deferred)
 
 ## IN-FLIGHT WORK
 
