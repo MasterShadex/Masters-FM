@@ -42,24 +42,26 @@ $CADENCE_S            = 60      # heartbeat cadence (matches DiagnosticHeartbeat
 # ----- helpers -----------------------------------------------------------------
 function Parse-Heartbeat($line) {
     # Format: heartbeat: ws=XMB gc=XMB priv=XMB threads=N handles=N ring=N | ... | osu=Xms ...
+    # Hotfix 7.10: patterns use [\d\.,]+ to handle locale-comma decimals (e.g. ws=273,7MB).
+    # [double] cast uses invariant parse (comma replaced with period) for safety.
     if ($line -notmatch 'heartbeat:') { return $null }
     $r = @{}
-    if ($line -match 'ws=([\d\.]+)MB')           { $r.ws      = [double]$Matches[1] }
-    if ($line -match 'gc=([\d\.]+)MB')           { $r.gc      = [double]$Matches[1] }
-    if ($line -match 'priv=([\d\.]+)MB')         { $r.priv    = [double]$Matches[1] }
-    if ($line -match 'threads=(\d+)')            { $r.threads = [int]$Matches[1] }
-    if ($line -match 'handles=(\d+)')            { $r.handles = [int]$Matches[1] }
-    if ($line -match 'ring=(\d+)')               { $r.ring    = [int]$Matches[1] }
-    if ($line -match 'osu=([\d\.]+)ms')          { $r.osu_p99    = [double]$Matches[1] }
-    if ($line -match 'vlc=([\d\.]+)ms')          { $r.vlc_p99    = [double]$Matches[1] }
-    if ($line -match 'wmp=([\d\.]+)ms')          { $r.wmp_p99    = [double]$Matches[1] }
-    if ($line -match 'webhook=([\d\.]+)ms')      { $r.wh_p99     = [double]$Matches[1] }
-    if ($line -match 'smtc=([\d\.]+)ms')         { $r.smtc_p99   = [double]$Matches[1] }
+    if ($line -match 'ws=([\d\.,]+)MB')           { $r.ws      = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'gc=([\d\.,]+)MB')           { $r.gc      = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'priv=([\d\.,]+)MB')         { $r.priv    = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'threads=(\d+)')             { $r.threads = [int]$Matches[1] }
+    if ($line -match 'handles=(\d+)')             { $r.handles = [int]$Matches[1] }
+    if ($line -match 'ring=(\d+)')                { $r.ring    = [int]$Matches[1] }
+    if ($line -match 'osu=([\d\.,]+)ms')          { $r.osu_p99    = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'vlc=([\d\.,]+)ms')          { $r.vlc_p99    = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'wmp=([\d\.,]+)ms')          { $r.wmp_p99    = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'webhook=([\d\.,]+)ms')      { $r.wh_p99     = [double]($Matches[1] -replace ',','.') }
+    if ($line -match 'smtc=([\d\.,]+)ms')         { $r.smtc_p99   = [double]($Matches[1] -replace ',','.') }
     # telemetry summary (extract a few counters)
-    if ($line -match 'track_changes=(\d+)')      { $r.track_changes    = [long]$Matches[1] }
-    if ($line -match 'webhook_sends=(\d+)')      { $r.webhook_sends    = [long]$Matches[1] }
-    if ($line -match 'smtc_events=(\d+)')        { $r.smtc_events      = [long]$Matches[1] }
-    if ($line -match 'webhook_send_errors=(\d+)'){ $r.wh_errors        = [long]$Matches[1] }
+    if ($line -match 'track_changes=(\d+)')       { $r.track_changes    = [long]$Matches[1] }
+    if ($line -match 'webhook_sends=(\d+)')       { $r.webhook_sends    = [long]$Matches[1] }
+    if ($line -match 'smtc_events=(\d+)')         { $r.smtc_events      = [long]$Matches[1] }
+    if ($line -match 'webhook_send_errors=(\d+)') { $r.wh_errors        = [long]$Matches[1] }
     return $r
 }
 
