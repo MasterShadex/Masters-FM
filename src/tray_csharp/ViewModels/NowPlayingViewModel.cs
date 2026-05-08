@@ -6,8 +6,14 @@
 // Subscribes to ITrackResolver.TrackChanged; marshals to UI thread via
 // Dispatcher.BeginInvoke. Stage 7.6 will bind tray menu's now-playing
 // label to its observable properties.
+//
+// Stage 7.6 STEP 7: adds ArtImageSource (BitmapImage?) derived from ArtUri
+// via OnArtUriChanged partial callback. Lets the tray menu 24x24 thumbnail
+// bind to a decoded BitmapImage without a separate IValueConverter file.
 
+using System.IO;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MastersFM.Tray.Detectors;
 using MastersFM.Tray.Services;
@@ -39,6 +45,40 @@ public sealed partial class NowPlayingViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isPlaying;
+
+    /// <summary>
+    /// Decoded thumbnail, ready for WPF Image.Source binding. Null when no art is available.
+    /// Updated automatically via OnArtUriChanged whenever ArtUri changes.
+    /// </summary>
+    [ObservableProperty]
+    private BitmapImage? _artImageSource;
+
+    // CommunityToolkit.Mvvm partial callback: runs whenever ArtUri is set.
+    partial void OnArtUriChanged(string? value)
+    {
+        ArtImageSource = DecodeDataUri(value);
+    }
+
+    /// <summary>Decodes a "data:image/...;base64,..." URI into a frozen BitmapImage.</summary>
+    private static BitmapImage? DecodeDataUri(string? dataUri)
+    {
+        if (string.IsNullOrEmpty(dataUri)) return null;
+        const string marker = "base64,";
+        var idx = dataUri.IndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0) return null;
+        try
+        {
+            var bytes = Convert.FromBase64String(dataUri.Substring(idx + marker.Length));
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.EndInit();
+            bmp.Freeze(); // cross-thread safe
+            return bmp;
+        }
+        catch { return null; }
+    }
 
     public NowPlayingViewModel(ITrackResolver resolver, ILogger logger)
     {

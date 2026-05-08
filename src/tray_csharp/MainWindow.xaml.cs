@@ -1,49 +1,52 @@
-// Stage 7.3: MainWindow code-behind. ILogger now constructor-injected via DI.
-// Pragmatic MVVM (no viewmodel for an empty skeleton; per
-// V14_S7_REPLAN_WPF_LOCK.md section 5).
+// Stage 7.6 STEP 7: MainWindow code-behind. TrayMenuViewModel now constructor-
+// injected; OnLoaded wires the ContextMenu DataContext. The old OnQuitClicked
+// click-handler is replaced by TrayMenuViewModel.QuitAppCommand (RelayCommand).
 //
 // Responsibilities:
 //   - Bind tray IconSource via pack URI (XAML).
-//   - Handle the Quit menu item click.
+//   - Set ContextMenu.DataContext = TrayMenuViewModel (popup not in visual tree).
+//   - Allow Mica backdrop via ContextMenuExtensions.ApplyMica in STEP 11.
 //   - Block accidental window-close.
 
 using System.ComponentModel;
 using System.Windows;
 using MastersFM.Tray.Services;
+using MastersFM.Tray.ViewModels;
 
 namespace MastersFM.Tray;
 
 public partial class MainWindow : Window
 {
     private readonly ILogger _logger;
+    private readonly TrayMenuViewModel _trayMenuViewModel;
     private bool _allowClose;
 
-    public MainWindow(ILogger logger)
+    public MainWindow(ILogger logger, TrayMenuViewModel trayMenuViewModel)
     {
         _logger = logger;
+        _trayMenuViewModel = trayMenuViewModel;
         InitializeComponent();
         Loaded += OnLoaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // IconSource is set in MainWindow.xaml via pack URI; runtime fallback
-        // not required. The brand icon (assets\MastersFM.ico) is embedded as
-        // a Resource via csproj.
-        _logger.Log("MainWindow.Loaded: TaskbarIcon initialized; tray visible", "Tray");
-    }
+        // Wire ContextMenu DataContext — popup is not in the visual tree so it
+        // cannot inherit DataContext from MainWindow automatically.
+        if (NotifyIcon.ContextMenu != null)
+            NotifyIcon.ContextMenu.DataContext = _trayMenuViewModel;
 
-    private void OnQuitClicked(object sender, RoutedEventArgs e)
-    {
-        _logger.Log("Quit clicked; calling Application.Current.Shutdown()", "Tray");
-        _allowClose = true;
-        // ShutdownMode=OnExplicitShutdown means Application.Shutdown() exits
-        // the app WITHOUT firing Closing on each window. To dispose the
-        // TaskbarIcon cleanly (hide it, free its handle), we close the
-        // hidden host window explicitly first; that fires OnClosing with
-        // _allowClose=true and runs the disposal path. Then Shutdown.
-        Close();
-        Application.Current.Shutdown(0);
+        // Provide clean-shutdown delegate so Quit/Restart commands close the
+        // host window (disposing TaskbarIcon) before Application.Shutdown.
+        _trayMenuViewModel.CleanShutdown = () =>
+        {
+            _allowClose = true;
+            Close();
+            Application.Current.Shutdown(0);
+        };
+
+        _logger.Log("MainWindow.Loaded: TaskbarIcon initialized; tray visible; ContextMenu DataContext wired", "Tray");
+        // STEP 11: Mica backdrop applied here after TrayMenu* brush resources are added.
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -67,4 +70,5 @@ public partial class MainWindow : Window
 
         base.OnClosing(e);
     }
+
 }

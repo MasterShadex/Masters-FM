@@ -144,6 +144,12 @@ public partial class App : Application
         collection.AddTransient<SetupWizardWindow>();
         collection.AddTransient<ErrorDialogWindow>();
         collection.AddSingleton<IDialogService, DialogService>();
+        // Stage 7.6: TrayMenuViewModel singleton — data-context for Surface 03 ContextMenu.
+        // Registered after all dependencies (NowPlayingViewModel, IDialogService,
+        // IDiscordToggleService, IAutoStartService, IUpdateCheckService, ICustomizerLauncher).
+        // DI resolves singletons lazily at first GetRequiredService call so registration
+        // order does not matter for resolution, only for code readability.
+        collection.AddSingleton<TrayMenuViewModel>();
 
         _services = collection.BuildServiceProvider();
 
