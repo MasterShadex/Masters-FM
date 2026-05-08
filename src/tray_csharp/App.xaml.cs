@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using MastersFM.Tray.Detectors;
 using MastersFM.Tray.Dialogs;
+using MastersFM.Tray.Diagnostics;
 using MastersFM.Tray.Services;
 using MastersFM.Tray.Update;
 using MastersFM.Tray.ViewModels;
@@ -232,6 +233,32 @@ public partial class App : Application
         ScheduleFirstRunCheck();
 
         _logger.Log("Application.OnStartup completed", "Bootstrap");
+
+        // Stage 7.6 STEP 2: optional dialog smoke mode (--smoke-dialogs arg).
+        // Runs dialog cycle smoke test, writes results, then exits. Only active
+        // when explicitly requested; has no effect on normal tray launch.
+        var args = Environment.GetCommandLineArgs();
+        bool smokeMode = args.Any(a => string.Equals(a, "--smoke-dialogs", StringComparison.OrdinalIgnoreCase));
+        if (smokeMode && _services != null && _logger != null)
+        {
+            var smokeLabel = args.Any(a => a.Contains("REGRESSION", StringComparison.OrdinalIgnoreCase))
+                ? "REGRESSION" : "BASELINE";
+            var smokeOutput = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MastersFM",
+                $"dialog_smoke_{smokeLabel}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+            _logger.Log($"SMOKE MODE: label={smokeLabel} output={smokeOutput}", "Bootstrap");
+            var runner = new DialogSmokeRunner(_services, _logger);
+            // Fire-and-forget on dispatcher background; app stays alive until
+            // RunAsync calls Application.Current.Shutdown(0).
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                new Action(async () =>
+                {
+                    try { await runner.RunAsync(smokeOutput); }
+                    catch (Exception ex) { _logger?.LogErr("smoke runner", ex, "Bootstrap"); }
+                    finally { Application.Current.Shutdown(0); }
+                }));
+        }
 
         base.OnStartup(e);
     }
