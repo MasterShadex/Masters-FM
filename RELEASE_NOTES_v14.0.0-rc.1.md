@@ -94,6 +94,7 @@ unless you are reading HTTP traces.
   transitions. This is patched in stable v14.0.0 ship (a Stage-7-class fix). For RC1 itself,
   this is incidentally the very mechanism that prevents v12.0.1 testers from auto-updating to
   the RC -- it is RC framing's protective property.
+- **First-launch memory after upgrade from v12.x (C# tray):** On first launch after upgrading from v12.x, the setup wizard temporarily increases memory by ~70 MB. This settles back to ~250 MB on the next launch and is normal.
 
 ## RC framing
 
