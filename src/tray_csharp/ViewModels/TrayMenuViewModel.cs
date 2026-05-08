@@ -26,6 +26,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private readonly IAutoStartService _autoStartService;
     private readonly IUpdateCheckService _updateService;
     private readonly ICustomizerLauncher _customizerLauncher;
+    private readonly IObsService _obsService;
     private readonly ILogger _logger;
 
     // NowPlaying is exposed as a pass-through so XAML DataTemplates can
@@ -40,6 +41,15 @@ public sealed partial class TrayMenuViewModel : ObservableObject
 
     [ObservableProperty]
     private string _updateLabel = "Check for updates";
+
+    [ObservableProperty]
+    private bool _isObsEnabled;
+
+    [ObservableProperty]
+    private string _obsLabel = "OBS overlay";
+
+    [ObservableProperty]
+    private string _obsTooltip = "Click to enable OBS integration";
 
     /// <summary>
     /// Set by MainWindow.OnLoaded so Quit / Restart commands can close the host
@@ -56,6 +66,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         IAutoStartService autoStartService,
         IUpdateCheckService updateService,
         ICustomizerLauncher customizerLauncher,
+        IObsService obsService,
         ILogger logger)
     {
         NowPlaying = nowPlaying;
@@ -64,6 +75,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _autoStartService = autoStartService;
         _updateService = updateService;
         _customizerLauncher = customizerLauncher;
+        _obsService = obsService;
         _logger = logger;
 
         // Snapshot initial toggle states
@@ -73,10 +85,17 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         // Derive initial update label from current state
         _updateLabel = LabelForState(_updateService.CurrentState);
 
+        // Stage 7.8: snapshot initial OBS state
+        var (obsLabel, obsTooltip, obsEnabled) = LabelsForObsState(_obsService.ConnectionState);
+        _obsLabel   = obsLabel;
+        _obsTooltip = obsTooltip;
+        _isObsEnabled = obsEnabled;
+
         // Subscribe to state changes
         _discordService.StateChanged += (_, enabled) => IsDiscordEnabled = enabled;
         _autoStartService.StateChanged += (_, enabled) => IsAutoStartEnabled = enabled;
         _updateService.StateChanged += OnUpdateStateChanged;
+        _obsService.ConnectionStateChanged += OnObsStateChanged;
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────
@@ -100,6 +119,40 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         UpdateState.Ready       => "Install update",
         UpdateState.Installing  => "Installing...",
         _                       => "Check for updates"
+    };
+
+    // Stage 7.8: OBS state → menu label/tooltip/checkbox
+    private void OnObsStateChanged(object? sender, ObsConnectionStateChangedEventArgs e)
+    {
+        var (label, tooltip, enabled) = LabelsForObsState(e.NewState);
+        // ConnectionStateChanged fires on the thread-pool; marshal to UI dispatcher.
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+        {
+            IsObsEnabled = enabled;
+            ObsLabel     = label;
+            ObsTooltip   = tooltip;
+        }
+        else
+        {
+            dispatcher.BeginInvoke(() =>
+            {
+                IsObsEnabled = enabled;
+                ObsLabel     = label;
+                ObsTooltip   = tooltip;
+            });
+        }
+    }
+
+    private static (string label, string tooltip, bool enabled) LabelsForObsState(ObsConnectionState state) => state switch
+    {
+        ObsConnectionState.Disabled       => ("OBS overlay",                   "Click to enable OBS integration",          false),
+        ObsConnectionState.Disconnected   => ("OBS overlay (offline)",          "OBS not running — will connect when OBS starts", true),
+        ObsConnectionState.Connecting     => ("OBS overlay (connecting…)", "Connecting to OBS…",                  true),
+        ObsConnectionState.Authenticating => ("OBS overlay (connecting…)", "Authenticating with OBS…",            true),
+        ObsConnectionState.Connected      => ("OBS overlay (live)",             "Connected to OBS",                         true),
+        ObsConnectionState.Error          => ("OBS overlay (error)",            "Connection error; retrying with backoff",  true),
+        _                                 => ("OBS overlay",                   "Click to enable OBS integration",          false),
     };
 
     // ── Commands ─────────────────────────────────────────────────────────────
@@ -142,6 +195,20 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _logger.Log($"TrayMenu: AutoStart toggle -> {!_autoStartService.IsEnabled}", "Tray");
         try { _autoStartService.Toggle(); }
         catch (Exception ex) { _logger.LogErr("AutoStartService.Toggle", ex, "Tray"); }
+    }
+
+    [RelayCommand]
+    private async Task ToggleObsAsync()
+    {
+        _logger.Log($"TrayMenu: OBS toggle -> {!_obsService.IsEnabled}", "Tray");
+        try
+        {
+            if (_obsService.IsEnabled)
+                await _obsService.DisconnectAsync();
+            else
+                await _obsService.ConnectAsync();
+        }
+        catch (Exception ex) { _logger.LogErr("ObsService toggle", ex, "Tray"); }
     }
 
     [RelayCommand]
