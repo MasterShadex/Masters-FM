@@ -1,13 +1,13 @@
-// Stage 7.1B: Application code-behind. Replaces Stage 7.1's Program.cs
-// (WinForms entry). Owns single-instance mutex, AUMID, exception hooks,
-// DI container lifetime. WPF dispatcher manages the message pump; no
-// explicit Application.Run call needed (App.xaml's <Application> root
-// drives it).
+// Stage 7.3: Application code-behind. ILogger + ITelemetry registered in DI.
+// EarlyLog (static fallback) used for pre-DI bootstrap; injected ILogger
+// used for everything after container build. DiagnosticHeartbeat started
+// after MainWindow shown; stopped during OnExit.
 
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using MastersFM.Tray.Services;
 
 namespace MastersFM.Tray;
 
@@ -18,16 +18,17 @@ public partial class App : Application
     private IServiceProvider? _services;
     private Mutex? _singleInstanceMutex;
     private bool _ownsMutex;
+    private ILogger? _logger;
+    private DiagnosticHeartbeat? _heartbeat;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Pre-DI bootstrap logging via static fallback (Logger.EarlyLog).
         Logger.EarlyLog("Application.OnStartup begin");
         Logger.EarlyLog($"PID={Environment.ProcessId} OS={Environment.OSVersion.VersionString} CLR={Environment.Version}");
         Logger.EarlyLog($"BaseDir={AppContext.BaseDirectory}");
 
-        // -- Single-instance mutex (shared with PS tray and Stage 7.1 WinForms tray) --
-        // Same mutex name as tray.ps1:62. AbandonedMutexException is treated as
-        // "we got the mutex" -- the previous owner died without releasing it.
+        // -- Single-instance mutex (shared with PS tray and prior tray skeletons) --
         bool gotMutex = false;
         try
         {
@@ -43,74 +44,88 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Logger.LogErr("Single-instance mutex acquisition", ex);
-            // If we cannot create/acquire the mutex object at all, exit cleanly
-            // to avoid running a second tray side-by-side.
+            Logger.EarlyLogErr("Single-instance mutex acquisition", ex);
             Shutdown(0);
             return;
         }
 
         if (!gotMutex)
         {
-            Logger.Log("Single-instance mutex held by another tray (PS tray or C# tray); exiting cleanly with code 0.");
+            Logger.EarlyLog("Single-instance mutex held by another tray (PS tray or C# tray); exiting cleanly with code 0.");
             Shutdown(0);
             return;
         }
 
         _ownsMutex = true;
-        Logger.Log("Single-instance mutex acquired");
+        Logger.EarlyLog("Single-instance mutex acquired");
 
-        // -- AUMID via tray_native.dll (preserved from Stage 7.1 / Q1 default) --
+        // -- AUMID via tray_native.dll --
         try
         {
             MFM_Shell.SetCurrentProcessExplicitAppUserModelID("MastersFM.App");
-            Logger.Log("AUMID set via MFM_Shell (tray_native.dll)");
+            Logger.EarlyLog("AUMID set via MFM_Shell (tray_native.dll)");
         }
         catch (Exception ex)
         {
-            Logger.LogErr("AUMID set via MFM_Shell", ex);
+            Logger.EarlyLogErr("AUMID set via MFM_Shell", ex);
         }
 
-        // -- Exception hooks (WPF analogues of WinForms patterns) --
+        // -- Exception hooks (WPF analogues) --
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
-        Logger.Log("Exception hooks installed (AppDomain + Dispatcher + TaskScheduler)");
+        Logger.EarlyLog("Exception hooks installed (AppDomain + Dispatcher + TaskScheduler)");
 
-        // -- DI container --
+        // -- DI container build --
         var collection = new ServiceCollection();
+        collection.AddSingleton<ILogger, Logger>();
+        collection.AddSingleton<ITelemetry, NullTelemetry>();
+        collection.AddSingleton<SlowTickWatchdog>();
+        collection.AddSingleton<DiagnosticHeartbeat>();
         collection.AddSingleton<MainWindow>();
-        // Future sub-stages (7.3 logging proper, 7.5 detection, etc.) register
-        // additional services here.
         _services = collection.BuildServiceProvider();
-        Logger.Log("DI container built");
+
+        _logger = _services.GetRequiredService<ILogger>();
+        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, SlowTickWatchdog, DiagnosticHeartbeat, MainWindow registered)", "Bootstrap");
 
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --
         var mainWindow = _services.GetRequiredService<MainWindow>();
         mainWindow.Show();
-        // Window is Visibility=Hidden + off-screen; Show() registers it with the
-        // dispatcher so it can host the TaskbarIcon and receive messages.
+        _logger.Log("MainWindow shown", "Bootstrap");
 
-        Logger.Log("Application.OnStartup completed; MainWindow shown");
+        // -- Start the diagnostic heartbeat (60s cadence) --
+        _heartbeat = _services.GetRequiredService<DiagnosticHeartbeat>();
+        _heartbeat.Start();
+
+        _logger.Log("Application.OnStartup completed", "Bootstrap");
 
         base.OnStartup(e);
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        Logger.Log("Application.OnExit begin");
+        _logger?.Log("Application.OnExit begin", "Bootstrap");
+
+        try
+        {
+            _heartbeat?.Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogErr("DiagnosticHeartbeat.Stop", ex, "Bootstrap");
+        }
 
         try
         {
             if (_services is IDisposable disposable)
             {
                 disposable.Dispose();
-                Logger.Log("DI container disposed");
+                _logger?.Log("DI container disposed", "Bootstrap");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogErr("DI container disposal", ex);
+            _logger?.LogErr("DI container disposal", ex, "Bootstrap");
         }
 
         try
@@ -118,43 +133,51 @@ public partial class App : Application
             if (_ownsMutex && _singleInstanceMutex != null)
             {
                 _singleInstanceMutex.ReleaseMutex();
-                Logger.Log("Single-instance mutex released");
+                _logger?.Log("Single-instance mutex released", "Bootstrap");
             }
             _singleInstanceMutex?.Dispose();
         }
         catch (Exception ex)
         {
-            Logger.LogErr("Single-instance mutex release", ex);
+            _logger?.LogErr("Single-instance mutex release", ex, "Bootstrap");
         }
 
-        Logger.Log($"Application.OnExit completed; exit code = {e.ApplicationExitCode}");
+        _logger?.Log($"Application.OnExit completed; exit code = {e.ApplicationExitCode}", "Bootstrap");
 
         base.OnExit(e);
     }
 
-    private static void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception ex)
         {
-            Logger.LogErr("AppDomain.UnhandledException (terminating=" + e.IsTerminating + ")", ex);
+            if (_logger != null)
+            {
+                _logger.LogErr("AppDomain.UnhandledException (terminating=" + e.IsTerminating + ")", ex, "Bootstrap");
+            }
+            else
+            {
+                Logger.EarlyLogErr("AppDomain.UnhandledException (terminating=" + e.IsTerminating + ")", ex);
+            }
         }
         else
         {
-            Logger.Log($"AppDomain.UnhandledException with non-Exception object: {e.ExceptionObject}");
+            var msg = $"AppDomain.UnhandledException with non-Exception object: {e.ExceptionObject}";
+            if (_logger != null) { _logger.Log(msg, "Bootstrap"); } else { Logger.EarlyLog(msg); }
         }
     }
 
-    private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        Logger.LogErr("Dispatcher.UnhandledException", e.Exception);
-        // Mark as handled to prevent the dispatcher from terminating; the user
-        // should see one badness rather than the whole tray dying.
+        _logger?.LogErr("Dispatcher.UnhandledException", e.Exception, "Bootstrap");
+        // Mark as handled to prevent the dispatcher from terminating; one
+        // badness is preferable to the whole tray dying.
         e.Handled = true;
     }
 
-    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        Logger.LogErr("TaskScheduler.UnobservedTaskException", e.Exception);
+        _logger?.LogErr("TaskScheduler.UnobservedTaskException", e.Exception, "Bootstrap");
         e.SetObserved();
     }
 }

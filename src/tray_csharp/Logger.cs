@@ -1,36 +1,32 @@
-// Stage 7.1 skeleton -- Logger.
-// Writes to %LOCALAPPDATA%\MastersFM\overlay.log (SAME path as PS tray, per
-// V14_S7_P1_TRAY_INVENTORY.md S1). UTF-8 without BOM (per Stage 4.5 lesson; mandatory
-// per absolute rule 3 of this brief). Thread-safe; multiple writers OK during dev
-// parallel period (PS tray and C# tray may both write to overlay.log).
+// Stage 7.3: Logger refactored to instance + ILogger interface (registered
+// as singleton in DI). Static EarlyLog method preserved for pre-DI bootstrap
+// (App.xaml.cs OnStartup before container build). Behavior preservation
+// (per Stage 7.3 brief absolute rule 10): same overlay.log path
+// (%LOCALAPPDATA%\MastersFM\overlay.log), same `[TRAY-CS]` prefix, same
+// UTF-8 no BOM, same append-only-with-thread-safe-lock, same line format
+// (with optional `[component]` segment after the prefix per 7.3 addition).
 //
-// Format: "[yyyy-MM-dd HH:mm:ss.fff] [LEVEL] [TRAY-CS] message"
-// The [TRAY-CS] prefix distinguishes C# tray entries from PS tray entries (which
-// use no source-tag prefix).
-//
-// Append-only behavior (per pre-execution Q2 default): the C# skeleton does NOT
-// truncate overlay.log on startup. PS tray's truncation behavior (tray.ps1:196)
-// would conflict if both processes tried to truncate simultaneously during the
-// dev parallel period. Stage 7.3 (logging proper) will revisit this once the
-// PS tray no longer co-writes.
-//
-// Ring buffer (Queue<string>, capacity 20) is allocated here as a placeholder for
-// SLOW TICK forensics in 7.3. It is populated but NOT consumed in 7.1.
+// Format:
+//   [yyyy-MM-dd HH:mm:ss.fff] [LEVEL] [TRAY-CS] [component] message
+// (the [component] segment is omitted when component is empty/null.)
 
 using System.Collections.Generic;
 using System.Text;
+using MastersFM.Tray.Services;
 
 namespace MastersFM.Tray;
 
-internal static class Logger
+public sealed class Logger : ILogger
 {
-    private static readonly object _lock = new();
+    private static readonly object _staticLock = new();
     private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     private static readonly string _logDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "MastersFM");
     private static readonly string _logPath = Path.Combine(_logDir, "overlay.log");
-    private static readonly Queue<string> _ringBuf = new();
+
+    private readonly object _instanceLock = new();
+    private readonly Queue<string> _ringBuffer = new();
     private const int RingCap = 20;
 
     static Logger()
@@ -41,40 +37,90 @@ internal static class Logger
         }
         catch
         {
-            // Best-effort. If the directory cannot be created the file writes will
-            // fail silently below; the tray itself still runs.
+            // Best-effort directory creation; file writes will fail silently if
+            // the directory cannot be created. The tray still runs.
         }
     }
 
-    public static void EarlyLog(string msg) => Write("EARLY", msg);
-    public static void Log(string msg) => Write("INFO ", msg);
+    public Logger()
+    {
+        // Instance constructor exists for DI registration. All static fields
+        // are shared (log path, encoding, directory) so multiple instances
+        // would write to the same file (DI registers as singleton, so only
+        // one instance is constructed per process anyway).
+    }
 
-    public static void LogErr(string context, Exception err)
+    /// <summary>
+    /// Static fallback for pre-DI bootstrap callsites. Routes through the
+    /// same write path with [EARLY] level. Used by App.xaml.cs OnStartup
+    /// before the container is built.
+    /// </summary>
+    public static void EarlyLog(string message)
+    {
+        WriteStatic("EARLY", message, component: null);
+    }
+
+    /// <summary>
+    /// Static fallback for ERROR-level pre-DI bootstrap. Used by
+    /// App.xaml.cs OnStartup catch blocks before the container exists.
+    /// </summary>
+    public static void EarlyLogErr(string context, Exception ex)
     {
         var sb = new StringBuilder();
         sb.Append("!! ERROR [").Append(context).Append("]: ");
-        sb.Append(err.GetType().FullName).Append(": ").Append(err.Message);
-        if (!string.IsNullOrEmpty(err.StackTrace))
+        sb.Append(ex.GetType().FullName).Append(": ").Append(ex.Message);
+        if (!string.IsNullOrEmpty(ex.StackTrace))
         {
             sb.AppendLine();
-            sb.Append("   stack: ").Append(err.StackTrace);
+            sb.Append("   stack: ").Append(ex.StackTrace);
         }
-        if (err.InnerException != null)
-        {
-            sb.AppendLine();
-            sb.Append("   inner: ").Append(err.InnerException.ToString());
-        }
-        Write("ERROR", sb.ToString());
+        WriteStatic("ERROR", sb.ToString(), component: null);
     }
 
-    private static void Write(string level, string msg)
+    public void Log(string message, string component = "")
     {
-        var line = string.Format(
-            "[{0:yyyy-MM-dd HH:mm:ss.fff}] [{1}] [TRAY-CS] {2}",
-            DateTime.Now,
-            level,
-            msg);
-        lock (_lock)
+        WriteInstance("INFO ", message, component);
+    }
+
+    public void LogWarn(string message, string component = "")
+    {
+        WriteInstance("WARN ", message, component);
+    }
+
+    public void LogErr(string context, Exception? ex = null, string component = "")
+    {
+        var sb = new StringBuilder();
+        sb.Append("!! ERROR [").Append(context).Append("]");
+        if (ex != null)
+        {
+            sb.Append(": ");
+            sb.Append(ex.GetType().FullName).Append(": ").Append(ex.Message);
+            if (!string.IsNullOrEmpty(ex.StackTrace))
+            {
+                sb.AppendLine();
+                sb.Append("   stack: ").Append(ex.StackTrace);
+            }
+            if (ex.InnerException != null)
+            {
+                sb.AppendLine();
+                sb.Append("   inner: ").Append(ex.InnerException.ToString());
+            }
+        }
+        WriteInstance("ERROR", sb.ToString(), component);
+    }
+
+    public IReadOnlyList<string> SnapshotRingBuffer()
+    {
+        lock (_instanceLock)
+        {
+            return _ringBuffer.ToArray();
+        }
+    }
+
+    private void WriteInstance(string level, string message, string component)
+    {
+        var line = FormatLine(level, message, component);
+        lock (_instanceLock)
         {
             try
             {
@@ -82,30 +128,56 @@ internal static class Logger
             }
             catch
             {
-                // Best-effort logging; do not crash on log failure.
+                // Best-effort; do not crash on log failure.
             }
 
             try
             {
-                if (_ringBuf.Count >= RingCap) _ringBuf.Dequeue();
-                _ringBuf.Enqueue(msg);
+                if (_ringBuffer.Count >= RingCap) _ringBuffer.Dequeue();
+                _ringBuffer.Enqueue(message);
             }
-            catch { }
+            catch
+            {
+                // best-effort
+            }
 
             try { Console.WriteLine(line); } catch { }
         }
     }
 
-    /// <summary>
-    /// Returns a snapshot of the in-memory ring buffer (last RingCap log messages).
-    /// Stage 7.1 leaves this method unused; Stage 7.3 (logging proper) will consume it
-    /// for SLOW TICK context dumps.
-    /// </summary>
-    public static IReadOnlyList<string> RingSnapshot()
+    private static void WriteStatic(string level, string message, string? component)
     {
-        lock (_lock)
+        var line = FormatLine(level, message, component);
+        lock (_staticLock)
         {
-            return _ringBuf.ToArray();
+            try
+            {
+                File.AppendAllText(_logPath, line + Environment.NewLine, _utf8NoBom);
+            }
+            catch
+            {
+                // best-effort
+            }
+
+            try { Console.WriteLine(line); } catch { }
         }
+    }
+
+    private static string FormatLine(string level, string message, string? component)
+    {
+        if (string.IsNullOrEmpty(component))
+        {
+            return string.Format(
+                "[{0:yyyy-MM-dd HH:mm:ss.fff}] [{1}] [TRAY-CS] {2}",
+                DateTime.Now,
+                level,
+                message);
+        }
+        return string.Format(
+            "[{0:yyyy-MM-dd HH:mm:ss.fff}] [{1}] [TRAY-CS] [{2}] {3}",
+            DateTime.Now,
+            level,
+            component,
+            message);
     }
 }
