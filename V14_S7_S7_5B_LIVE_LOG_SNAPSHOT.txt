@@ -1,0 +1,52 @@
+[2026-05-08 08:04:32.375] [EARLY] [TRAY-CS] Application.OnStartup begin
+[2026-05-08 08:04:32.381] [EARLY] [TRAY-CS] PID=17492 OS=Microsoft Windows NT 10.0.26200.0 CLR=8.0.26
+[2026-05-08 08:04:32.381] [EARLY] [TRAY-CS] BaseDir=G:\Project Folder\Master FM\dist\tray_csharp_release\
+[2026-05-08 08:04:32.383] [EARLY] [TRAY-CS] Single-instance mutex acquired
+[2026-05-08 08:04:32.384] [EARLY] [TRAY-CS] AUMID set via MFM_Shell (tray_native.dll)
+[2026-05-08 08:04:32.384] [EARLY] [TRAY-CS] Exception hooks installed (AppDomain + Dispatcher + TaskScheduler)
+[2026-05-08 08:04:32.391] [INFO ] [TRAY-CS] [Bootstrap] DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, IDiscordToggleService, IAutoStartService, ICustomizerLauncher, MainWindow registered)
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=1/16 expected=True actual=True PASS  -- Compare(14.0.0, 14.0.0-rc.1) > 0
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=2/16 expected=True actual=True PASS  -- Compare(14.0.0-rc.1, 14.0.0) < 0
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=3/16 expected=True actual=True PASS  -- Compare(14.0.0, 14.0.1) < 0
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=4/16 expected=True actual=True PASS  -- Compare(14.0.0-rc.1, 14.0.0-rc.2) == 0
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=5/16 expected=True actual=True PASS  -- Compare(14.0.1-beta.5, 14.0.0) > 0 [7.9 fix: numeric MMP wins]
+[2026-05-08 08:04:32.404] [INFO ] [TRAY-CS] [Update] case=6/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0) == false
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=7/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0-rc.1) == true
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=8/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0-RC.1) == true
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=9/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0-beta) == true
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=10/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0-alpha.99) == true
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=11/16 expected=True actual=True PASS  -- IsPreRelease(14.0.0+build.1) == false
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=12/16 expected=True actual=True PASS  -- Compare(14.0.0-rc.1, 12.0.1) > 0 [7.9: local RC newer than remote stable]
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=13/16 expected=True actual=True PASS  -- Compare(14.0.0-rc.1, 13.5.0) > 0 [7.9: local RC newer than remote stable]
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=14/16 expected=True actual=True PASS  -- Compare(14.0.0, 12.0.1) > 0 [7.9: regression check; stable vs older stable]
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=15/16 expected=True actual=True PASS  -- Compare(12.0.1, 14.0.0-rc.1) < 0 [7.9: inverse of bug case]
+[2026-05-08 08:04:32.405] [INFO ] [TRAY-CS] [Update] case=16/16 expected=True actual=True PASS  -- Compare(14.0.0-rc.1, 14.0.0-rc.1) == 0 [Q4: same RC equivalent]
+[2026-05-08 08:04:32.406] [INFO ] [TRAY-CS] [Update] R6 closure: ALL 16 pre-release regex synthetic test cases PASS
+[2026-05-08 08:04:32.412] [INFO ] [TRAY-CS] [Config] ConfigService initialized; path=C:\Users\Master\AppData\Roaming\MastersFM\config.json, ttl=1000ms
+[2026-05-08 08:04:32.413] [INFO ] [TRAY-CS] [Bootstrap] welcome-seen=False
+[2026-05-08 08:04:32.417] [INFO ] [TRAY-CS] [Update] startup check skipped; last check 49 min ago (threshold 6h)
+[2026-05-08 08:04:32.418] [INFO ] [TRAY-CS] [Discord] DiscordToggleService initialized; initial state=True
+[2026-05-08 08:04:32.419] [INFO ] [TRAY-CS] [AutoStart] AutoStartService initialized; lnk=C:\Users\Master\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\Master's FM.lnk; initial state=False
+[2026-05-08 08:04:32.419] [INFO ] [TRAY-CS] [Customizer] launcher ready
+[2026-05-08 08:04:32.419] [INFO ] [TRAY-CS] [Discord] initial state=True
+[2026-05-08 08:04:32.419] [INFO ] [TRAY-CS] [AutoStart] initial state=False
+[2026-05-08 08:04:32.419] [INFO ] [TRAY-CS] [Customizer] customize.exe path resolved to: G:\Project Folder\Master FM\dist\tray_csharp_release\customize.exe (exists=False)
+[2026-05-08 08:04:32.420] [INFO ] [TRAY-CS] [NowPlayingVM] NowPlayingViewModel subscribed to ITrackResolver.TrackChanged
+[2026-05-08 08:04:32.420] [WARN ] [TRAY-CS] [Detect-SMTC] manager acquisition returned null; SMTC arm inactive (gap-filler arm continues)
+[2026-05-08 08:04:32.421] [INFO ] [TRAY-CS] [Detect-Orch] started; cadence=1000ms detectors=3 (osu,vlc,wmp-legacy)
+[2026-05-08 08:04:32.421] [INFO ] [TRAY-CS] [Detect] all arms started; SMTC events live (or inactive if WinRT not projected); gap-fillers polling at 1s cadence
+[2026-05-08 08:04:32.645] [INFO ] [TRAY-CS] [Tray] MainWindow.Loaded: TaskbarIcon initialized; tray visible
+[2026-05-08 08:04:32.655] [INFO ] [TRAY-CS] [Bootstrap] MainWindow shown
+[2026-05-08 08:04:32.656] [INFO ] [TRAY-CS] [Diagnostic] DiagnosticHeartbeat started (cadence 60s; mode=skeleton)
+[2026-05-08 08:04:32.656] [INFO ] [TRAY-CS] [Bootstrap] Application.OnStartup completed
+[2026-05-08 08:05:09.406] [INFO ] [TRAY-CS] [Tray] Quit clicked; calling Application.Current.Shutdown()
+[2026-05-08 08:05:09.408] [INFO ] [TRAY-CS] [Tray] MainWindow.OnClosing: TaskbarIcon disposed
+[2026-05-08 08:05:09.411] [INFO ] [TRAY-CS] [Bootstrap] Application.OnExit begin
+[2026-05-08 08:05:09.411] [INFO ] [TRAY-CS] [Diagnostic] DiagnosticHeartbeat stopped
+[2026-05-08 08:05:09.411] [INFO ] [TRAY-CS] [Detect-Orch] stopped
+[2026-05-08 08:05:09.411] [INFO ] [TRAY-CS] [Detect-SMTC] stopped
+[2026-05-08 08:05:09.412] [INFO ] [TRAY-CS] [Detect-Orch] stopped
+[2026-05-08 08:05:09.412] [INFO ] [TRAY-CS] [Detect-SMTC] stopped
+[2026-05-08 08:05:09.412] [INFO ] [TRAY-CS] [Bootstrap] DI container disposed
+[2026-05-08 08:05:09.412] [INFO ] [TRAY-CS] [Bootstrap] Single-instance mutex released
+[2026-05-08 08:05:09.412] [INFO ] [TRAY-CS] [Bootstrap] Application.OnExit completed; exit code = 0

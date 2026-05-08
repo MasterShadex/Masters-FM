@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Windows.Threading;
 using MasterFM.SMTC;
 using MastersFM.Tray.Services;
+using Windows.Media.Control;  // Stage 7.5B: TFM 10.0.19041.0 exposes the WinRT projection
 
 namespace MastersFM.Tray.Detectors;
 
@@ -210,52 +211,14 @@ public sealed class SmtcEventBridge : IDisposable
 
     private static object? AcquireSmtcManagerSync()
     {
-        // Reflection-based manager acquisition. Mirror of PS S13 pattern at
-        // tray.ps1:5301-5333. Returns null if WinRT projection unavailable
-        // OR RequestAsync times out.
+        // Stage 7.5B: With TFM net8.0-windows10.0.19041.0, the WinRT
+        // projection for Windows.Media.Control is available directly.
+        // Replaces 7.5's reflection-based path (which never worked because
+        // the assembly-qualified type names didn't match CSWinRT projection).
         try
         {
-            var managerType = Type.GetType(
-                "Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, " +
-                "Windows.Media.Control.WinMD, Version=255.255.255.255, Culture=neutral, " +
-                "PublicKeyToken=null, ContentType=WindowsRuntime");
-            if (managerType == null)
-            {
-                // Try without explicit assembly identity (newer WinRT projection)
-                managerType = Type.GetType(
-                    "Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows, ContentType=WindowsRuntime");
-            }
-            if (managerType == null) return null;
-
-            var requestAsyncMethod = managerType.GetMethod("RequestAsync", BindingFlags.Public | BindingFlags.Static);
-            if (requestAsyncMethod == null) return null;
-
-            var asyncOp = requestAsyncMethod.Invoke(null, null);
-            if (asyncOp == null) return null;
-
-            // Convert IAsyncOperation<T> to Task<T> via WindowsRuntimeSystemExtensions.AsTask
-            var extType = Type.GetType("System.WindowsRuntimeSystemExtensions, System.Runtime.WindowsRuntime");
-            if (extType == null) return null;
-
-            var asTaskMethods = extType.GetMethods()
-                .Where(m => m.Name == "AsTask" && m.IsGenericMethodDefinition && m.GetParameters().Length == 1)
-                .ToArray();
-            if (asTaskMethods.Length == 0) return null;
-
-            // Find the AsTask<T>(IAsyncOperation<T>) overload
-            var asTaskMethod = asTaskMethods.FirstOrDefault(m => m.GetParameters()[0].ParameterType.Name == "IAsyncOperation`1");
-            if (asTaskMethod == null) return null;
-
-            var generic = asTaskMethod.MakeGenericMethod(managerType);
-            var taskObj = generic.Invoke(null, new[] { asyncOp });
-            if (taskObj is not System.Threading.Tasks.Task task) return null;
-
-            // Block briefly; this happens during startup so brief block is OK
-            if (!task.Wait(5000)) return null;
-
-            // Get Result via reflection (Task<T>)
-            var resultProp = task.GetType().GetProperty("Result");
-            return resultProp?.GetValue(task);
+            var task = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask();
+            return task.Wait(5000) ? task.Result : null;
         }
         catch
         {
