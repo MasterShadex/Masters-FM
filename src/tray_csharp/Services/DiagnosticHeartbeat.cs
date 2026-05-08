@@ -55,17 +55,29 @@ public sealed class DiagnosticHeartbeat : IDisposable
             var handles = proc.HandleCount;
             var ring = _logger.SnapshotRingBuffer().Count;
 
-            var counters = _telemetry.SnapshotCounters();
-            var counterSummary = counters.Count == 0
-                ? "0"
-                : $"{counters.Count}/sum={SafeSum(counters)}";
+            // Stage 7.5: include real telemetry summary inline. The Telemetry
+            // type has a GetHeartbeatSummary helper that picks the highest-
+            // signal counters; falls back to count/sum for NullTelemetry or
+            // any other ITelemetry that doesn't expose the helper.
+            string telemetrySummary;
+            if (_telemetry is Telemetry concrete)
+            {
+                telemetrySummary = concrete.GetHeartbeatSummary();
+            }
+            else
+            {
+                var counters = _telemetry.SnapshotCounters();
+                telemetrySummary = counters.Count == 0
+                    ? "counters=0"
+                    : $"counters={counters.Count}/sum={SafeSum(counters)}";
+            }
 
-            var sb = new StringBuilder(160);
-            sb.Append("heartbeat: mode=skeleton ws=").Append(ws).Append("MB");
+            var sb = new StringBuilder(220);
+            sb.Append("heartbeat: ws=").Append(ws).Append("MB");
             sb.Append(" threads=").Append(threads);
             sb.Append(" handles=").Append(handles);
             sb.Append(" ring=").Append(ring);
-            sb.Append(" counters=").Append(counterSummary);
+            sb.Append(' ').Append(telemetrySummary);
 
             _logger.Log(sb.ToString(), "Diagnostic");
         }

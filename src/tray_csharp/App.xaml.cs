@@ -8,8 +8,10 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using MastersFM.Tray.Detectors;
 using MastersFM.Tray.Services;
 using MastersFM.Tray.Update;
+using MastersFM.Tray.ViewModels;
 
 namespace MastersFM.Tray;
 
@@ -27,6 +29,8 @@ public partial class App : Application
     private IDiscordToggleService? _discordService;
     private IAutoStartService? _autoStartService;
     private ICustomizerLauncher? _customizerLauncher;
+    private SmtcEventBridge? _smtcBridge;
+    private DetectorOrchestrator? _detectorOrchestrator;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -86,7 +90,10 @@ public partial class App : Application
         // -- DI container build --
         var collection = new ServiceCollection();
         collection.AddSingleton<ILogger, Logger>();
-        collection.AddSingleton<ITelemetry, NullTelemetry>();
+        // Stage 7.5: Real Telemetry replaces NullTelemetry default. NullTelemetry
+        // class remains in the codebase as a useful test-double but is no
+        // longer the registered ITelemetry implementation.
+        collection.AddSingleton<ITelemetry, Telemetry>();
         collection.AddSingleton<IConfigService, ConfigService>();
         collection.AddSingleton<SlowTickWatchdog>();
         collection.AddSingleton<DiagnosticHeartbeat>();
@@ -104,6 +111,17 @@ public partial class App : Application
         collection.AddSingleton<IDiscordToggleService, DiscordToggleService>();
         collection.AddSingleton<IAutoStartService, AutoStartService>();
         collection.AddSingleton<ICustomizerLauncher, CustomizerLauncher>();
+        // Stage 7.5: Detection layer (Option B+C hybrid).
+        collection.AddSingleton<PlatformDetectorOptions>();
+        collection.AddSingleton<ArtLruCache>();
+        collection.AddSingleton<WebhookClient>();
+        collection.AddSingleton<ITrackResolver, TrackResolver>();
+        collection.AddSingleton<IPlatformDetector, OsuDetector>();
+        collection.AddSingleton<IPlatformDetector, VlcHttpDetector>();
+        collection.AddSingleton<IPlatformDetector, WmpLegacyDetector>();
+        collection.AddSingleton<DetectorOrchestrator>();
+        collection.AddSingleton<SmtcEventBridge>();
+        collection.AddSingleton<NowPlayingViewModel>();
         collection.AddSingleton<MainWindow>();
         _services = collection.BuildServiceProvider();
 
@@ -168,6 +186,16 @@ public partial class App : Application
             _logger.Log($"customize.exe path resolved to: {resolved ?? "(null)"} (exists={(resolved != null && File.Exists(resolved))})", "Customizer");
         }
 
+        // -- Stage 7.5: Detection layer startup --
+        // Resolve NowPlayingViewModel so it subscribes to ITrackResolver.TrackChanged
+        // before any TrackUpdate event fires.
+        _ = _services.GetRequiredService<NowPlayingViewModel>();
+        _smtcBridge = _services.GetRequiredService<SmtcEventBridge>();
+        _detectorOrchestrator = _services.GetRequiredService<DetectorOrchestrator>();
+        _smtcBridge.Start();
+        _detectorOrchestrator.Start();
+        _logger.Log("all arms started; SMTC events live (or inactive if WinRT not projected); gap-fillers polling at 1s cadence", "Detect");
+
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --
         var mainWindow = _services.GetRequiredService<MainWindow>();
         mainWindow.Show();
@@ -194,6 +222,10 @@ public partial class App : Application
         {
             _logger?.LogErr("DiagnosticHeartbeat.Stop", ex, "Bootstrap");
         }
+
+        // Stage 7.5: stop detection arms before container disposal
+        try { _detectorOrchestrator?.Stop(); } catch (Exception ex) { _logger?.LogErr("DetectorOrchestrator.Stop", ex, "Bootstrap"); }
+        try { _smtcBridge?.Stop(); } catch (Exception ex) { _logger?.LogErr("SmtcEventBridge.Stop", ex, "Bootstrap"); }
 
         try
         {
