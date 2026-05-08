@@ -1,0 +1,19 @@
+# V14_S7_S7_1B_PROTECTED_BASELINE.md
+
+Stage 7.1B protected-file sha256 baseline captured at STEP 0.3
+(2026-05-08 ~04:35). Re-verify at STEP 10.1.
+
+| File | sha256 | Size | LastWrite | Expected at STEP 10 |
+|---|---|---:|---|---|
+| `src\tray.ps1` | `19011F0BD093CEA51CB34D053209F33FB3A37DE673777BAB34B5F8F26609533F` | 801,427 | 2026-05-07 19:09:29 | UNCHANGED |
+| `src\tray_native\tray_native.cs` | `6B9804A1AB70000652A2754E886BE3F05167F40EC136EB2CC6CDD62D8EFA9148` | 43,747 | 2026-05-04 07:58:21 | UNCHANGED |
+| `src\launcher.cs` | `291ED4C92B9BEA391BA9204323EA41BA60AD7903AF6E6D7BA9404E1056E0BD9D` | 27,559 | 2026-05-07 00:05:16 | UNCHANGED |
+| `src\server.js` | `C15ED9310CB33044A090878918DC2B89B3FB843901BA0F199D3092EF502A16AF` | 76,607 | 2026-05-02 06:19:31 | UNCHANGED |
+| `md\memory.md` | `1F8E80020E14FD5D9C25EDE67A4BF05B8ACD54D64829EC1FFA3BABF65340DEDE` | 91,071 | 2026-05-08 03:25:09 | CHANGED (one CHANGELOG APPEND per STEP 8) |
+
+`memory.md` is at its post-Stage-7.1-APPEND state (sha256 unchanged
+from re-plan baseline; re-plan was read-only). 7.1B's STEP 8 will
+append a new CHANGELOG entry, changing the sha256.
+
+If any of the four "UNCHANGED" files has a different sha256 at
+STEP 10, halt and write `V14_S7_S7_1B_HALT_REPORT.md`.

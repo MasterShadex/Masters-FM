@@ -35,10 +35,13 @@ $UseDotnet8Server = $true
 # netstandard2.0 keeps Windows PowerShell 5.1 (.NET Framework 4.x) compatibility AND stays loadable
 # by future PS7 / .NET 8 hosts (Q1=C decision). RC1 rollback path: set $false for csc.exe build.
 $UseDotnetTrayNative = $true
-# Stage 7.1 migration flag (NEW Stage 7 sub-stage; PowerShell tray to C# port, parallel sibling).
+# Stage 7 migration flag (PowerShell tray to C# port, parallel sibling project).
 # Default OFF; set $true to ALSO build dist/tray_csharp_release/MastersFM_Tray_v14.exe.
-# Does NOT install via MSI yet; cutover lands at Stage 7.10. PS tray ships unchanged either way.
-# Stage 7.1 rollback: set $false to skip C# tray build entirely; PS tray ships as before.
+# Stage 7.1B (current): WPF skeleton -- locked stack: H.NotifyIcon.Wpf + WPF-UI +
+# CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection. Replaces the
+# Stage 7.1 WinForms skeleton (committed at f7bb96e + 5fd9c8a; preserved as
+# historical reference). Does NOT install via MSI yet; cutover lands at Stage 7.10.
+# PS tray ships unchanged either way. Rollback: set $false to skip C# tray build.
 $UseDotnet8TrayCs = $false
 $log = "$logDir\rebuild_ps_$ts.log"
 
@@ -250,16 +253,20 @@ if ($UseDotnetTrayNative) {
     }
 }
 
-# Stage 7.1: optionally build the new C# tray skeleton (parallel sibling project).
+# Stage 7.1B: optionally build the WPF tray skeleton (parallel sibling project).
 # Active when $UseDotnet8TrayCs = $true (default $false; opt-in for dev).
 # Output: dist\tray_csharp_release\MastersFM_Tray_v14.exe (NOT installed via MSI yet).
 # Failure here does NOT halt the rest of the rebuild; PS tray must still build cleanly.
+# Stack: WPF + H.NotifyIcon.Wpf + WPF-UI + CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection.
+# Pinned NuGet versions documented in V14_S7_S7_1B_NUGET_PINS.md.
 if ($UseDotnet8TrayCs) {
-    L "=== Stage 7.1: building C# tray skeleton (dotnet publish, net8.0-windows, R2R) ==="
+    L "=== Stage 7.1B: building WPF tray skeleton (dotnet publish, net8.0-windows, R2R) ==="
+    L "    Pinned NuGets: H.NotifyIcon.Wpf 2.3.2, WPF-UI 4.3.0, CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.DependencyInjection 9.0.15"
     $trayCsOut  = Join-Path $root 'dist\tray_csharp_release'
     # Multi-file output (matches launcher.csproj precedent). PublishSingleFile=true with .NET 8
-    # framework-dependent + ReadyToRun bundles WindowsDesktop runtime DLLs (~165 MB skeleton);
-    # multi-file + R2R yields a small exe + apphost + .dll + .runtimeconfig.json (1-3 MB).
+    # framework-dependent + ReadyToRun bundles WindowsDesktop runtime DLLs (~165 MB skeleton in
+    # the 7.1 strike-1 attempt); multi-file + R2R yields a small exe + apphost + .dll +
+    # .runtimeconfig.json plus the four pinned NuGet DLLs (~5-10 MB total expected for WPF).
     $trayCsArgs = "publish `"$root\src\tray_csharp\MastersFM_Tray_v14.csproj`" -r win-x64 --self-contained false " +
                   "-p:PublishReadyToRun=true -c Release -o `"$trayCsOut`" --nologo -v quiet"
     $trayCsProc = Start-Process -FilePath 'dotnet' -ArgumentList $trayCsArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
@@ -267,12 +274,13 @@ if ($UseDotnet8TrayCs) {
         $trayCsExe = Join-Path $trayCsOut 'MastersFM_Tray_v14.exe'
         if (Test-Path $trayCsExe) {
             $trayCsSize = [math]::Round((Get-Item $trayCsExe).Length / 1KB, 1)
-            L "=== C# tray skeleton built: $trayCsExe ($trayCsSize KB) ==="
+            $trayCsTotalKB = [math]::Round(((Get-ChildItem $trayCsOut -File | Measure-Object Length -Sum).Sum) / 1KB, 1)
+            L "=== WPF tray skeleton built: $trayCsExe ($trayCsSize KB exe; $trayCsTotalKB KB total in dist) ==="
         } else {
-            L "  WARN: C# tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
+            L "  WARN: WPF tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
         }
     } else {
-        L "  WARN: C# tray dotnet publish failed (exit $($trayCsProc.ExitCode)) -- PS tray build continues"
+        L "  WARN: WPF tray dotnet publish failed (exit $($trayCsProc.ExitCode)) -- PS tray build continues"
     }
 }
 

@@ -1,13 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stage 7.1B: WPF skeleton (replaces Stage 7.1 WinForms). Per
+       V14_S7_REPLAN_WPF_LOCK.md locked stack:
+         WPF + H.NotifyIcon.Wpf + WPF-UI + CommunityToolkit.Mvvm
+         + Microsoft.Extensions.DependencyInjection
+       Pinned NuGet versions documented in V14_S7_S7_1B_NUGET_PINS.md.
+       PS tray (tray.ps1) ships unchanged through 7.1B; MSI cutover
+       deferred to Stage 7.10. -->
+
   <PropertyGroup>
-    <!--
-      Stage 7.1 skeleton: parallel sibling C# tray (Strategy C per V14_S7_P1_SLICING_ANALYSIS.md).
-      Builds independently. MSI does NOT install this binary; ship deferred to Stage 7.10 cutover.
-      Build flag in _full_rebuild.ps1: $UseDotnet8TrayCs (default $false). Opt-in via flag flip.
-    -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MastersFM_Tray_v14</AssemblyName>
@@ -16,29 +20,49 @@
     <Version>14.0.0-rc.1</Version>
     <AssemblyVersion>14.0.0.0</AssemblyVersion>
     <FileVersion>14.0.0.0</FileVersion>
-    <InformationalVersion>14.0.0-rc.1+stage7.1.skeleton</InformationalVersion>
+    <InformationalVersion>14.0.0-rc.1+stage7.1B.skeleton</InformationalVersion>
     <Company>MasterShadex</Company>
     <Product>Master's FM</Product>
     <Copyright>(c) MasterShadex</Copyright>
-    <!-- Workstation GC for single-threaded UI process (per V14_S7_P1_RISKS.md R14). -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <PlatformTarget>x64</PlatformTarget>
-    <!--
-      BaseIntermediateOutputPath inherited from src/Directory.Build.props
-      (apphost cross-contamination protection; resolves to src/obj/MastersFM_Tray_v14/).
-      RuntimeIdentifier / PublishSingleFile / PublishReadyToRun / Configuration are set
-      on the dotnet publish command line in _full_rebuild.ps1 (matches launcher.csproj pattern).
-    -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
-  <!--
-    Reuse tray_native.dll: provides MFM_Shell (AUMID), MasterFM.AudioPeak,
-    MasterFM.Win32Windows, MasterFM.SMTC.* (used in later sub-stages 7.5+).
-    tray_native targets netstandard2.0 (Stage 5.1 decision); references cleanly
-    from net8.0-windows since netstandard2.0 is a subset.
-  -->
+  <!-- Locked NuGet stack: pinned versions per V14_S7_S7_1B_NUGET_PINS.md -->
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.2" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.15" />
+  </ItemGroup>
+
+  <!-- Implicit usings: WPF SDK does not include System.IO by default the way the
+       WinForms SDK did; Logger.cs (preserved unchanged from Stage 7.1) relies on
+       Path / Directory / File without explicit using. Add System.IO to the
+       implicit using set so Logger.cs ports unmodified. -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <!-- Embed brand icon as a WPF Resource so MainWindow.xaml can reference it via
+       pack URI ("pack://application:,,,/MastersFM_Tray_v14;component/...").
+       H.NotifyIcon requires a BitmapFrame-compatible ImageSource (rejects
+       InteropBitmap from CreateBitmapSourceFromHIcon), so the runtime
+       Icon.ExtractAssociatedIcon -> InteropBitmap path does not work. -->
+  <ItemGroup>
+    <Resource Include="..\..\assets\MastersFM.ico">
+      <Link>assets\MastersFM.ico</Link>
+    </Resource>
+  </ItemGroup>
+
+  <!-- ProjectReference to tray_native.csproj (Stage 5.1 product). Provides
+       MFM_Shell.SetCurrentProcessExplicitAppUserModelID for AUMID, plus
+       MasterFM.AudioPeak and MasterFM.SMTC.SMTCWatcher for later sub-stages. -->
   <ItemGroup>
     <ProjectReference Include="..\tray_native\tray_native.csproj" />
   </ItemGroup>
+
 </Project>
