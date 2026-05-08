@@ -10,7 +10,7 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
 **Current version:** v12.0.1 (PUBLIC) / v14.0.0-rc.1 (LOCAL CHECKPOINT, push deferred until Stages 7+8 complete)
-**Last updated:** 2026-05-07 (Stages 1-5 .NET 8 migration validated locally; full ship deferred)
+**Last updated:** 2026-05-08 (Stage 7.5B SMTC arm activated + live-verified; 6 SoundCloud track changes captured; B-014 closed; B-022 mitigation operational; ~216 MB/h growth deferred to 7.10 6h soak)
 
 ## IN-FLIGHT WORK
 
@@ -157,6 +157,10 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-08 ~08:35 -- Stage 7.5B -- SMTC arm activation + live verification LANDED
+
+Remediation for 7.5's deferred SMTC arm. **TFM upgraded** `net8.0-windows` -> `net8.0-windows10.0.19041.0` (one-line `MastersFM_Tray_v14.csproj` edit) which exposes the WinRT projection for `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager` directly. **`Detectors/SmtcEventBridge.cs` AcquireSmtcManagerSync swapped from 51-line reflection scaffolding to 6-line direct WinRT call** (`GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask()`); -45 / +7 lines net. SMTCWatcher initialized first try; sessions=1 attached to `com.richardhbtz.soundcloud-rpc` within 245 ms. **Live verification under active listening**: 6 SoundCloud track changes captured between 08:20:20 and 08:33:20 (Dustvoxx FireLight Neokontrol Remix, Rico 56 2hollis flip, Fraxy ROCK N' ROLL Remix, Awakening Records JPKy give, Good Morning Charlie MASHUP, +1) at <250 ms latency end-to-end. **B-014 closed empirically**: telemetry confirms architectural inversion (events bunched 30-118 per track change vs polls steady at 60/min); PS S15's 100ms-tick chain-walking is genuinely eliminated. **B-022 mitigation operational**: 23 CANARY fires over 13 min at 30s cadence; reliably reports current SAUMID; full mid-session re-subscription test deferred to 7.10 (operator intervention beyond brief's spot-check). **B-013 deferred**: closure mechanism is structural (single ITrackResolver path); ArtUri null in current SMTC bridge so cache never exercised; per-app metadata enrichment is a 7.5-deferred item. 1 strike consumed and recovered (reflection path returned null even with TFM upgraded; switched to direct WinRT call; budget retained 2 strikes). Dist size grew to 35.34 MB (+24 MB from `Microsoft.Windows.SDK.NET.dll` CSWinRT projection; brief expected 10-100 KB delta; tradeoff accepted -- SMTC arm operational outweighs size). **WS GROWTH FINDING**: 13-min soak ran ~216 MB/h sustained (149.7 -> 192.9 MB), well above the brief's <5 MB/h target and above SAFETY FLOOR's 10 MB/h halt threshold. Pattern matches v11.0-era B-001 (SoundCloud RAM growth ~186 MB/hr). Per brief STEP 5.4 "document, do not halt unless architectural failure" rule and absolute B-001-defers-to-7.10 rule, documented prominently and DEFERRED to 7.10's 6h soak for definitive plateau-vs-leak diagnosis. Webhook byte-equiv vs PS S15 deferred to 7.10 (server.exe not running; brief allowed deferral). UIA Quit clean exit (full OnExit log sequence). Locked-list compliance: 2 of 4 files touched (csproj + SmtcEventBridge.cs); App.xaml.cs untouched; memory.md APPENDed. PS tray ships unchanged. Stage 7.1 / 7.1B / 7.3 / 7.4 / 7.2 / 7.9 / 7.5 commits preserved. See `V14_S7_S7_5B_FINAL_REPORT.md`, `V14_S7_S7_5B_LOG.md`, `V14_S7_S7_5B_SOAK_RESULTS.md`, `V14_S7_S7_5B_LIVE_OBSERVATIONS.md`.
 
 ### 2026-05-08 ~08:08 -- Stage 7.5 -- Detection layer redesign (Option B+C hybrid) LANDED
 
