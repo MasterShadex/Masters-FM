@@ -9,6 +9,9 @@ public sealed class NullTelemetry : ITelemetry
     private static readonly IReadOnlyDictionary<string, long> EmptyCounters =
         new Dictionary<string, long>();
 
+    private static readonly IReadOnlyDictionary<string, double> EmptyTimings =
+        new Dictionary<string, double>();
+
     public void IncrementCounter(string name, long delta = 1)
     {
         // no-op
@@ -25,4 +28,7 @@ public sealed class NullTelemetry : ITelemetry
     }
 
     public IReadOnlyDictionary<string, long> SnapshotCounters() => EmptyCounters;
+
+    /// <summary>No timings recorded; returns empty dictionary without allocation.</summary>
+    public IReadOnlyDictionary<string, double> SnapshotTimingsP99() => EmptyTimings;
 }

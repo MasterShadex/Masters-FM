@@ -164,6 +164,12 @@ public partial class App : Application
             // could exit here.
         }
 
+#if DEBUG
+        // -- Stage 7.6 STEP 3: P99 self-test (debug builds only) --
+        try { Telemetry.SelfTestP99(); _logger.Log("SnapshotTimingsP99 self-test PASS", "Bootstrap"); }
+        catch (Exception ex) { _logger.LogErr("SnapshotTimingsP99 self-test FAIL", ex, "Bootstrap"); }
+#endif
+
         // -- Resolve ConfigService and read welcome-seen flag (the one
         // behaviorally-active config in 7.4; full UI handler in 7.7) --
         _configService = _services.GetRequiredService<IConfigService>();

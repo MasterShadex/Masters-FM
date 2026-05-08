@@ -20,4 +20,11 @@ public interface ITelemetry
 
     /// <summary>Snapshot of current counter values for diagnostic readout.</summary>
     IReadOnlyDictionary<string, long> SnapshotCounters();
+
+    /// <summary>
+    /// P99 latency snapshot for each timing key.
+    /// Returns a dictionary of timing key → 99th-percentile millisecond value.
+    /// Keys with zero recorded samples are omitted.
+    /// </summary>
+    IReadOnlyDictionary<string, double> SnapshotTimingsP99();
 }
