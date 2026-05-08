@@ -209,6 +209,10 @@ public sealed class ConfigService : IConfigService, IDisposable
     public bool GetWelcomeSeen()
     {
         // Mirrors tray.ps1:1623-1636 dual-flag logic.
+        // Hotfix 7.10: normalize stored version before comparison.
+        // PS tray writes "v14.0.0-rc.1" (v-prefix); GetCurrentAppVersion()
+        // returns "14.0.0-rc.1" (no v). Ordinal compare without normalization
+        // always returned false, causing the wizard to show on every launch.
         var seenVersion = GetValue<string>("welcome_seen_version");
         if (string.IsNullOrEmpty(seenVersion))
         {
@@ -216,7 +220,21 @@ public sealed class ConfigService : IConfigService, IDisposable
             return false;
         }
         var currentVersion = GetCurrentAppVersion();
-        return string.Equals(seenVersion.Trim(), currentVersion, StringComparison.Ordinal);
+        return string.Equals(NormalizeVersion(seenVersion), currentVersion, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Strips leading "v"/"V" prefix and "+build.metadata" suffix so that
+    /// "v14.0.0-rc.1" and "14.0.0-rc.1+stage7.x" both normalize to "14.0.0-rc.1".
+    /// </summary>
+    private static string NormalizeVersion(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return v;
+        // Strip leading 'v' or 'V' written by the PS tray.
+        if (v.Length > 1 && (v[0] == 'v' || v[0] == 'V')) v = v.Substring(1);
+        // Strip '+build.metadata' from InformationalVersion.
+        var plus = v.IndexOf('+');
+        return plus >= 0 ? v.Substring(0, plus) : v;
     }
 
     public void SetWelcomeSeen(bool seen)

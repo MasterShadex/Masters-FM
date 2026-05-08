@@ -3,7 +3,6 @@
 // writes welcome_seen + welcome_seen_version to config and returns true.
 // Cancel/Skip returns false (tray still initializes; defaults stand).
 
-using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MastersFM.Tray.Services;
@@ -90,15 +89,16 @@ public sealed partial class SetupWizardViewModel : ObservableObject
                 break;
 
             case WizardStep.Platforms:
-                // Done -- persist welcome_seen flag and exit
+                // Done -- persist welcome_seen flag and exit.
+                // SetWelcomeSeen writes welcome_seen_version via GetCurrentAppVersion()
+                // (strips + build suffix) so subsequent GetWelcomeSeen() comparisons
+                // succeed. Hotfix 7.10: removed redundant SetValue("welcome_seen_version", ...)
+                // that was overwriting the correctly formatted value with the raw
+                // InformationalVersion including + build metadata.
                 try
                 {
                     _config.SetWelcomeSeen(true);
-                    var asm = Assembly.GetExecutingAssembly();
-                    var ver = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                        .InformationalVersion ?? asm.GetName().Version?.ToString() ?? "14.0.0-rc.1";
-                    _config.SetValue("welcome_seen_version", ver);
-                    _logger.Log("setup wizard completed; welcome_seen=true version=" + ver, Component);
+                    _logger.Log("setup wizard completed; welcome_seen=true", Component);
                 }
                 catch (Exception ex)
                 {
@@ -129,9 +129,11 @@ public sealed partial class SetupWizardViewModel : ObservableObject
     [RelayCommand]
     private void Skip()
     {
-        // Skip = leave defaults, do NOT mark welcome_seen. Tray still
-        // initializes after the wizard closes; future launches will
-        // re-show this wizard until the user clicks Done.
+        // Hotfix 7.10: Skip now persists the gate flag so the wizard does not
+        // re-show on subsequent launches (completed=false semantics -- step-state
+        // left at defaults; user can revisit Audio/Platforms via tray menu).
+        // Documented as ID-28 candidate per interrupt brief S1.3.
+        try { _config.SetWelcomeSeen(true); } catch { /* best-effort; tray still works */ }
         Completed = false;
         RequestClose?.Invoke();
     }
