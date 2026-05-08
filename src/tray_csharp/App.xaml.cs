@@ -4,11 +4,13 @@
 // after MainWindow shown; stopped during OnExit.
 
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using MastersFM.Tray.Detectors;
+using MastersFM.Tray.Dialogs;
 using MastersFM.Tray.Services;
 using MastersFM.Tray.Update;
 using MastersFM.Tray.ViewModels;
@@ -31,6 +33,7 @@ public partial class App : Application
     private ICustomizerLauncher? _customizerLauncher;
     private SmtcEventBridge? _smtcBridge;
     private DetectorOrchestrator? _detectorOrchestrator;
+    private IDialogService? _dialogService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -123,6 +126,24 @@ public partial class App : Application
         collection.AddSingleton<SmtcEventBridge>();
         collection.AddSingleton<NowPlayingViewModel>();
         collection.AddSingleton<MainWindow>();
+
+        // Stage 7.7: Dialogs (Welcome / Audio / Platforms / SetupWizard / Error).
+        // 6 ViewModels as singletons (state can persist across show/hide).
+        // 5 Dialog Windows as transient (each show creates a fresh instance).
+        // IDialogService as singleton (uses IServiceProvider to resolve).
+        collection.AddSingleton<WelcomeViewModel>();
+        collection.AddSingleton<AudioDeviceViewModel>();
+        collection.AddSingleton<PlatformsViewModel>();
+        collection.AddSingleton<SetupWizardViewModel>();
+        collection.AddSingleton<AboutViewModel>();
+        collection.AddSingleton<ErrorDialogViewModel>();
+        collection.AddTransient<WelcomeWindow>();
+        collection.AddTransient<AudioDeviceWindow>();
+        collection.AddTransient<PlatformsWindow>();
+        collection.AddTransient<SetupWizardWindow>();
+        collection.AddTransient<ErrorDialogWindow>();
+        collection.AddSingleton<IDialogService, DialogService>();
+
         _services = collection.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger>();
@@ -205,9 +226,94 @@ public partial class App : Application
         _heartbeat = _services.GetRequiredService<DiagnosticHeartbeat>();
         _heartbeat.Start();
 
+        // -- Stage 7.7: First-run check + dialog service ----------------
+        _dialogService = _services.GetRequiredService<IDialogService>();
+        _logger.Log("DialogService initialized; 5 dialogs registered (Welcome / Audio / Platforms / SetupWizard / Error)", "Bootstrap");
+        ScheduleFirstRunCheck();
+
         _logger.Log("Application.OnStartup completed", "Bootstrap");
 
         base.OnStartup(e);
+    }
+
+    /// <summary>
+    /// Stage 7.7 first-run check. Reads welcome_seen + welcome_seen_version
+    /// from config. If not seen for the current version, schedule SetupWizard
+    /// show after 200ms delay (let MainWindow / TaskbarIcon settle first).
+    /// Per Q-MOCK-06a=A2, all-platforms-ON default is enforced BEFORE the
+    /// wizard is shown.
+    /// </summary>
+    private void ScheduleFirstRunCheck()
+    {
+        try
+        {
+            if (_configService == null) return;
+            bool seen = _configService.GetWelcomeSeen();
+            if (seen)
+            {
+                _logger?.Log("first-run check: welcome_seen=true; skipping setup wizard", "Bootstrap");
+                return;
+            }
+
+            // Enforce all-platforms-ON default before the wizard is shown
+            // (per brief absolute rule 15).
+            EnforceAllPlatformsOnDefault();
+
+            // Defer 200ms so MainWindow / TaskbarIcon settle (per OPEN
+            // QUESTION 7 default).
+            var delay = TimeSpan.FromMilliseconds(200);
+            var timer = new DispatcherTimer { Interval = delay };
+            timer.Tick += async (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    if (_dialogService == null) return;
+                    var completed = await _dialogService.ShowSetupWizardAsync();
+                    _logger?.Log("setup wizard returned completed=" + completed, "Bootstrap");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogErr("setup wizard show", ex, "Bootstrap");
+                }
+            };
+            timer.Start();
+            _logger?.Log("first-run check: scheduling setup wizard in " + delay.TotalMilliseconds + "ms", "Bootstrap");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogErr("first-run check", ex, "Bootstrap");
+        }
+    }
+
+    private void EnforceAllPlatformsOnDefault()
+    {
+        if (_configService == null) return;
+        // Stage 7.7 absolute rule 15: per Q-MOCK-06a=A2, all-platforms-ON
+        // default on first-run. Write all 8 platform toggles to true ONLY
+        // if no value is currently set; respect any user override that
+        // somehow already exists.
+        string[] platformIds = new[] {
+            "soundcloud", "spotify", "browser", "smtcGeneric",
+            "win11Media", "osu", "vlc", "wmpLegacy"
+        };
+        foreach (var pid in platformIds)
+        {
+            try
+            {
+                var key = "platforms." + pid + ".enabled";
+                var current = _configService.GetValue<bool?>(key);
+                if (current == null)
+                {
+                    _configService.SetValue(key, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarn("platform default enforcement " + pid + ": " + ex.Message, "Bootstrap");
+            }
+        }
+        _logger?.Log("all-platforms-ON default enforced (8 platforms; respects existing user values)", "Bootstrap");
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -285,6 +391,19 @@ public partial class App : Application
         // Mark as handled to prevent the dispatcher from terminating; one
         // badness is preferable to the whole tray dying.
         e.Handled = true;
+        // Stage 7.7: surface to user via Error dialog (Surface 11). Wrap in
+        // try/catch so a dialog show failure doesn't recurse.
+        try
+        {
+            _dialogService?.ShowErrorAsync(
+                "Master's FM ran into a problem",
+                e.Exception?.Message ?? "An unexpected error occurred. Master's FM is still running.",
+                e.Exception);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogErr("error dialog show after dispatcher exception", ex, "Bootstrap");
+        }
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)

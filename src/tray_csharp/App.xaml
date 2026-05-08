@@ -1,10 +1,13 @@
 <!-- Stage 7.1B: Application root. Merged ResourceDictionary loads WPF-UI
      Fluent Dark theme + brand-purple accent override. StartupUri NOT set;
-     App.xaml.cs creates MainWindow manually so DI can inject services. -->
+     App.xaml.cs creates MainWindow manually so DI can inject services.
+     Stage 7.7: BoolToVisibilityConverter added for dialog XAML conditional
+     visibility bindings. -->
 <Application x:Class="MastersFM.Tray.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
@@ -26,6 +29,11 @@
             <Color x:Key="SystemAccentColorPrimary">#FF9333EA</Color>
             <Color x:Key="SystemAccentColorSecondary">#FFC084FC</Color>
             <Color x:Key="SystemAccentColorTertiary">#FF6D28D9</Color>
+
+            <!-- Stage 7.7: BoolToVisibilityConverter for dialog visibility bindings.
+                 Built-in WPF BooleanToVisibilityConverter; aliased as BoolToVis
+                 for terse XAML usage. -->
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

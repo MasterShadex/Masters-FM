@@ -1,9 +1,16 @@
-// Stage 7.3: DiagnosticHeartbeat. Emits a structured heartbeat log line
-// every 60 seconds with: working set MB, thread count, handle count,
-// ring-buffer depth, telemetry counter summary. Runs on a DispatcherTimer
-// (UI-thread tick to match WPF dispatcher invariants). Started from
-// App.xaml.cs OnStartup after MainWindow is shown; stopped from
-// App.xaml.cs OnExit before container disposal.
+// Stage 7.3 + 7.7: DiagnosticHeartbeat. Emits a structured heartbeat
+// log line every 60 seconds.
+//
+// Stage 7.7 adds gc / priv / polls fields to the heartbeat output
+// (Workstream 2; addresses Q-RCW-2 from 7.5C). The new fields surface
+// in 7.10's 6h soak data: separating managed-heap growth (a C# leak
+// signature) from total-WS growth (which includes unmanaged native /
+// JIT / WinRT projection).
+//
+// Cadence: 60s. Runs on DispatcherTimer (UI-thread tick to match WPF
+// dispatcher invariants). Started from App.xaml.cs OnStartup after
+// MainWindow is shown; stopped from App.xaml.cs OnExit before
+// container disposal.
 
 using System.Diagnostics;
 using System.Text;
@@ -14,6 +21,13 @@ namespace MastersFM.Tray.Services;
 public sealed class DiagnosticHeartbeat : IDisposable
 {
     private static readonly TimeSpan Cadence = TimeSpan.FromSeconds(60);
+
+    // Stage 7.7: detector poll-ms counter names emitted by DetectorOrchestrator
+    // (e.g., osu_slow_ticks, vlc_slow_ticks, wmp-legacy_slow_ticks). The
+    // heartbeat surfaces total slow-tick count and last-tick aggregate
+    // approximations as a stub. Per-detector last/slowest accurate ms values
+    // require an ITelemetry timing-snapshot accessor not added in 7.7's
+    // locked-list (documented in Stage 7.7 FINAL_REPORT).
 
     private readonly ILogger _logger;
     private readonly ITelemetry _telemetry;
@@ -51,6 +65,10 @@ public sealed class DiagnosticHeartbeat : IDisposable
         {
             using var proc = Process.GetCurrentProcess();
             var ws = Math.Round(proc.WorkingSet64 / 1024.0 / 1024.0, 1);
+            // Stage 7.7: managed-heap (GC.GetTotalMemory) vs private-memory
+            // (PrivateMemorySize64) separation for diagnostic clarity.
+            var gc = Math.Round(GC.GetTotalMemory(false) / 1024.0 / 1024.0, 1);
+            var priv = Math.Round(proc.PrivateMemorySize64 / 1024.0 / 1024.0, 1);
             var threads = proc.Threads.Count;
             var handles = proc.HandleCount;
             var ring = _logger.SnapshotRingBuffer().Count;
@@ -72,12 +90,36 @@ public sealed class DiagnosticHeartbeat : IDisposable
                     : $"counters={counters.Count}/sum={SafeSum(counters)}";
             }
 
-            var sb = new StringBuilder(220);
+            // Stage 7.7: detector slow-tick aggregate from existing counters.
+            // {detname}_slow_ticks counters track slow polls per detector.
+            // This is a coarse summary; per-detector last-ms / slowest-ms
+            // accurate values require an ITelemetry timing accessor not
+            // added in 7.7's locked-list. Future Brief: extend ITelemetry
+            // with GetTimingSnapshot(name) -> (last, slowest) and replace
+            // this stub.
+            var counters2 = _telemetry.SnapshotCounters();
+            long slowTotal = 0;
+            int detCount = 0;
+            foreach (var kv in counters2)
+            {
+                if (kv.Key.EndsWith("_slow_ticks", StringComparison.OrdinalIgnoreCase))
+                {
+                    slowTotal += kv.Value;
+                    detCount++;
+                }
+            }
+            // Format: polls=slow/detCount summarises slow-tick volume vs detector count.
+            string pollsStub = $"polls={slowTotal}slow/{detCount}det";
+
+            var sb = new StringBuilder(280);
             sb.Append("heartbeat: ws=").Append(ws).Append("MB");
+            sb.Append(" gc=").Append(gc).Append("MB");
+            sb.Append(" priv=").Append(priv).Append("MB");
             sb.Append(" threads=").Append(threads);
             sb.Append(" handles=").Append(handles);
             sb.Append(" ring=").Append(ring);
             sb.Append(' ').Append(telemetrySummary);
+            sb.Append(' ').Append(pollsStub);
 
             _logger.Log(sb.ToString(), "Diagnostic");
         }

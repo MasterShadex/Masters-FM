@@ -1,0 +1,127 @@
+// Stage 7.7: DialogService. Concrete impl of IDialogService. Resolves
+// dialog windows from DI as transient (each show creates a fresh
+// window instance). ViewModels are singletons (per App.xaml.cs DI
+// wiring), so dialog state can persist across show/hide cycles where
+// that's desired (e.g., AudioDeviceViewModel keeps its enumerated
+// device list cached).
+//
+// All Show*Async marshal to UI thread via Application.Current.Dispatcher.
+// Logs show + close at INFO level.
+
+using System.Windows;
+using Microsoft.Extensions.DependencyInjection;
+using MastersFM.Tray.Services;
+using MastersFM.Tray.ViewModels;
+
+namespace MastersFM.Tray.Dialogs;
+
+public sealed class DialogService : IDialogService
+{
+    private const string Component = "Dialog";
+
+    private readonly ILogger _logger;
+    private readonly IServiceProvider _services;
+
+    public DialogService(ILogger logger, IServiceProvider services)
+    {
+        _logger = logger;
+        _services = services;
+    }
+
+    public Task ShowWelcomeAsync(bool showAboutTab = false)
+    {
+        return ShowOnDispatcherAsync(() =>
+        {
+            _logger.Log("showing Welcome (showAboutTab=" + showAboutTab + ")", Component);
+            var window = _services.GetRequiredService<WelcomeWindow>();
+            var vm = _services.GetRequiredService<WelcomeViewModel>();
+            vm.ShowAboutTab = showAboutTab;
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            window.ShowDialog();
+            _logger.Log("Welcome closed", Component);
+        });
+    }
+
+    public Task<AudioDeviceResult?> ShowAudioDeviceAsync()
+    {
+        return ShowOnDispatcherAsync<AudioDeviceResult?>(() =>
+        {
+            _logger.Log("showing AudioDevice", Component);
+            var window = _services.GetRequiredService<AudioDeviceWindow>();
+            var vm = _services.GetRequiredService<AudioDeviceViewModel>();
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            // Trigger initial enumeration if not already loaded
+            _ = vm.RefreshAsync();
+            window.ShowDialog();
+            var result = vm.PendingResult;
+            _logger.Log("AudioDevice closed result=" + (result?.DisplayName ?? "(cancelled)"), Component);
+            return result;
+        });
+    }
+
+    public Task ShowPlatformsAsync()
+    {
+        return ShowOnDispatcherAsync(() =>
+        {
+            _logger.Log("showing Platforms", Component);
+            var window = _services.GetRequiredService<PlatformsWindow>();
+            var vm = _services.GetRequiredService<PlatformsViewModel>();
+            vm.RefreshFromConfig();
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            window.ShowDialog();
+            _logger.Log("Platforms closed", Component);
+        });
+    }
+
+    public Task<bool> ShowSetupWizardAsync()
+    {
+        return ShowOnDispatcherAsync<bool>(() =>
+        {
+            _logger.Log("showing SetupWizard", Component);
+            var window = _services.GetRequiredService<SetupWizardWindow>();
+            var vm = _services.GetRequiredService<SetupWizardViewModel>();
+            vm.Reset();
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            window.ShowDialog();
+            var completed = vm.Completed;
+            _logger.Log("SetupWizard closed completed=" + completed, Component);
+            return completed;
+        });
+    }
+
+    public Task ShowErrorAsync(string title, string message, Exception? ex = null)
+    {
+        return ShowOnDispatcherAsync(() =>
+        {
+            _logger.Log("showing Error title=" + title, Component);
+            var window = _services.GetRequiredService<ErrorDialogWindow>();
+            var vm = _services.GetRequiredService<ErrorDialogViewModel>();
+            vm.Populate(title, message, ex);
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            window.ShowDialog();
+            _logger.Log("Error closed", Component);
+        });
+    }
+
+    // -- Dispatcher marshalling helpers --
+    private Task ShowOnDispatcherAsync(Action action)
+    {
+        var disp = Application.Current?.Dispatcher;
+        if (disp == null) { action(); return Task.CompletedTask; }
+        if (disp.CheckAccess()) { action(); return Task.CompletedTask; }
+        return disp.InvokeAsync(action).Task;
+    }
+
+    private Task<T> ShowOnDispatcherAsync<T>(Func<T> func)
+    {
+        var disp = Application.Current?.Dispatcher;
+        if (disp == null) { return Task.FromResult(func()); }
+        if (disp.CheckAccess()) { return Task.FromResult(func()); }
+        return disp.InvokeAsync(func).Task;
+    }
+}

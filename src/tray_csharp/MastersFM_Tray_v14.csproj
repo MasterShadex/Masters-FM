@@ -65,4 +65,12 @@
     <ProjectReference Include="..\tray_native\tray_native.csproj" />
   </ItemGroup>
 
+  <!-- Stage 7.7: embed patch_notes.json (extracted from tray.ps1 PATCH_HISTORY
+       at brief-start time). Loaded by WelcomeViewModel via
+       Assembly.GetManifestResourceStream. ~332 KB; per brief STEP 3.3 explicit
+       allowance. -->
+  <ItemGroup>
+    <EmbeddedResource Include="patch_notes.json" />
+  </ItemGroup>
+
 </Project>

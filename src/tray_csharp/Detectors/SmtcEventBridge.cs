@@ -21,6 +21,7 @@ using System.Windows.Threading;
 using MasterFM.SMTC;
 using MastersFM.Tray.Services;
 using Windows.Media.Control;  // Stage 7.5B: TFM 10.0.19041.0 exposes the WinRT projection
+using Windows.Storage.Streams;  // Stage 7.7: thumbnail extraction (B-013 closure)
 
 namespace MastersFM.Tray.Detectors;
 
@@ -134,6 +135,25 @@ public sealed class SmtcEventBridge : IDisposable
             return;
         }
 
+        // Stage 7.7: art extraction (Workstream 3; B-013 empirical closure).
+        // Best-effort thumbnail read via WinRT TryGetMediaPropertiesAsync.
+        // SMTCWatcher already extracted Title/Artist/Album into snap; the
+        // raw MediaPropertiesRcw on snap may carry the Thumbnail reference
+        // but isn't always usable on cross-thread/dispose timing. Re-fetch
+        // for thumbnail via the active SessionRef. Wrapped in try/catch:
+        // some SMTC sources (soundcloud-rpc) don't publish thumbnails;
+        // failures must NOT break the track update flow.
+        string? artUri = null;
+        try
+        {
+            artUri = TryExtractThumbnail(snap.SessionRef);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarn("thumbnail extraction failed (non-fatal): " + ex.Message, Component);
+            _telemetry.IncrementCounter("art_extract_errors");
+        }
+
         var update = new TrackUpdate
         {
             Source = sourceName,
@@ -143,6 +163,7 @@ public sealed class SmtcEventBridge : IDisposable
             Duration = snap.DurationMs > 0 ? TimeSpan.FromMilliseconds(snap.DurationMs) : null,
             Position = snap.PositionMs > 0 ? TimeSpan.FromMilliseconds(snap.PositionMs) : null,
             IsPlaying = (snap.PlaybackStatusValue == 4),  // 4 = Playing per WinRT spec
+            ArtUri = artUri,
             PlatformIdentity = saumid,
             ObservedUtc = ev.UtcTime
         };
@@ -219,6 +240,54 @@ public sealed class SmtcEventBridge : IDisposable
         {
             var task = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask();
             return task.Wait(5000) ? task.Result : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Stage 7.7: Thumbnail extraction (Workstream 3 / B-013 closure).
+    // Calls TryGetMediaPropertiesAsync on the active session; reads the
+    // Thumbnail RandomAccessStreamReference; opens the stream; copies bytes
+    // via DataReader; encodes as base64 data URI: data:image/jpeg;base64,...
+    //
+    // Bounded timeout via Wait. Null-safe at every step. Returns null if
+    // the session has no thumbnail (common for soundcloud-rpc) or if the
+    // stream open / read fails.
+    private static string? TryExtractThumbnail(object? sessionObj)
+    {
+        if (sessionObj == null) return null;
+        if (sessionObj is not GlobalSystemMediaTransportControlsSession session) return null;
+        try
+        {
+            var propsTask = session.TryGetMediaPropertiesAsync().AsTask();
+            if (!propsTask.Wait(1500)) return null;
+            var props = propsTask.Result;
+            if (props == null) return null;
+            var thumb = props.Thumbnail;
+            if (thumb == null) return null;
+
+            var openTask = thumb.OpenReadAsync().AsTask();
+            if (!openTask.Wait(1500)) return null;
+            using var stream = openTask.Result;
+            if (stream == null) return null;
+            var size = (uint)stream.Size;
+            // Cap at 4 MB to avoid pathological allocations on misbehaving sources
+            if (size == 0 || size > 4 * 1024 * 1024) return null;
+
+            using var reader = new DataReader(stream);
+            var loadTask = reader.LoadAsync(size).AsTask();
+            if (!loadTask.Wait(1500)) return null;
+            byte[] bytes = new byte[size];
+            reader.ReadBytes(bytes);
+
+            // SMTC thumbnails are typically JPEG; assume image/jpeg unless
+            // the bytes magic-match PNG (89 50 4E 47). Cheap discriminator.
+            string mime = (bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 &&
+                           bytes[2] == 0x4E && bytes[3] == 0x47)
+                          ? "image/png" : "image/jpeg";
+            return "data:" + mime + ";base64," + Convert.ToBase64String(bytes);
         }
         catch
         {

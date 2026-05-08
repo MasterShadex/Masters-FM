@@ -1,0 +1,146 @@
+// Stage 7.7: SetupWizardViewModel. Backs SetupWizardWindow (Surface 09).
+// 3-step internal navigation: Welcome -> Audio -> Platforms. On Done,
+// writes welcome_seen + welcome_seen_version to config and returns true.
+// Cancel/Skip returns false (tray still initializes; defaults stand).
+
+using System.Reflection;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using MastersFM.Tray.Services;
+
+namespace MastersFM.Tray.ViewModels;
+
+public enum WizardStep
+{
+    Welcome = 1,
+    Audio = 2,
+    Platforms = 3
+}
+
+public sealed partial class SetupWizardViewModel : ObservableObject
+{
+    private const string Component = "SetupWizard";
+
+    private readonly ILogger _logger;
+    private readonly IConfigService _config;
+
+    [ObservableProperty]
+    private WizardStep currentStep = WizardStep.Welcome;
+
+    [ObservableProperty]
+    private string stepLabel = "Step 1 / 3";
+
+    [ObservableProperty]
+    private bool canGoBack;
+
+    [ObservableProperty]
+    private bool canGoForward = true;
+
+    [ObservableProperty]
+    private string forwardButtonLabel = "Continue";
+
+    [ObservableProperty]
+    private bool completed;
+
+    public WelcomeViewModel WelcomeVm { get; }
+    public AudioDeviceViewModel AudioVm { get; }
+    public PlatformsViewModel PlatformsVm { get; }
+
+    public Action? RequestClose { get; set; }
+
+    public SetupWizardViewModel(ILogger logger, IConfigService config,
+        WelcomeViewModel welcomeVm, AudioDeviceViewModel audioVm, PlatformsViewModel platformsVm)
+    {
+        _logger = logger;
+        _config = config;
+        WelcomeVm = welcomeVm;
+        AudioVm = audioVm;
+        PlatformsVm = platformsVm;
+
+        // First-run platform default enforcement happens in App.xaml.cs
+        // BEFORE this VM is constructed (per brief absolute rule 15).
+        Reset();
+    }
+
+    public void Reset()
+    {
+        CurrentStep = WizardStep.Welcome;
+        Completed = false;
+        UpdateStepUi();
+    }
+
+    [RelayCommand]
+    private async Task NextAsync()
+    {
+        switch (CurrentStep)
+        {
+            case WizardStep.Welcome:
+                CurrentStep = WizardStep.Audio;
+                UpdateStepUi();
+                // Trigger audio enumeration when arriving at the audio step
+                _ = AudioVm.RefreshAsync();
+                await Task.CompletedTask;
+                break;
+
+            case WizardStep.Audio:
+                CurrentStep = WizardStep.Platforms;
+                UpdateStepUi();
+                PlatformsVm.RefreshFromConfig();
+                await Task.CompletedTask;
+                break;
+
+            case WizardStep.Platforms:
+                // Done -- persist welcome_seen flag and exit
+                try
+                {
+                    _config.SetWelcomeSeen(true);
+                    var asm = Assembly.GetExecutingAssembly();
+                    var ver = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                        .InformationalVersion ?? asm.GetName().Version?.ToString() ?? "14.0.0-rc.1";
+                    _config.SetValue("welcome_seen_version", ver);
+                    _logger.Log("setup wizard completed; welcome_seen=true version=" + ver, Component);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogErr("persist welcome_seen on done", ex, Component);
+                }
+                Completed = true;
+                RequestClose?.Invoke();
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private void Back()
+    {
+        switch (CurrentStep)
+        {
+            case WizardStep.Audio:
+                CurrentStep = WizardStep.Welcome;
+                UpdateStepUi();
+                break;
+            case WizardStep.Platforms:
+                CurrentStep = WizardStep.Audio;
+                UpdateStepUi();
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private void Skip()
+    {
+        // Skip = leave defaults, do NOT mark welcome_seen. Tray still
+        // initializes after the wizard closes; future launches will
+        // re-show this wizard until the user clicks Done.
+        Completed = false;
+        RequestClose?.Invoke();
+    }
+
+    private void UpdateStepUi()
+    {
+        StepLabel = "Step " + (int)CurrentStep + " / 3";
+        CanGoBack = CurrentStep != WizardStep.Welcome;
+        ForwardButtonLabel = (CurrentStep == WizardStep.Platforms) ? "Done" : "Continue";
+        CanGoForward = true;
+    }
+}
