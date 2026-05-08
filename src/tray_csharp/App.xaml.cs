@@ -3,11 +3,13 @@
 // used for everything after container build. DiagnosticHeartbeat started
 // after MainWindow shown; stopped during OnExit.
 
+using System.Net.Http;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using MastersFM.Tray.Services;
+using MastersFM.Tray.Update;
 
 namespace MastersFM.Tray;
 
@@ -21,6 +23,7 @@ public partial class App : Application
     private ILogger? _logger;
     private DiagnosticHeartbeat? _heartbeat;
     private IConfigService? _configService;
+    private IUpdateCheckService? _updateService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -84,11 +87,35 @@ public partial class App : Application
         collection.AddSingleton<IConfigService, ConfigService>();
         collection.AddSingleton<SlowTickWatchdog>();
         collection.AddSingleton<DiagnosticHeartbeat>();
+        // Stage 7.2: Update-check stack.
+        collection.AddSingleton<HttpClient>(_ =>
+        {
+            var hc = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            hc.DefaultRequestHeaders.UserAgent.ParseAdd("MastersFM/14.0.0-rc.1 (UpdateCheck)");
+            return hc;
+        });
+        collection.AddSingleton<IUpdateCheckService, UpdateCheckService>();
+        collection.AddSingleton<UpdateCheckViewModel>();
+        collection.AddTransient<UpdateProgressWindow>();
         collection.AddSingleton<MainWindow>();
         _services = collection.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger>();
-        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, MainWindow registered)", "Bootstrap");
+        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, MainWindow registered)", "Bootstrap");
+
+        // -- Stage 7.2: R6 closure self-test (11 SemVer/regex synthetic cases) --
+        var semVerFailures = SemVerComparer.RunSelfTest((level, msg) =>
+        {
+            if (level == "TEST") _logger.Log(msg, "Update");
+        });
+        if (semVerFailures > 0)
+        {
+            _logger.LogErr($"R6 closure FAILED: {semVerFailures} SemVerComparer test cases failed", null, "Update");
+            // Brief absolute rule 5: HALT recommended on R6 failure. We log
+            // hard but don't crash the app -- the skeleton stays alive so the
+            // operator can see the failure in the log. Future strict mode
+            // could exit here.
+        }
 
         // -- Resolve ConfigService and read welcome-seen flag (the one
         // behaviorally-active config in 7.4; full UI handler in 7.7) --
@@ -96,6 +123,27 @@ public partial class App : Application
         var welcomeSeen = _configService.GetWelcomeSeen();
         _logger.Log($"welcome-seen={welcomeSeen}", "Bootstrap");
         _configService.Changed += OnConfigChanged;
+
+        // -- Stage 7.2: schedule startup update check if last check is older
+        // than 6 hours (per brief STEP 4.9 cadence) --
+        _updateService = _services.GetRequiredService<IUpdateCheckService>();
+        var lastChecked = _updateService.LastCheckedUtc;
+        var sinceLast = lastChecked.HasValue ? (DateTime.UtcNow - lastChecked.Value) : TimeSpan.MaxValue;
+        if (sinceLast >= TimeSpan.FromHours(6))
+        {
+            var lastDisplay = lastChecked.HasValue ? lastChecked.Value.ToString("o") : "(never)";
+            _logger.Log($"startup check scheduled (last={lastDisplay})", "Update");
+            // fire-and-forget; runs in background
+            _ = Task.Run(async () =>
+            {
+                try { await _updateService.CheckNowAsync(); }
+                catch (Exception ex) { _logger.LogErr("startup check fire-and-forget", ex, "Update"); }
+            });
+        }
+        else
+        {
+            _logger.Log($"startup check skipped; last check {(int)sinceLast.TotalMinutes} min ago (threshold 6h)", "Update");
+        }
 
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --
         var mainWindow = _services.GetRequiredService<MainWindow>();

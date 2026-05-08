@@ -26,6 +26,16 @@ public sealed class ConfigService : IConfigService, IDisposable
     private static readonly JsonSerializerOptions _jsonWriteOpts = new()
     {
         WriteIndented = true,
+        // .NET 8 requires an explicit TypeInfoResolver when the options are
+        // marked read-only (which happens after first use of a static-readonly
+        // instance). DefaultJsonTypeInfoResolver provides reflection-based
+        // resolution for arbitrary types passed to JsonValue.Create<T>.
+        // Without this, ToJsonString throws InvalidOperationException on the
+        // first SetValue call. (Latent 7.4 ConfigService bug surfaced during
+        // 7.2 smoke when update.lastChecked persistence first exercised the
+        // C# write path; 7.4 verified the write path by code review only,
+        // missing this runtime-only failure mode.)
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
     };
 
     private readonly ILogger _logger;

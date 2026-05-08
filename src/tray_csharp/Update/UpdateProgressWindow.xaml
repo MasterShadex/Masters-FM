@@ -1,0 +1,99 @@
+<!-- Stage 7.2: UpdateProgressWindow per Surface 07 mockup from
+     V14_S7_REPLAN_MOCKUPS.md. Brand-purple themed via DynamicResource
+     references to App.xaml accent palette (SystemAccentColorPrimaryBrush
+     = #9333EA per design language section 2.2). Zero hardcoded hex
+     colors (per brief absolute rule 14). All XAML bindings target
+     primitive properties on UpdateCheckViewModel; no custom converters
+     needed. -->
+<Window x:Class="MastersFM.Tray.Update.UpdateProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="{Binding StatusText}"
+        Width="480"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding StatusText}"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   Margin="0,0,0,16" />
+
+        <!-- Progress bar (brand purple via SystemAccentColorPrimaryBrush override in App.xaml) -->
+        <ProgressBar Grid.Row="1"
+                     Height="8"
+                     Minimum="0"
+                     Maximum="100"
+                     Value="{Binding ProgressPercent}"
+                     IsIndeterminate="{Binding IsProgressIndeterminate}"
+                     Foreground="{DynamicResource SystemAccentColorPrimaryBrush}"
+                     Background="{DynamicResource ControlFillColorDefaultBrush}"
+                     Margin="0,0,0,16" />
+
+        <!-- Detail text (state-specific guidance) -->
+        <TextBlock Grid.Row="2"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                   FontSize="13"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16">
+            <Run Text="Last checked: " />
+            <Run Text="{Binding LastCheckedDisplay}" />
+        </TextBlock>
+
+        <!-- Authenticode badge (visible only when Ready) -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource SystemAccentColorPrimaryBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12,8"
+                Margin="0,0,0,16"
+                Visibility="{Binding AuthenticodeBadgeVisibility}">
+            <TextBlock Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                       FontSize="12">
+                <Run Text="Authenticode verified" FontWeight="SemiBold" />
+                <Run Text="  *  CN=MasterShadex" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </TextBlock>
+        </Border>
+
+        <!-- Action buttons -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <ui:Button Content="Check Now"
+                       Command="{Binding CheckNowCommand}"
+                       IsEnabled="{Binding IsCheckNowEnabled}"
+                       Margin="0,0,8,0"
+                       MinWidth="100" />
+            <ui:Button Content="Download"
+                       Command="{Binding DownloadCommand}"
+                       IsEnabled="{Binding IsDownloadEnabled}"
+                       Margin="0,0,8,0"
+                       MinWidth="100" />
+            <ui:Button Content="Install"
+                       Command="{Binding InstallCommand}"
+                       IsEnabled="{Binding IsInstallEnabled}"
+                       Appearance="Primary"
+                       Margin="0,0,8,0"
+                       MinWidth="100" />
+            <ui:Button Content="Cancel"
+                       Command="{Binding CancelCommand}"
+                       IsEnabled="{Binding IsCancelEnabled}"
+                       MinWidth="100" />
+        </StackPanel>
+    </Grid>
+</Window>
