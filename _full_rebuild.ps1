@@ -42,7 +42,7 @@ $UseDotnetTrayNative = $true
 # Stage 7.1 WinForms skeleton (committed at f7bb96e + 5fd9c8a; preserved as
 # historical reference). Does NOT install via MSI yet; cutover lands at Stage 7.10.
 # PS tray ships unchanged either way. Rollback: set $false to skip C# tray build.
-$UseDotnet8TrayCs = $false
+$UseDotnet8TrayCs = $true
 $log = "$logDir\rebuild_ps_$ts.log"
 
 function L($msg) { $t = Get-Date -Format 'HH:mm:ss'; "$t  $msg" | Tee-Object -FilePath $log -Append | Write-Host }
@@ -254,7 +254,7 @@ if ($UseDotnetTrayNative) {
 }
 
 # Stage 7.1B: optionally build the WPF tray skeleton (parallel sibling project).
-# Active when $UseDotnet8TrayCs = $true (default $false; opt-in for dev).
+# Active when $UseDotnet8TrayCs = $false (default $false; opt-in for dev).
 # Output: dist\tray_csharp_release\MastersFM_Tray_v14.exe (NOT installed via MSI yet).
 # Failure here does NOT halt the rest of the rebuild; PS tray must still build cleanly.
 # Stack: WPF + H.NotifyIcon.Wpf + WPF-UI + CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection.
@@ -589,3 +589,5 @@ try {
 } catch { L "  WARN: Desktop bundle copy failed - $_" }
 
 L "=== REBUILD DONE OK ==="
+
+

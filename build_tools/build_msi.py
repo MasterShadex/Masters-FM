@@ -91,6 +91,26 @@ GUID_COMP42  = "{DDDDDDDD-FFFF-EEEE-FFFF-000000000004}"  # web.config (IIS hosti
 # Stage 4.10 (Discord RPC) - Lachee.DiscordRPC NuGet runtime DLL + transitive Newtonsoft.Json
 GUID_COMP43  = "{EEEEEEEE-FFFF-FFFF-0000-111111111115}"  # DiscordRPC.dll (Lachee.DiscordRPC 1.2.1.24)
 GUID_COMP44  = "{FFFFFFFF-FFFF-0000-1111-222222222226}"  # Newtonsoft.Json.dll (DiscordRPC transitive dep)
+# Stage 7.10 (.NET 8 WPF C# tray) - satellite DLLs from dotnet publish (Pattern B cutover)
+# MastersFM_Tray_v14.exe is handled by the modified GUID_COMP14 entry (installed as MastersFM_Tray.exe)
+# tray_native.dll is already GUID_COMP28 -- NOT duplicated here
+# MastersFM_Tray_v14.pdb and tray_native.pdb excluded (debug symbols only)
+GUID_COMP45  = "{11111111-BBBB-7777-8888-999999999997}"  # MastersFM_Tray_v14.dll
+GUID_COMP46  = "{22222222-BBBB-7777-8888-999999999997}"  # MastersFM_Tray_v14.runtimeconfig.json
+GUID_COMP47  = "{33333333-BBBB-7777-8888-999999999997}"  # MastersFM_Tray_v14.deps.json
+GUID_COMP48  = "{44444444-BBBB-7777-8888-999999999997}"  # CommunityToolkit.Mvvm.dll
+GUID_COMP49  = "{55555555-BBBB-7777-8888-999999999997}"  # H.GeneratedIcons.System.Drawing.dll
+GUID_COMP50  = "{66666666-BBBB-7777-8888-999999999997}"  # H.NotifyIcon.dll
+GUID_COMP51  = "{77777777-BBBB-7777-8888-999999999997}"  # H.NotifyIcon.Wpf.dll
+GUID_COMP52  = "{88888888-BBBB-7777-8888-999999999997}"  # Microsoft.Extensions.DependencyInjection.Abstractions.dll
+GUID_COMP53  = "{99999999-BBBB-7777-8888-999999999997}"  # Microsoft.Extensions.DependencyInjection.dll
+GUID_COMP54  = "{AAAAAAAA-BBBB-7777-8888-999999999997}"  # Microsoft.Win32.SystemEvents.dll
+GUID_COMP55  = "{BBBBBBBB-BBBB-7777-8888-999999999997}"  # Microsoft.Windows.SDK.NET.dll
+GUID_COMP56  = "{CCCCCCCC-BBBB-7777-8888-999999999997}"  # System.Drawing.Common.dll
+GUID_COMP57  = "{DDDDDDDD-BBBB-7777-8888-999999999997}"  # System.Private.Windows.Core.dll
+GUID_COMP58  = "{EEEEEEEE-BBBB-7777-8888-999999999997}"  # WinRT.Runtime.dll
+GUID_COMP59  = "{FFFFFFFF-BBBB-7777-8888-999999999997}"  # Wpf.Ui.Abstractions.dll
+GUID_COMP60  = "{11111111-CCCC-7777-8888-999999999997}"  # Wpf.Ui.dll
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
@@ -106,7 +126,7 @@ FILES = [
     ("Microsoft.Web.WebView2.Core.dll",    "Microsoft.Web.WebView2.Core.dll",    GUID_COMP11),
     ("Microsoft.Web.WebView2.WinForms.dll","Microsoft.Web.WebView2.WinForms.dll",GUID_COMP12),
     ("WebView2Loader.dll",                 "WebView2Loader.dll",                 GUID_COMP13),
-    ("MastersFM_Tray.exe",                 "MastersFM_Tray.exe",                 GUID_COMP14),  # PowerShell-in-process host (replaces raw powershell.exe child)
+    ("dist/tray_csharp_release/MastersFM_Tray_v14.exe", "MastersFM_Tray.exe",    GUID_COMP14),  # WPF C# tray (Pattern B: installed as MastersFM_Tray.exe; apphost rename safe)
     ("audio_spectrum.exe",                 "audio_spectrum.exe",                 GUID_COMP15),  # multi-backend (WASAPI/MME/KS/ASIO) spectrum provider (v5.3.0)
     ("NAudio.Core.dll",                    "NAudio.Core.dll",                    GUID_COMP16),  # NAudio core (needed by audio_spectrum.exe)
     ("NAudio.Wasapi.dll",                  "NAudio.Wasapi.dll",                  GUID_COMP17),  # NAudio WASAPI loopback + capture
@@ -171,6 +191,31 @@ if os.path.exists(_net10_server_dll):
         ("Newtonsoft.Json.dll",                      "Newtonsoft.Json.dll",                      GUID_COMP44),
     ]
     FILES.extend([(s, d, g) for s, d, g in _optional if os.path.exists(os.path.join(SRC, s))])
+
+# Stage 7.10: .NET 8 WPF tray satellite DLLs (Pattern B cutover).
+# MastersFM_Tray_v14.exe itself is already in GUID_COMP14 above (installed as MastersFM_Tray.exe).
+# tray_native.dll is already GUID_COMP28 -- skipped here to avoid duplicate component error.
+# .pdb files excluded (debug symbols, not shipped).
+_cs_tray_dll = os.path.join(SRC, "dist", "tray_csharp_release", "MastersFM_Tray_v14.dll")
+if os.path.exists(_cs_tray_dll):
+    FILES.extend([
+        ("dist/tray_csharp_release/MastersFM_Tray_v14.dll",                                "MastersFM_Tray_v14.dll",                                GUID_COMP45),
+        ("dist/tray_csharp_release/MastersFM_Tray_v14.runtimeconfig.json",                 "MastersFM_Tray_v14.runtimeconfig.json",                 GUID_COMP46),
+        ("dist/tray_csharp_release/MastersFM_Tray_v14.deps.json",                          "MastersFM_Tray_v14.deps.json",                          GUID_COMP47),
+        ("dist/tray_csharp_release/CommunityToolkit.Mvvm.dll",                             "CommunityToolkit.Mvvm.dll",                             GUID_COMP48),
+        ("dist/tray_csharp_release/H.GeneratedIcons.System.Drawing.dll",                   "H.GeneratedIcons.System.Drawing.dll",                   GUID_COMP49),
+        ("dist/tray_csharp_release/H.NotifyIcon.dll",                                      "H.NotifyIcon.dll",                                      GUID_COMP50),
+        ("dist/tray_csharp_release/H.NotifyIcon.Wpf.dll",                                  "H.NotifyIcon.Wpf.dll",                                  GUID_COMP51),
+        ("dist/tray_csharp_release/Microsoft.Extensions.DependencyInjection.Abstractions.dll", "Microsoft.Extensions.DependencyInjection.Abstractions.dll", GUID_COMP52),
+        ("dist/tray_csharp_release/Microsoft.Extensions.DependencyInjection.dll",          "Microsoft.Extensions.DependencyInjection.dll",          GUID_COMP53),
+        ("dist/tray_csharp_release/Microsoft.Win32.SystemEvents.dll",                      "Microsoft.Win32.SystemEvents.dll",                      GUID_COMP54),
+        ("dist/tray_csharp_release/Microsoft.Windows.SDK.NET.dll",                         "Microsoft.Windows.SDK.NET.dll",                         GUID_COMP55),
+        ("dist/tray_csharp_release/System.Drawing.Common.dll",                             "System.Drawing.Common.dll",                             GUID_COMP56),
+        ("dist/tray_csharp_release/System.Private.Windows.Core.dll",                       "System.Private.Windows.Core.dll",                       GUID_COMP57),
+        ("dist/tray_csharp_release/WinRT.Runtime.dll",                                     "WinRT.Runtime.dll",                                     GUID_COMP58),
+        ("dist/tray_csharp_release/Wpf.Ui.Abstractions.dll",                               "Wpf.Ui.Abstractions.dll",                               GUID_COMP59),
+        ("dist/tray_csharp_release/Wpf.Ui.dll",                                            "Wpf.Ui.dll",                                            GUID_COMP60),
+    ])
 
 MSIDBOPEN_CREATE = ctypes.c_wchar_p(3)
 
