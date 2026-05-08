@@ -25,8 +25,12 @@
                     NoLeftClickDelay="True">
 
         <tb:TaskbarIcon.ContextMenu>
-            <!-- Background and Mica backdrop wired in STEP 11 (OnLoaded code-behind). -->
-            <ContextMenu MinWidth="220">
+            <!-- Background: TrayMenuBackgroundBrush (solid dark, 85% alpha) is the
+                 default (Win10 / older Win11 branch B). On Win11 22H2+ OnLoaded
+                 code-behind overrides to Transparent and applies Mica via
+                 ContextMenuExtensions.ApplyMica (branch A). -->
+            <ContextMenu MinWidth="220"
+                         Background="{StaticResource TrayMenuBackgroundBrush}">
 
                 <!-- 1. Now-playing row: art + artist + track. IsEnabled=false so clicks
                         pass through; the row is display-only in 7.6. -->

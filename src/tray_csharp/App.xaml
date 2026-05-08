@@ -34,6 +34,20 @@
                  Built-in WPF BooleanToVisibilityConverter; aliased as BoolToVis
                  for terse XAML usage. -->
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+            <!-- Stage 7.6 STEP 11: TrayMenu design tokens for Surface 03 ContextMenu.
+                 Branch A (Win11 22H2+): Background overridden to Transparent in code-behind
+                 after ContextMenuExtensions.ApplyMica is applied.
+                 Branch B (Win10 / earlier): TrayMenuBackgroundBrush is the active background.
+                 No hardcoded hex in XAML attribute values — all colours live here as resources. -->
+            <!-- ≈85% alpha dark background (fallback when Mica unsupported) -->
+            <SolidColorBrush x:Key="TrayMenuBackgroundBrush" Color="#D91A1A1A" />
+            <!-- Separator line -->
+            <SolidColorBrush x:Key="TrayMenuSeparatorBrush" Color="#FF3A3A3A" />
+            <!-- Brand-purple header accent -->
+            <SolidColorBrush x:Key="TrayMenuHeaderBrush" Color="#FF9333EA" />
+            <!-- 20% white hover overlay -->
+            <SolidColorBrush x:Key="TrayMenuItemHoverBrush" Color="#33FFFFFF" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

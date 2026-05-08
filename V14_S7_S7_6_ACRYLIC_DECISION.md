@@ -67,18 +67,29 @@ as the default; code-behind overrides to Transparent + ApplyMica if branch A.
 
 ## Implementation note for STEP 11
 
-`ContextMenuExtensions.ApplyMica` must be called AFTER the ContextMenu popup is
-open (its hwnd exists). Safe call site: `ContextMenu.Opened` event handler wired
-once in MainWindow code-behind `OnLoaded`. The handler calls `ApplyMica` only if
-`_micaSupported` is true.
+**UPDATE (STEP 11 implementation):** `ContextMenuExtensions` is `internal` in the
+WPF-UI 4.3.0 compiled assembly and cannot be called from this project. It appears
+in the XML docs but is not part of the public API surface.
+
+**Actual implementation** uses `WindowBackdrop.ApplyBackdrop(IntPtr, WindowBackdropType)`
+(public) with `PresentationSource.FromVisual(cm)` to obtain the popup hwnd.
+`WindowBackdropType.Acrylic` (= `DWMSBT_TRANSIENTWINDOW`) is used instead of Mica
+because Acrylic/Transient is semantically correct for popup windows; Mica/MainWindow
+is for primary application windows.
 
 ```csharp
-// In MainWindow.OnLoaded (STEP 11):
-_micaSupported = WindowBackdrop.IsSupported(WindowBackdropType.Mica);
-if (_micaSupported)
+// In MainWindow.OnLoaded (STEP 11, as implemented):
+var acrylicSupported = WindowBackdrop.IsSupported(WindowBackdropType.Acrylic);
+if (acrylicSupported && NotifyIcon.ContextMenu != null)
 {
     var cm = NotifyIcon.ContextMenu;
-    if (cm != null)
-        cm.Opened += (_, _) => ContextMenuExtensions.ApplyMica(cm);
+    cm.Opened += (_, _) =>
+    {
+        if (PresentationSource.FromVisual(cm) is HwndSource src)
+        {
+            WindowBackdrop.ApplyBackdrop(src.Handle, WindowBackdropType.Acrylic);
+            cm.Background = Brushes.Transparent;
+        }
+    };
 }
 ```
