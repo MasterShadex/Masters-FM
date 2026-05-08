@@ -74,3 +74,39 @@ Verdict: **DUAL-BUILD REGRESSION VERIFICATION PASS**.
 | PS tray state | Stopped before run; mutex free |
 
 See `V14_S7_S7_8_SMOKE_REGRESSION.md` for full analysis.
+
+---
+
+## STEP 9 — 60-minute OBS-inactive soak
+
+| Field | Value |
+|---|---|
+| PID | 30488 |
+| Start | 2026-05-08T21:12:04 |
+| Stop | 2026-05-08T22:13:10 |
+| Duration | 61.1 min |
+| Heartbeats | 60 (t1–t60) |
+| Plateau band (t21–t60) | 300.2–300.3 MB |
+| Both-half mean diff (plateau) | 0.01 MB — PASS |
+| Final-30-min LS slope | −0.017 MB/h — PASS |
+| ERROR lines | 0 — PASS |
+| OBS connect attempts | 0 — PASS |
+| Verdict | CONDITIONAL PASS (300.2 MB plateau; root cause: first-run wizard) |
+
+See `V14_S7_S7_8_SOAK.md` for full analysis.
+
+---
+
+## STEP 10 — Protected-file SHA256 recheck
+
+| File | Baseline SHA256 | Current SHA256 | Size match | Status |
+|---|---|---|---|---|
+| `src\tray.ps1` | `19011F0B...` | `19011F0B...` | 801,427 B ✓ | **UNCHANGED** |
+| `src\tray_native\tray_native.cs` | `6B9804A1...` | `6B9804A1...` | 43,747 B ✓ | **UNCHANGED** |
+| `src\launcher.cs` | `291ED4C9...` | `291ED4C9...` | 27,559 B ✓ | **UNCHANGED** |
+| `src\server.js` | `C15ED931...` | `C15ED931...` | 76,607 B ✓ | **UNCHANGED** |
+| `md\memory.md` | `1F8E8002...` | `C3202132...` | 114,134 B | **INTENTIONAL DIFF** |
+
+memory.md diff is the Stage 7.6 STEP 16 APPEND (committed `de080ea`; documented in Stage 7.8 STEP 0 pre-condition verification). No source file was accidentally modified by Stage 7.8 work. All 4 source protected files UNCHANGED.
+
+**STEP 10 verdict: PASS.** Proceeding to STEP 11 (memory.md APPEND).
