@@ -200,7 +200,7 @@
                        MinWidth="120"
                        Appearance="Primary"
                        IsEnabled="{Binding CanGoForward}"
-                       Command="{Binding NextAsyncCommand}" />
+                       Command="{Binding NextCommand}" />
         </Grid>
     </Grid>
 </Window>
