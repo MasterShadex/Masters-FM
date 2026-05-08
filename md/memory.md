@@ -158,6 +158,10 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 
 ## CHANGELOG
 
+### 2026-05-08 ~03:25 -- Stage 7.1 -- C# tray skeleton (Strategy C parallel sibling) LANDED
+
+`src/tray_csharp/` (new) -- net8.0-windows + WinForms skeleton: csproj + Program.cs (mutex + AUMID + exception hooks) + TrayApp.cs (NotifyIcon + Quit-only menu) + Logger.cs ([TRAY-CS] prefix). Six placeholder dirs (Tray/Detectors/Services/Dialogs/Update/Discord) for Stages 7.2 -- 7.9. `_full_rebuild.ps1` got `$UseDotnet8TrayCs` build flag (default `$false`). Multi-file publish -> `dist\tray_csharp_release\MastersFM_Tray_v14.exe` (160 KB; strike-1 single-file attempt bundled WindowsDesktop runtime at 165 MB, recovered first re-attempt). Functional smoke 5/5 PASS, soak 5.29 min STABLE (+0.11 MB WS). NOT installed via MSI yet -- cutover at 7.10. PS tray ships unchanged. See `V14_S7_S7_1_FINAL_REPORT.md`, `V14_S7_S7_1_SMOKE.md`, `V14_S7_S7_1_LOG.md`.
+
 ### 2026-05-07 ~23:35 -- v14.0.0-rc.1 -- LOCAL TAG ONLY (NOT PUSHED)
 
 Cumulative migration to .NET 8: Stages 1-3 + Stage 4 + Stage 5 MINIMAL. RC1 release candidate;
