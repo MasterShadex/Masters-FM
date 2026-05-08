@@ -93,9 +93,10 @@
                           IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
                           Command="{Binding ToggleAutoStartCommand}" />
 
-                <!-- 7. OBS placeholder — deferred to 7.8; IsEnabled=false -->
+                <!-- 7. OBS placeholder — tooltip added (7.6 DoD #14); row goes live in STEP 6 -->
                 <MenuItem Header="OBS overlay"
-                          IsEnabled="False" />
+                          IsEnabled="False"
+                          ToolTip="Enabled in v14 OBS module" />
 
                 <Separator />
 
