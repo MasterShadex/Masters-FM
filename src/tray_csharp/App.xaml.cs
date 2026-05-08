@@ -20,6 +20,7 @@ public partial class App : Application
     private bool _ownsMutex;
     private ILogger? _logger;
     private DiagnosticHeartbeat? _heartbeat;
+    private IConfigService? _configService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -80,13 +81,21 @@ public partial class App : Application
         var collection = new ServiceCollection();
         collection.AddSingleton<ILogger, Logger>();
         collection.AddSingleton<ITelemetry, NullTelemetry>();
+        collection.AddSingleton<IConfigService, ConfigService>();
         collection.AddSingleton<SlowTickWatchdog>();
         collection.AddSingleton<DiagnosticHeartbeat>();
         collection.AddSingleton<MainWindow>();
         _services = collection.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger>();
-        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, SlowTickWatchdog, DiagnosticHeartbeat, MainWindow registered)", "Bootstrap");
+        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, MainWindow registered)", "Bootstrap");
+
+        // -- Resolve ConfigService and read welcome-seen flag (the one
+        // behaviorally-active config in 7.4; full UI handler in 7.7) --
+        _configService = _services.GetRequiredService<IConfigService>();
+        var welcomeSeen = _configService.GetWelcomeSeen();
+        _logger.Log($"welcome-seen={welcomeSeen}", "Bootstrap");
+        _configService.Changed += OnConfigChanged;
 
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --
         var mainWindow = _services.GetRequiredService<MainWindow>();
@@ -179,5 +188,12 @@ public partial class App : Application
     {
         _logger?.LogErr("TaskScheduler.UnobservedTaskException", e.Exception, "Bootstrap");
         e.SetObserved();
+    }
+
+    private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
+    {
+        // 7.4 visibility-only handler; sub-stages add real handlers (e.g.,
+        // 7.5 detection re-toggles platforms when platforms.* changes).
+        _logger?.Log($"config changed: keyPath={e.KeyPath ?? "(whole-file)"}", "Bootstrap");
     }
 }
