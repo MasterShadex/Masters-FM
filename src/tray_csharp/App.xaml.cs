@@ -32,6 +32,7 @@ public partial class App : Application
     private IDiscordToggleService? _discordService;
     private IAutoStartService? _autoStartService;
     private ICustomizerLauncher? _customizerLauncher;
+    private IObsService? _obsService;
     private SmtcEventBridge? _smtcBridge;
     private DetectorOrchestrator? _detectorOrchestrator;
     private IDialogService? _dialogService;
@@ -115,6 +116,8 @@ public partial class App : Application
         collection.AddSingleton<IDiscordToggleService, DiscordToggleService>();
         collection.AddSingleton<IAutoStartService, AutoStartService>();
         collection.AddSingleton<ICustomizerLauncher, CustomizerLauncher>();
+        // Stage 7.8: OBS connection monitoring service.
+        collection.AddSingleton<IObsService, ObsService>();
         // Stage 7.5: Detection layer (Option B+C hybrid).
         collection.AddSingleton<PlatformDetectorOptions>();
         collection.AddSingleton<ArtLruCache>();
@@ -154,7 +157,7 @@ public partial class App : Application
         _services = collection.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger>();
-        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, IDiscordToggleService, IAutoStartService, ICustomizerLauncher, MainWindow registered)", "Bootstrap");
+        _logger.Log("DI container built (ILogger, ITelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, IDiscordToggleService, IAutoStartService, ICustomizerLauncher, IObsService, MainWindow registered)", "Bootstrap");
 
         // -- Stage 7.2: R6 closure self-test (11 SemVer/regex synthetic cases) --
         var semVerFailures = SemVerComparer.RunSelfTest((level, msg) =>
@@ -219,6 +222,10 @@ public partial class App : Application
             var resolved = concrete.ResolveCustomizerExe();
             _logger.Log($"customize.exe path resolved to: {resolved ?? "(null)"} (exists={(resolved != null && File.Exists(resolved))})", "Customizer");
         }
+
+        // -- Stage 7.8: OBS service startup --
+        _obsService = _services.GetRequiredService<IObsService>();
+        _obsService.Start();
 
         // -- Stage 7.5: Detection layer startup --
         // Resolve NowPlayingViewModel so it subscribes to ITrackResolver.TrackChanged
@@ -371,6 +378,8 @@ public partial class App : Application
         // Stage 7.5: stop detection arms before container disposal
         try { _detectorOrchestrator?.Stop(); } catch (Exception ex) { _logger?.LogErr("DetectorOrchestrator.Stop", ex, "Bootstrap"); }
         try { _smtcBridge?.Stop(); } catch (Exception ex) { _logger?.LogErr("SmtcEventBridge.Stop", ex, "Bootstrap"); }
+        // Stage 7.8: stop OBS service
+        try { _obsService?.Stop(); } catch (Exception ex) { _logger?.LogErr("ObsService.Stop", ex, "Bootstrap"); }
 
         try
         {
