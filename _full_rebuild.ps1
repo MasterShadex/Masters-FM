@@ -35,6 +35,11 @@ $UseDotnet8Server = $true
 # netstandard2.0 keeps Windows PowerShell 5.1 (.NET Framework 4.x) compatibility AND stays loadable
 # by future PS7 / .NET 8 hosts (Q1=C decision). RC1 rollback path: set $false for csc.exe build.
 $UseDotnetTrayNative = $true
+# Stage 7.1 migration flag (NEW Stage 7 sub-stage; PowerShell tray to C# port, parallel sibling).
+# Default OFF; set $true to ALSO build dist/tray_csharp_release/MastersFM_Tray_v14.exe.
+# Does NOT install via MSI yet; cutover lands at Stage 7.10. PS tray ships unchanged either way.
+# Stage 7.1 rollback: set $false to skip C# tray build entirely; PS tray ships as before.
+$UseDotnet8TrayCs = $false
 $log = "$logDir\rebuild_ps_$ts.log"
 
 function L($msg) { $t = Get-Date -Format 'HH:mm:ss'; "$t  $msg" | Tee-Object -FilePath $log -Append | Write-Host }
@@ -242,6 +247,32 @@ if ($UseDotnetTrayNative) {
         }
     } finally {
         Pop-Location
+    }
+}
+
+# Stage 7.1: optionally build the new C# tray skeleton (parallel sibling project).
+# Active when $UseDotnet8TrayCs = $true (default $false; opt-in for dev).
+# Output: dist\tray_csharp_release\MastersFM_Tray_v14.exe (NOT installed via MSI yet).
+# Failure here does NOT halt the rest of the rebuild; PS tray must still build cleanly.
+if ($UseDotnet8TrayCs) {
+    L "=== Stage 7.1: building C# tray skeleton (dotnet publish, net8.0-windows, R2R) ==="
+    $trayCsOut  = Join-Path $root 'dist\tray_csharp_release'
+    # Multi-file output (matches launcher.csproj precedent). PublishSingleFile=true with .NET 8
+    # framework-dependent + ReadyToRun bundles WindowsDesktop runtime DLLs (~165 MB skeleton);
+    # multi-file + R2R yields a small exe + apphost + .dll + .runtimeconfig.json (1-3 MB).
+    $trayCsArgs = "publish `"$root\src\tray_csharp\MastersFM_Tray_v14.csproj`" -r win-x64 --self-contained false " +
+                  "-p:PublishReadyToRun=true -c Release -o `"$trayCsOut`" --nologo -v quiet"
+    $trayCsProc = Start-Process -FilePath 'dotnet' -ArgumentList $trayCsArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
+    if ($trayCsProc.ExitCode -eq 0) {
+        $trayCsExe = Join-Path $trayCsOut 'MastersFM_Tray_v14.exe'
+        if (Test-Path $trayCsExe) {
+            $trayCsSize = [math]::Round((Get-Item $trayCsExe).Length / 1KB, 1)
+            L "=== C# tray skeleton built: $trayCsExe ($trayCsSize KB) ==="
+        } else {
+            L "  WARN: C# tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
+        }
+    } else {
+        L "  WARN: C# tray dotnet publish failed (exit $($trayCsProc.ExitCode)) -- PS tray build continues"
     }
 }
 
