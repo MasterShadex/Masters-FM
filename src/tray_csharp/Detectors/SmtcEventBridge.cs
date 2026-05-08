@@ -16,6 +16,7 @@
 // if SMTCWatcher.SessionCount drops to 0 while Watch.LastEventUtc is
 // stale (>30s), re-fetch sessions to force re-subscription.
 
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Threading;
 using MasterFM.SMTC;
@@ -100,20 +101,29 @@ public sealed class SmtcEventBridge : IDisposable
     private void OnDrainTick(object? sender, EventArgs e)
     {
         if (_watcher == null) return;
+        // Stage 7.6 STEP 4.3: time the drain+dispatch cycle for smtc_dispatch_ms P99.
+        var sw = Stopwatch.StartNew();
         try
         {
             var events = _watcher.DrainEvents();
-            if (events == null || events.Length == 0) return;
-            foreach (var ev in events)
+            if (events != null && events.Length > 0)
             {
-                _telemetry.IncrementCounter("smtc_events");
-                ProcessEvent(ev);
+                foreach (var ev in events)
+                {
+                    _telemetry.IncrementCounter("smtc_events");
+                    ProcessEvent(ev);
+                }
             }
         }
         catch (Exception ex)
         {
             _logger.LogErr("drain tick", ex, Component);
             _telemetry.IncrementCounter("smtc_event_errors");
+        }
+        finally
+        {
+            sw.Stop();
+            _telemetry.RecordTimingMs("smtc_dispatch_ms", sw.Elapsed.TotalMilliseconds);
         }
     }
 

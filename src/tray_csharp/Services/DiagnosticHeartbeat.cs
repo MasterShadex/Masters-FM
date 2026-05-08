@@ -90,36 +90,28 @@ public sealed class DiagnosticHeartbeat : IDisposable
                     : $"counters={counters.Count}/sum={SafeSum(counters)}";
             }
 
-            // Stage 7.7: detector slow-tick aggregate from existing counters.
-            // {detname}_slow_ticks counters track slow polls per detector.
-            // This is a coarse summary; per-detector last-ms / slowest-ms
-            // accurate values require an ITelemetry timing accessor not
-            // added in 7.7's locked-list. Future Brief: extend ITelemetry
-            // with GetTimingSnapshot(name) -> (last, slowest) and replace
-            // this stub.
-            var counters2 = _telemetry.SnapshotCounters();
-            long slowTotal = 0;
-            int detCount = 0;
-            foreach (var kv in counters2)
-            {
-                if (kv.Key.EndsWith("_slow_ticks", StringComparison.OrdinalIgnoreCase))
-                {
-                    slowTotal += kv.Value;
-                    detCount++;
-                }
-            }
-            // Format: polls=slow/detCount summarises slow-tick volume vs detector count.
-            string pollsStub = $"polls={slowTotal}slow/{detCount}det";
+            // Stage 7.6 STEP 4: Real per-detector P99 latencies via SnapshotTimingsP99().
+            // Actual key names (Stage 7.6 STEP 1 inventory wins over brief's expected names):
+            //   osu_poll_ms, vlc_poll_ms, wmp-legacy_poll_ms  (DetectorOrchestrator)
+            //   webhook_latency_ms                             (WebhookClient)
+            //   smtc_dispatch_ms                               (SmtcEventBridge, added STEP 4.3)
+            // "-" is emitted for any key with no recorded samples yet.
+            var p99 = _telemetry.SnapshotTimingsP99();
+            string FmtMs(string key) => p99.TryGetValue(key, out var pv) ? $"{pv:F1}ms" : "-";
 
-            var sb = new StringBuilder(280);
+            var sb = new StringBuilder(320);
             sb.Append("heartbeat: ws=").Append(ws).Append("MB");
             sb.Append(" gc=").Append(gc).Append("MB");
             sb.Append(" priv=").Append(priv).Append("MB");
             sb.Append(" threads=").Append(threads);
             sb.Append(" handles=").Append(handles);
             sb.Append(" ring=").Append(ring);
-            sb.Append(' ').Append(telemetrySummary);
-            sb.Append(' ').Append(pollsStub);
+            sb.Append(" | ").Append(telemetrySummary);
+            sb.Append(" | osu=").Append(FmtMs("osu_poll_ms"));
+            sb.Append(" vlc=").Append(FmtMs("vlc_poll_ms"));
+            sb.Append(" wmp=").Append(FmtMs("wmp-legacy_poll_ms"));
+            sb.Append(" webhook=").Append(FmtMs("webhook_latency_ms"));
+            sb.Append(" smtc=").Append(FmtMs("smtc_dispatch_ms"));
 
             _logger.Log(sb.ToString(), "Diagnostic");
         }
