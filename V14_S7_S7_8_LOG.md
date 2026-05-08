@@ -40,3 +40,37 @@ Robocopy exit codes: src=1 (files copied), md=1 (files copied) — both SUCCESS.
 | C# tray launches | PID starts; logs OnStartup | PID=15448; `[TRAY-CS] Application.OnStartup begin` logged; single-instance exit (PS tray running) | PASS |
 
 All pre-conditions met. Memory.md SHA256 diff is intentional (Stage 7.6 STEP 16 APPEND committed as `de080ea`).
+
+---
+
+## STEP 7 — Dual-build regression verification
+
+| Path | Result | EXE | Total dist |
+|---|---|---|---|
+| Flag-off ($UseDotnet8TrayCs=$false) | REBUILD DONE OK @ 20:50:29 | MastersFM_Tray.exe OK | n/a |
+| Flag-on ($UseDotnet8TrayCs=$true) | REBUILD DONE OK @ 21:01:29 | MastersFM_Tray_v14.exe 160 KB | 36841.7 KB total |
+
+### Binary delta vs Stage 7.6 end
+
+| Artifact | 7.6 end | 7.8 post-STEP6 | Delta |
+|---|---:|---:|---|
+| MastersFM_Tray_v14.dll | 0.809 MB | 0.859 MB | **+50 KB (+6.2%)** |
+| Total dist | 35.92 MB | 35.978 MB | +58 KB (+0.16%) |
+
+DLL delta (+50 KB / +6.2%) is within the expected 30-80 KB range for OBS service + JSON wiring. Just above the 5% documentation threshold — noted here per brief S7 requirement. Total dist delta (+58 KB) is well within the +2 MB safety floor.
+
+Verdict: **DUAL-BUILD REGRESSION VERIFICATION PASS**.
+
+---
+
+## STEP 8 — Dialog-cycle smoke regression
+
+| Field | Value |
+|---|---|
+| Run timestamp | 2026-05-08T19:04:43Z — 2026-05-08T19:09:09Z (~4.4 min) |
+| Smoke PID | 33940 |
+| Exit code | 0 |
+| Raw output | `%LOCALAPPDATA%\MastersFM\dialog_smoke_REGRESSION_20260508_190443.json` |
+| PS tray state | Stopped before run; mutex free |
+
+See `V14_S7_S7_8_SMOKE_REGRESSION.md` for full analysis.
