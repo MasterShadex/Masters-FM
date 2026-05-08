@@ -178,4 +178,4 @@ Wizard surface (3-step Welcome/Audio/Platforms layout) is preserved.
 
 ## STEP 1 commit
 
-Commit: `<pending>`
+Commit: `7b3eaae`
