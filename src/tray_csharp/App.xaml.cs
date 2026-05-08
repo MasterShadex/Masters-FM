@@ -24,6 +24,9 @@ public partial class App : Application
     private DiagnosticHeartbeat? _heartbeat;
     private IConfigService? _configService;
     private IUpdateCheckService? _updateService;
+    private IDiscordToggleService? _discordService;
+    private IAutoStartService? _autoStartService;
+    private ICustomizerLauncher? _customizerLauncher;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -97,11 +100,15 @@ public partial class App : Application
         collection.AddSingleton<IUpdateCheckService, UpdateCheckService>();
         collection.AddSingleton<UpdateCheckViewModel>();
         collection.AddTransient<UpdateProgressWindow>();
+        // Stage 7.9: Discord toggle + AutoStart + Customizer launcher.
+        collection.AddSingleton<IDiscordToggleService, DiscordToggleService>();
+        collection.AddSingleton<IAutoStartService, AutoStartService>();
+        collection.AddSingleton<ICustomizerLauncher, CustomizerLauncher>();
         collection.AddSingleton<MainWindow>();
         _services = collection.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger>();
-        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, MainWindow registered)", "Bootstrap");
+        _logger.Log("DI container built (ILogger, ITelemetry=NullTelemetry, IConfigService, SlowTickWatchdog, DiagnosticHeartbeat, HttpClient, IUpdateCheckService, UpdateCheckViewModel, UpdateProgressWindow, IDiscordToggleService, IAutoStartService, ICustomizerLauncher, MainWindow registered)", "Bootstrap");
 
         // -- Stage 7.2: R6 closure self-test (11 SemVer/regex synthetic cases) --
         var semVerFailures = SemVerComparer.RunSelfTest((level, msg) =>
@@ -143,6 +150,22 @@ public partial class App : Application
         else
         {
             _logger.Log($"startup check skipped; last check {(int)sinceLast.TotalMinutes} min ago (threshold 6h)", "Update");
+        }
+
+        // -- Stage 7.9: Resolve Discord/AutoStart/Customizer services and log
+        // initial states. Tray menu UI integration is 7.6's job; 7.9 just
+        // initializes them so they're ready for that wiring. --
+        _discordService = _services.GetRequiredService<IDiscordToggleService>();
+        _autoStartService = _services.GetRequiredService<IAutoStartService>();
+        _customizerLauncher = _services.GetRequiredService<ICustomizerLauncher>();
+        _logger.Log($"initial state={_discordService.IsEnabled}", "Discord");
+        _logger.Log($"initial state={_autoStartService.IsEnabled}", "AutoStart");
+        // Customizer launcher: dry-run path resolution check (no spawn during
+        // smoke per brief absolute rule).
+        if (_customizerLauncher is CustomizerLauncher concrete)
+        {
+            var resolved = concrete.ResolveCustomizerExe();
+            _logger.Log($"customize.exe path resolved to: {resolved ?? "(null)"} (exists={(resolved != null && File.Exists(resolved))})", "Customizer");
         }
 
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --

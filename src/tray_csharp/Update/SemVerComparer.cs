@@ -59,22 +59,24 @@ public static class SemVerComparer
         var (majA, minA, patA) = (int.Parse(ma.Groups[1].Value), int.Parse(ma.Groups[2].Value), int.Parse(ma.Groups[3].Value));
         var (majB, minB, patB) = (int.Parse(mb.Groups[1].Value), int.Parse(mb.Groups[2].Value), int.Parse(mb.Groups[3].Value));
 
-        // Project policy: any pre-release is LESS than any stable, regardless
-        // of major.minor.patch. So 14.0.1-beta < 14.0.0 (the stable) even though
-        // 14.0.1 has a higher patch. Two pre-releases of any versions are
-        // treated as EQUAL (we never auto-update RC->RC; brief Q3=A locked).
-        // This rule fires BEFORE the numeric comparison.
-        var aIsPre = IsPreRelease(a);
-        var bIsPre = IsPreRelease(b);
-        if (aIsPre && !bIsPre) return -1;  // any pre-release < any stable
-        if (!aIsPre && bIsPre) return 1;
-        if (aIsPre && bIsPre) return 0;    // two pre-releases: equivalent
-
-        // Both stable: standard SemVer numeric comparison.
+        // Stage 7.9 fix: numeric major.minor.patch comparison FIRST. If they
+        // differ, that's the answer regardless of pre-release status. The
+        // pre-release-is-less rule only applies when MMP is equal (the
+        // "graduate from RC to stable" use case at the SAME version).
+        // Closes the v14.0.0-rc.1 vs v12.0.1 downgrade-prompt edge case
+        // surfaced by Stage 7.2 smoke (where local RC of newer version was
+        // incorrectly treated as older than remote stable of older version).
         if (majA != majB) return majA.CompareTo(majB);
         if (minA != minB) return minA.CompareTo(minB);
         if (patA != patB) return patA.CompareTo(patB);
-        return 0;
+
+        // Same major.minor.patch: apply pre-release rule.
+        // pre-release < stable at same version (graduate-to-stable use case).
+        var aIsPre = IsPreRelease(a);
+        var bIsPre = IsPreRelease(b);
+        if (aIsPre && !bIsPre) return -1;  // pre-release < stable at same MMP
+        if (!aIsPre && bIsPre) return 1;
+        return 0;                           // both stable equal OR both pre at same MMP (equivalent)
     }
 
     /// <summary>
@@ -86,17 +88,26 @@ public static class SemVerComparer
     {
         var cases = new (string Description, bool Expected, bool Actual)[]
         {
+            // Original 11 R6 closure cases (case 5 expected updated per Stage 7.9 fix:
+            // numeric MMP wins now; pre-release rule only at same MMP)
             ("Compare(14.0.0, 14.0.0-rc.1) > 0",          true,  Compare("14.0.0", "14.0.0-rc.1") > 0),
             ("Compare(14.0.0-rc.1, 14.0.0) < 0",          true,  Compare("14.0.0-rc.1", "14.0.0") < 0),
             ("Compare(14.0.0, 14.0.1) < 0",               true,  Compare("14.0.0", "14.0.1") < 0),
             ("Compare(14.0.0-rc.1, 14.0.0-rc.2) == 0",    true,  Compare("14.0.0-rc.1", "14.0.0-rc.2") == 0),
-            ("Compare(14.0.1-beta.5, 14.0.0) < 0",        true,  Compare("14.0.1-beta.5", "14.0.0") < 0),
+            ("Compare(14.0.1-beta.5, 14.0.0) > 0 [7.9 fix: numeric MMP wins]",  true,  Compare("14.0.1-beta.5", "14.0.0") > 0),
             ("IsPreRelease(14.0.0) == false",             true,  IsPreRelease("14.0.0") == false),
             ("IsPreRelease(14.0.0-rc.1) == true",         true,  IsPreRelease("14.0.0-rc.1") == true),
             ("IsPreRelease(14.0.0-RC.1) == true",         true,  IsPreRelease("14.0.0-RC.1") == true),
             ("IsPreRelease(14.0.0-beta) == true",         true,  IsPreRelease("14.0.0-beta") == true),
             ("IsPreRelease(14.0.0-alpha.99) == true",     true,  IsPreRelease("14.0.0-alpha.99") == true),
             ("IsPreRelease(14.0.0+build.1) == false",     true,  IsPreRelease("14.0.0+build.1") == false),
+            // Stage 7.9: 4 new cases verifying the downgrade-prompt fix.
+            ("Compare(14.0.0-rc.1, 12.0.1) > 0 [7.9: local RC newer than remote stable]", true,  Compare("14.0.0-rc.1", "12.0.1") > 0),
+            ("Compare(14.0.0-rc.1, 13.5.0) > 0 [7.9: local RC newer than remote stable]", true,  Compare("14.0.0-rc.1", "13.5.0") > 0),
+            ("Compare(14.0.0, 12.0.1) > 0 [7.9: regression check; stable vs older stable]", true,  Compare("14.0.0", "12.0.1") > 0),
+            ("Compare(12.0.1, 14.0.0-rc.1) < 0 [7.9: inverse of bug case]", true,  Compare("12.0.1", "14.0.0-rc.1") < 0),
+            // Stage 7.9 Q4 default: 16th case for completeness.
+            ("Compare(14.0.0-rc.1, 14.0.0-rc.1) == 0 [Q4: same RC equivalent]", true,  Compare("14.0.0-rc.1", "14.0.0-rc.1") == 0),
         };
 
         int failures = 0;
