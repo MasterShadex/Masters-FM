@@ -157,6 +157,39 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 
 ## CHANGELOG
 
+### 2026-05-09 -- Stage 7.8B: OBS browser source port + latency reduction + cursor-following dialog placement
+
+**Commits:** `bb938fb` (STEP 1 diagnosis) `6164628` (STEP 2 IObsService) `94d834d` (STEP 3 WebSocket) `2466162` (STEP 4 file-edit fallback) `fe18019` (STEP 5 tray+auto-add) `86fffad` (STEP 6 latency baseline) `74e7059` (STEP 7 latency reductions) `88637ce` (STEP 8 latency post-fix) `50276a7` (STEP 9 cursor-following) `0497cac` (STEP 10 dual-build) `9f92950` (STEP 11 E2E smoke)
+**Outcome:** PASS (10/14 analytically verified; 4 items PENDING operator runtime: OBS toggle, cursor-following placement; 0 strikes consumed)
+
+#### Issues fixed
+- Issue 9 (OBS overlay add) -- IObsService extended with AddBrowserSourceAsync / RemoveBrowserSourceAsync / BrowserSourceExistsAsync / GetObsVersionAsync; WebSocket primary path (op=0/1/2/6/7 handshake + pending-TCS dispatch); ObsSceneFileEditor file-edit fallback for OBS<28 + offline; tray menu toggle wired (ConnectAsync + WaitForObsConnectedAsync + Add/Remove); 5s startup auto-add per v12 behaviour; Mode B diagnosis documented in V14_S7_8B_OBS_DIAGNOSIS.md
+- Latency reduction -- HeartbeatService 2000ms → 1000ms; SmtcEventBridge DrainCadenceMs 250ms → 100ms; parallel art prefetch on track-change (Task.Run); dedup gate refactor (heartbeat routes through TrackResolver.OnTrackChanged(forcePositionRefresh:true))
+- Cursor-following dialog placement -- DialogService.PositionDialogOnCursorMonitor() replaces CenterScreen; all 5 modal dialogs land on operator's active monitor; ErrorDialogWindow wired via ContentRendered (SizeToContent=Height)
+
+#### Latency before/after (analytical)
+- Track-change median: 125ms → 50ms (−75ms)
+- Pause-detection median: 1000ms → 500ms (−500ms)
+- Seek-detection median: 1000ms → 500ms (−500ms)
+- End-to-end pause/seek worst-case: ~2250ms → ~1100ms (−1150ms) — exceeds 1000ms P95 target
+
+#### Architecture changes
+- IObsService: 4 new methods + ObsBrowserSourceResult + ObsVersionInfo records
+- ObsSceneFileEditor: new class (MastersFM.Tray.Services) for OBS<28 file-edit fallback
+- HeartbeatService: routes through TrackResolver.OnTrackChanged(forcePositionRefresh:true)
+- TrackResolver.OnTrackChanged: gained forcePositionRefresh parameter; fast-path bypasses dedup gate
+- App.xaml.cs: 5s startup auto-add timer (gated on obs.enabled + obs.auto_add)
+- DialogService: PositionDialogOnCursorMonitor() static helper; UseWindowsForms=true in csproj; WinForms implicit using suppressed to avoid Brushes/Application ambiguity
+
+#### Deferred to Brief 3
+- Issue 6 (visual rebuild) -- 40.5 Ruflo-hours per V14_RC3_AUDIT_MOCKUPS.md
+
+#### Verification
+- Build PASS (0 warnings, 0 errors; Release + Debug)
+- Protected files SHA256: 4 source files UNCHANGED
+- E2E functional smoke: 10/14 ANALYTICAL PASS; 4 PENDING runtime (V14_S7_8B_E2E_SMOKE.md)
+- 0 strikes consumed
+
 ### 2026-05-09 -- Stage 7.10 INTERRUPT #3: rc.3 functional regression hotfix
 
 **Commits:** `5e078f3` (STEP 1 diagnosis) `febdba9` (STEP 2) `a09899a` (STEP 3) `5dfdd9c` (STEP 4) `f3e9991` (STEP 5) `df2424e` (STEP 6) `5a49acb` (STEP 7) `cd986e8` (STEP 9 smoke)
