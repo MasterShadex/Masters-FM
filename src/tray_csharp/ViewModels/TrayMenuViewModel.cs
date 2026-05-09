@@ -8,6 +8,10 @@
 // click). UpdateCheckService.StateChanged may fire on a thread-pool thread
 // (CheckNowAsync / DownloadAsync complete async); OnUpdateStateChanged
 // marshals to the UI dispatcher.
+//
+// Stage 7.8C STEP 3: obs.pending_restart config field persists PendingRestart
+// state across tray restarts. 60s polling timer auto-clears the suffix once
+// OBS has stopped running (file-edit already applied; just need the reload).
 
 using System.Diagnostics;
 using System.Windows;
@@ -27,7 +31,11 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private readonly IUpdateCheckService _updateService;
     private readonly ICustomizerLauncher _customizerLauncher;
     private readonly IObsService _obsService;
+    private readonly IConfigService _configService;
     private readonly ILogger _logger;
+
+    // Stage 7.8C STEP 3: 60s timer polls for OBS exit while in PendingRestart.
+    private System.Threading.Timer? _obsPollTimer;
 
     // NowPlaying is exposed as a pass-through so XAML DataTemplates can
     // bind directly to its observable Artist, Track, ArtUri properties.
@@ -83,6 +91,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         IUpdateCheckService updateService,
         ICustomizerLauncher customizerLauncher,
         IObsService obsService,
+        IConfigService configService,
         ILogger logger)
     {
         NowPlaying = nowPlaying;
@@ -92,6 +101,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _updateService = updateService;
         _customizerLauncher = customizerLauncher;
         _obsService = obsService;
+        _configService = configService;
         _logger = logger;
 
         // Snapshot initial toggle states
@@ -110,7 +120,30 @@ public sealed partial class TrayMenuViewModel : ObservableObject
                 : ObsToggleState.NotAdded;
         }
         catch { _obsToggleState = ObsToggleState.NotAdded; }
+
+        // Stage 7.8C STEP 3: override with PendingRestart if config says so AND OBS is
+        // still running. If OBS has already exited since last tray session, the pending
+        // change was already applied on OBS startup — BrowserSourceExists() above is
+        // already correct, so clear the stale flag and keep the resolved state.
+        try
+        {
+            if (_configService.GetValue<bool>("obs.pending_restart", false))
+            {
+                if (IsObsRunning())
+                    _obsToggleState = ObsToggleState.PendingRestart;
+                else
+                    _configService.SetValue("obs.pending_restart", false); // stale flag — clear
+            }
+        }
+        catch (Exception ex) { _logger.LogErr("obs.pending_restart init read", ex, "OBS"); }
+
         UpdateObsMenuFromToggleState();
+
+        // Stage 7.8C STEP 3: start 60s OBS-exit polling timer. Fires only when in
+        // PendingRestart; a guard at the top of the callback makes other firings a no-op.
+        _obsPollTimer = new System.Threading.Timer(
+            OnObsPollTick, null,
+            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
         // Subscribe to state changes
         _discordService.StateChanged += (_, enabled) => IsDiscordEnabled = enabled;
@@ -277,9 +310,16 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     }
 
     // Stage 7.8C: sets ObsToggleState + updates menu labels atomically.
+    // Stage 7.8C STEP 3: also persists obs.pending_restart to config so the
+    // suffix survives a tray restart (e.g. user restarts Master's FM before OBS).
     private void SetObsToggleState(ObsToggleState state)
     {
         _obsToggleState = state;
+        try
+        {
+            _configService.SetValue("obs.pending_restart", state == ObsToggleState.PendingRestart);
+        }
+        catch (Exception ex) { _logger.LogErr("obs.pending_restart write", ex, "OBS"); }
         UpdateObsMenuFromToggleState();
     }
 
@@ -303,6 +343,32 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         Process.GetProcessesByName("obs64").Length > 0
         || Process.GetProcessesByName("obs32").Length > 0
         || Process.GetProcessesByName("obs").Length  > 0;
+
+    // Stage 7.8C STEP 3: 60s poll — clear PendingRestart suffix when OBS has exited.
+    // Fires on a thread-pool thread (System.Threading.Timer); marshals state change
+    // to the UI dispatcher. Guard: no-op unless currently PendingRestart.
+    private void OnObsPollTick(object? state)
+    {
+        if (_obsToggleState != ObsToggleState.PendingRestart) return;
+        if (IsObsRunning()) return;
+
+        // OBS has stopped — the file-edit changes have been applied on its last start.
+        // Resolve final state from scene files and clear the pending flag.
+        try
+        {
+            var editor = new ObsSceneFileEditor(_logger);
+            var exists  = editor.BrowserSourceExists();
+            var newState = exists ? ObsToggleState.Added : ObsToggleState.NotAdded;
+            _logger.Log($"[OBS poll] OBS exited; resolving PendingRestart -> {newState}", "OBS");
+
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+                SetObsToggleState(newState);
+            else
+                dispatcher.BeginInvoke(() => SetObsToggleState(newState));
+        }
+        catch (Exception ex) { _logger.LogErr("OBS poll-tick state resolve", ex, "OBS"); }
+    }
 
     [RelayCommand]
     private async Task OpenPatchNotesAsync()
