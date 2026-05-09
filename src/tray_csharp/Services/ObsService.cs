@@ -375,6 +375,20 @@ public sealed class ObsService : IObsService, IDisposable
         ConnectionStateChanged?.Invoke(this, new ObsConnectionStateChangedEventArgs(prev, next));
     }
 
+    // ── browser-source operations (stubs; replaced in STEP 3 / STEP 4) ──────────
+
+    public Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default)
+        => Task.FromResult(ObsBrowserSourceResult.Fail("Not yet implemented (STEP 2 stub)"));
+
+    public Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    public Task<bool> BrowserSourceExistsAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    public Task<ObsVersionInfo?> GetObsVersionAsync(CancellationToken ct = default)
+        => Task.FromResult<ObsVersionInfo?>(null);
+
     // ── IDisposable ───────────────────────────────────────────────────────────
 
     public void Dispose()

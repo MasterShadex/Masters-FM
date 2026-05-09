@@ -78,6 +78,33 @@ public interface IObsService
     /// Called from App.OnExit. Idempotent.
     /// </summary>
     void Stop();
+
+    // ── Browser source operations (Stage 7.8B; was deferred as ID-28) ────────
+
+    /// <summary>
+    /// Adds a Master's FM browser source to all OBS scenes. WebSocket primary;
+    /// file-edit fallback when not connected or OBS is older than v28.
+    /// Idempotent: no-op if the source already exists.
+    /// </summary>
+    Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes the Master's FM browser source from OBS. WebSocket primary;
+    /// file-edit fallback. Idempotent: returns true if already absent.
+    /// </summary>
+    Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns true if a browser_source named "Master's FM" exists in OBS.
+    /// Requires Connected state; returns false if disconnected.
+    /// </summary>
+    Task<bool> BrowserSourceExistsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns OBS version info via GetVersion request, or null if not connected.
+    /// Used to version-gate WebSocket browser-source ops (requires OBS >= 28).
+    /// </summary>
+    Task<ObsVersionInfo?> GetObsVersionAsync(CancellationToken ct = default);
 }
 
 /// <summary>Event args for IObsService.ConnectionStateChanged.</summary>
@@ -91,4 +118,19 @@ public sealed class ObsConnectionStateChangedEventArgs : EventArgs
         OldState = oldState;
         NewState = newState;
     }
+}
+
+// ── Supporting types for browser-source operations (Stage 7.8B) ──────────────
+
+/// <summary>Result of AddBrowserSourceAsync. Carries the path used (WebSocket/file-edit).</summary>
+public sealed record ObsBrowserSourceResult(bool Success, string? Method, string? ErrorMessage)
+{
+    public static ObsBrowserSourceResult Ok(string method)   => new(true, method, null);
+    public static ObsBrowserSourceResult Fail(string error)  => new(false, null, error);
+}
+
+/// <summary>OBS version from GetVersion response. SupportsWebSocketBrowserOps requires v28+.</summary>
+public sealed record ObsVersionInfo(int Major, int Minor, int Patch)
+{
+    public bool SupportsWebSocketBrowserOps => Major >= 28;
 }
