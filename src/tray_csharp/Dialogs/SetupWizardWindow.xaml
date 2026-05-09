@@ -1,208 +1,415 @@
-<!-- Stage 7.7 Surface 09. 3-step wizard with internal navigation:
-     Welcome -> Audio -> Platforms. Step indicator + Forward/Back/Skip
-     buttons in footer. All colors via DynamicResource. -->
+<!-- Stage 7.7B: STEP 6 SetupWizardWindow visual rebuild.
+     720x560, AppDialogStyle chrome. 3 existing steps (Welcome/Audio/Platforms)
+     restyled with design tokens. Step breadcrumb (3 bars, filled by DataTrigger
+     on CurrentStep). Body: ScrollViewer + per-step StackPanel. Footer: Back
+     (TertiaryButtonStyle, hidden on first step) + Skip (SecondaryButtonStyle)
+     + Next/Finish (PrimaryButtonStyle). WPF-UI ToggleSwitch replaced with
+     ActivePillStyle ToggleButton. Device enumeration unchanged. -->
 <Window x:Class="MastersFM.Tray.Dialogs.SetupWizardWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:vm="clr-namespace:MastersFM.Tray.ViewModels"
         Title="Master's FM setup"
-        Width="780" Height="640"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-        WindowStyle="None"
-        ResizeMode="NoResize">
-    <Grid Margin="24">
+        Width="720" Height="560"
+        Style="{StaticResource AppDialogStyle}">
+
+    <Window.Resources>
+        <!-- Active pill ToggleButton (reused from PlatformsWindow pattern) -->
+        <Style x:Key="WizardActivePillStyle" TargetType="ToggleButton">
+            <Setter Property="Background"     Value="{StaticResource Surface3}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor"         Value="Hand"/>
+            <Setter Property="Padding"        Value="8,3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Pill"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <TextBlock x:Name="Label" Text="OFF"
+                                       Style="{StaticResource TinyTextStyle}"
+                                       Foreground="{StaticResource TextTertiary}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Pill" Property="Background"
+                                        Value="{StaticResource BrandPurpleBase}"/>
+                                <Setter TargetName="Label" Property="Text" Value="ON"/>
+                                <Setter TargetName="Label" Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Step bar (breadcrumb segment) -->
+        <Style x:Key="StepBarStyle" TargetType="Border">
+            <Setter Property="Height"         Value="4"/>
+            <Setter Property="CornerRadius"   Value="2"/>
+            <Setter Property="Background"     Value="{StaticResource Surface3}"/>
+            <Setter Property="Margin"         Value="2,0"/>
+        </Style>
+        <Style x:Key="StepBarActiveStyle" TargetType="Border"
+               BasedOn="{StaticResource StepBarStyle}">
+            <Setter Property="Background" Value="{StaticResource BrandPurpleBase}"/>
+        </Style>
+
+        <!-- Device row item for the Audio step list -->
+        <Style x:Key="WizardDeviceItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding"         Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="RowBg" Height="48" Background="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" Margin="8,0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBg" Property="Background"
+                                        Value="{StaticResource Surface2}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="RowBg" Property="Background"
+                                        Value="{StaticResource Surface2}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- ====================================================
+         Content area (inside AppDialogStyle chrome)
+         ==================================================== -->
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
+            <!-- Top strip: wordmark + step breadcrumb (60px) -->
+            <RowDefinition Height="60"/>
+            <!-- Body: step content -->
+            <RowDefinition Height="*"/>
+            <!-- Footer: Back + Skip + Next -->
+            <RowDefinition Height="72"/>
         </Grid.RowDefinitions>
 
-        <!-- Header with step indicator.
-             INTERRUPT #3 STEP 3 (Issue 5): drag on chrome-less window. -->
-        <Grid Grid.Row="0" Margin="0,0,0,16"
-              MouseLeftButtonDown="OnTitleBarDrag">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Image Grid.Column="0" Width="40" Height="40"
-                   Source="pack://application:,,,/MastersFM_Tray_v14;component/assets/MastersFM.ico" />
-            <TextBlock Grid.Column="1" Margin="12,0,0,0"
-                       VerticalAlignment="Center"
-                       FontSize="20" FontWeight="SemiBold"
-                       Text="Master's FM setup"
-                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-            <Border Grid.Column="2" Padding="10,4" CornerRadius="4"
-                    Background="{DynamicResource SystemAccentColorPrimaryBrush}">
-                <TextBlock Text="{Binding StepLabel}"
-                           FontWeight="SemiBold" FontSize="12"
-                           Foreground="White" />
-            </Border>
-        </Grid>
-
-        <!-- Body: swap content based on CurrentStep -->
-        <Border Grid.Row="1" Padding="16" CornerRadius="6"
-                Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1">
+        <!-- === TOP STRIP === -->
+        <Border Grid.Row="0"
+                BorderBrush="{StaticResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="24,0">
             <Grid>
-                <!-- Welcome step -->
-                <Grid>
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Wordmark (small) -->
+                <TextBlock Grid.Column="0"
+                           Text="Master's FM"
+                           Style="{StaticResource HeadingTextStyle}"
+                           Foreground="{StaticResource BrandPurpleBase}"
+                           VerticalAlignment="Center"/>
+
+                <!-- Step breadcrumb: 3 bars + step label -->
+                <StackPanel Grid.Column="2"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right">
+                    <!-- Step label -->
+                    <TextBlock Text="{Binding StepLabel}"
+                               Style="{StaticResource TinyTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               HorizontalAlignment="Right"
+                               Margin="0,0,0,4"/>
+                    <!-- Progress bars (3 segments) -->
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Bar 1: always filled (we are always on step 1+) -->
+                        <Border x:Name="Bar1" Width="48"
+                                Style="{StaticResource StepBarActiveStyle}"/>
+                        <!-- Bar 2: filled on Audio + Platforms steps -->
+                        <Border x:Name="Bar2" Width="48">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource StepBarStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentStep,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                                     Value="Audio">
+                                            <Setter Property="Background"
+                                                    Value="{StaticResource BrandPurpleBase}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding CurrentStep,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                                     Value="Platforms">
+                                            <Setter Property="Background"
+                                                    Value="{StaticResource BrandPurpleBase}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
+                        <!-- Bar 3: filled on Platforms step -->
+                        <Border x:Name="Bar3" Width="48">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource StepBarStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentStep,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                                     Value="Platforms">
+                                            <Setter Property="Background"
+                                                    Value="{StaticResource BrandPurpleBase}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- === BODY (STEP CONTENT) === -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="48,32,48,16">
+
+                <!-- Welcome / What's new step -->
+                <StackPanel DataContext="{Binding WelcomeVm}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep}" Value="Welcome">
-                                    <Setter Property="Visibility" Value="Visible" />
+                                <DataTrigger Binding="{Binding CurrentStep,
+                                             RelativeSource={RelativeSource AncestorType=Window}}"
+                                             Value="Welcome">
+                                    <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </Grid.Style>
-                    <ScrollViewer DataContext="{Binding WelcomeVm}" VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <TextBlock Text="Welcome to Master's FM"
-                                       FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            <TextBlock Margin="0,8,0,16"
-                                       Text="Master's FM listens to your music and shows it as an OBS overlay. Let's get you set up in three quick steps."
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <ListBox ItemsSource="{Binding PatchNotes}"
-                                     MaxHeight="380"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     VirtualizingStackPanel.IsVirtualizing="True">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="0,0,0,8">
-                                            <TextBlock>
-                                                <Run Text="{Binding Version}" FontWeight="SemiBold" />
-                                                <Run Text="  *  "
-                                                     Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                                                <Run Text="{Binding Date}"
-                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                            </TextBlock>
+                    </StackPanel.Style>
+                    <TextBlock Text="What's new"
+                               Style="{StaticResource HeadingTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Style="{StaticResource BodyTextStyle}"
+                               Foreground="{StaticResource TextSecondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,20">
+                        Master's FM detects what you're listening to and can overlay it in OBS.
+                        Here's what's new in this release.
+                    </TextBlock>
+                    <ListBox ItemsSource="{Binding PatchNotes}"
+                             MaxHeight="280"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             VirtualizingStackPanel.IsVirtualizing="True">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,8" Padding="12"
+                                        Style="{StaticResource CardStyle}">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding Version}"
+                                                       Style="{StaticResource BodyStrongTextStyle}"
+                                                       Foreground="{StaticResource TextPrimary}"/>
+                                            <TextBlock Text=" - "
+                                                       Style="{StaticResource BodyTextStyle}"
+                                                       Foreground="{StaticResource TextTertiary}"/>
+                                            <TextBlock Text="{Binding Date}"
+                                                       Style="{StaticResource BodyTextStyle}"
+                                                       Foreground="{StaticResource TextSecondary}"/>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+
                 <!-- Audio step -->
-                <Grid>
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
+                <StackPanel DataContext="{Binding AudioVm}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep}" Value="Audio">
-                                    <Setter Property="Visibility" Value="Visible" />
+                                <DataTrigger Binding="{Binding CurrentStep,
+                                             RelativeSource={RelativeSource AncestorType=Window}}"
+                                             Value="Audio">
+                                    <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </Grid.Style>
-                    <StackPanel DataContext="{Binding AudioVm}">
-                        <TextBlock Text="Pick an audio source"
-                                   FontSize="20" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Margin="0,4,0,12"
-                                   Text="Master's FM samples this device for the live spectrum visuals."
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel.Style>
+                    <TextBlock Text="Pick an audio source"
+                               Style="{StaticResource HeadingTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Style="{StaticResource BodyTextStyle}"
+                               Foreground="{StaticResource TextSecondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,20">
+                        Master's FM listens to your computer's audio to detect what's playing.
+                    </TextBlock>
+                    <Border Style="{StaticResource CardStyle}" Padding="0">
                         <ListBox ItemsSource="{Binding OutputDevices}"
                                  SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
-                                 MaxHeight="320"
+                                 MaxHeight="220"
                                  Background="Transparent"
-                                 BorderThickness="0">
+                                 BorderThickness="0"
+                                 ItemContainerStyle="{StaticResource WizardDeviceItemStyle}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="0,4">
-                                        <TextBlock Text="{Binding Name}"
-                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        <TextBlock Text="{Binding Detail}" FontSize="11"
-                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock Margin="0,8,0,0"
-                                   Text="{Binding StatusText}"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                    </StackPanel>
-                </Grid>
-                <!-- Platforms step -->
-                <Grid>
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep}" Value="Platforms">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
-                    <StackPanel DataContext="{Binding PlatformsVm}">
-                        <TextBlock Text="Pick the platforms"
-                                   FontSize="20" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Margin="0,4,0,12"
-                                   Text="All platforms are enabled by default. You can change these later from the tray menu."
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        <ListBox ItemsSource="{Binding Platforms}"
-                                 MaxHeight="380"
-                                 Background="Transparent"
-                                 BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,4" MinHeight="40">
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                            <TextBlock Text="{Binding HelperText}" FontSize="11"
-                                                       Margin="0,2,0,0"
-                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                            <TextBlock Text="{Binding Name}"
+                                                       Style="{StaticResource BodyStrongTextStyle}"
+                                                       Foreground="{StaticResource TextPrimary}"/>
+                                            <TextBlock Text="{Binding Detail}"
+                                                       Style="{StaticResource CaptionTextStyle}"
+                                                       Foreground="{StaticResource TextTertiary}"/>
                                         </StackPanel>
-                                        <ui:ToggleSwitch Grid.Column="1"
-                                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                                          VerticalAlignment="Center" />
+                                        <Border Grid.Column="1"
+                                                Padding="6,2" CornerRadius="4"
+                                                Background="{StaticResource BrandPurpleBase}"
+                                                Visibility="{Binding IsDefault,
+                                                             Converter={StaticResource BoolToVis},
+                                                             FallbackValue=Collapsed}">
+                                            <TextBlock Text="Default"
+                                                       Style="{StaticResource TinyTextStyle}"
+                                                       Foreground="#FFFFFF"/>
+                                        </Border>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                    </StackPanel>
-                </Grid>
+                    </Border>
+                    <TextBlock Text="{Binding StatusText}"
+                               Style="{StaticResource CaptionTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <!-- Platforms step -->
+                <StackPanel DataContext="{Binding PlatformsVm}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CurrentStep,
+                                             RelativeSource={RelativeSource AncestorType=Window}}"
+                                             Value="Platforms">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Which apps do you use?"
+                               Style="{StaticResource HeadingTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Style="{StaticResource BodyTextStyle}"
+                               Foreground="{StaticResource TextSecondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,20">
+                        All platforms are enabled by default. Open them in the background
+                        and Master's FM will pick them up automatically.
+                    </TextBlock>
+                    <ListBox ItemsSource="{Binding Platforms}"
+                             MaxHeight="280"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Background"      Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Height"          Value="44"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding DisplayName}"
+                                               Style="{StaticResource BodyStrongTextStyle}"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               VerticalAlignment="Center"/>
+                                    <ToggleButton Grid.Column="1"
+                                                  IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                  Style="{StaticResource WizardActivePillStyle}"
+                                                  VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Style="{StaticResource CaptionTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               TextWrapping="Wrap"
+                               Margin="0,12,0,0">
+                        We don't need any login. We just watch what's playing.
+                    </TextBlock>
+                </StackPanel>
+
+            </Grid>
+        </ScrollViewer>
+
+        <!-- === FOOTER === -->
+        <Border Grid.Row="2"
+                BorderBrush="{StaticResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="24,0">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Skip (always visible, secondary) -->
+                <Button Grid.Column="0"
+                        Content="Skip"
+                        Style="{StaticResource TertiaryButtonStyle}"
+                        Command="{Binding SkipCommand}"/>
+
+                <!-- Back (tertiary, hidden on first step) -->
+                <Button Grid.Column="2"
+                        Content="Back"
+                        IsEnabled="{Binding CanGoBack}"
+                        Command="{Binding BackCommand}"
+                        Margin="0,0,8,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource TertiaryButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanGoBack}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Next / Finish (primary) -->
+                <Button Grid.Column="3"
+                        Content="{Binding ForwardButtonLabel}"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        IsEnabled="{Binding CanGoForward}"
+                        Command="{Binding NextCommand}"/>
             </Grid>
         </Border>
-
-        <!-- Footer -->
-        <Grid Grid.Row="2" Margin="0,16,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Content="Skip"
-                    MinWidth="80"
-                    Command="{Binding SkipCommand}" />
-            <Button Grid.Column="2" Content="Back" MinWidth="80" Margin="8,0"
-                    IsEnabled="{Binding CanGoBack}"
-                    Command="{Binding BackCommand}" />
-            <ui:Button Grid.Column="3"
-                       Content="{Binding ForwardButtonLabel}"
-                       MinWidth="120"
-                       Appearance="Primary"
-                       IsEnabled="{Binding CanGoForward}"
-                       Command="{Binding NextCommand}" />
-        </Grid>
     </Grid>
 </Window>
