@@ -132,6 +132,37 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </TabItem>
+            <!-- INTERRUPT #3 STEP 7 (Issue 2): MME output devices via winmm.dll. -->
+            <TabItem Header="MME"
+                     Visibility="{Binding HasMme, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                <ListBox ItemsSource="{Binding MmeDevices}"
+                         SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding Name}"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="{Binding Detail}" FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                                <Border Grid.Column="1"
+                                        Padding="6,2" CornerRadius="4"
+                                        Background="{DynamicResource SystemAccentColorPrimaryBrush}"
+                                        Visibility="{Binding IsDefault, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                                    <TextBlock Text="Default" FontSize="10" FontWeight="SemiBold" Foreground="White" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
             <TabItem Header="ASIO"
                      Visibility="{Binding HasAsio, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
                 <TextBlock Margin="12" Text="No ASIO devices found." />

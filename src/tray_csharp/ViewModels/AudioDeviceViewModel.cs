@@ -47,6 +47,13 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [ObservableProperty]
     private bool hasAsio;
 
+    // INTERRUPT #3 STEP 7 (Issue 2): MME output device collection.
+    [ObservableProperty]
+    private ObservableCollection<AudioDeviceInfo> mmeDevices = new();
+
+    [ObservableProperty]
+    private bool hasMme;
+
     [ObservableProperty]
     private string statusText = "Idle.";
 
@@ -68,6 +75,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
             OutputDevices.Clear();
             InputDevices.Clear();
             AsioDevices.Clear();
+            MmeDevices.Clear();
             StereoMixDevicePresent = false;
             StereoMixEnabled = false;
 
@@ -107,6 +115,22 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 });
             }
 
+            // INTERRUPT #3 STEP 7 (Issue 2): MME output device enumeration via winmm.dll.
+            var mmeList = AudioApi.EnumerateMmeOutputDevices();
+            foreach (var d in mmeList)
+            {
+                MmeDevices.Add(new AudioDeviceInfo
+                {
+                    DeviceId = $"mme-out-{d.Index}",
+                    Name = d.Name,
+                    IsDefault = d.Index == 0,
+                    IsEnabled = true,
+                    IsStereoMix = d.Name.IndexOf("Stereo Mix", StringComparison.OrdinalIgnoreCase) >= 0,
+                    Backend = "MME"
+                });
+            }
+            HasMme = MmeDevices.Count > 0;
+
             HasAsio = AsioDevices.Count > 0;
 
             // Restore previously-selected device from config if present
@@ -123,6 +147,18 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                             break;
                         }
                     }
+                    // If not found in WASAPI output, check MME devices
+                    if (SelectedDevice == null)
+                    {
+                        foreach (var d in MmeDevices)
+                        {
+                            if (string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                SelectedDevice = d;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -130,8 +166,8 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 _logger.LogWarn("config read for audio selection: " + ex.Message, Component);
             }
 
-            StatusText = $"{OutputDevices.Count} output, {InputDevices.Count} input device(s).";
-            _logger.Log("enumerated " + OutputDevices.Count + " output, " + InputDevices.Count + " input devices",
+            StatusText = $"{OutputDevices.Count} WASAPI output, {InputDevices.Count} input, {MmeDevices.Count} MME device(s).";
+            _logger.Log("enumerated " + OutputDevices.Count + " WASAPI output, " + InputDevices.Count + " input, " + MmeDevices.Count + " MME devices",
                 Component);
         }
         catch (Exception ex)
@@ -170,7 +206,8 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         {
             _config.SetValue("audio.outputDeviceId", SelectedDevice.DeviceId);
             _config.SetValue("audio.outputDeviceName", SelectedDevice.Name);
-            _logger.Log("audio device persisted: " + SelectedDevice.Name, Component);
+            _config.SetValue("audio.selectedBackend", SelectedDevice.Backend);
+            _logger.Log("audio device persisted: " + SelectedDevice.Name + " (" + SelectedDevice.Backend + ")", Component);
         }
         catch (Exception ex)
         {
