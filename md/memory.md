@@ -10,7 +10,7 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
 **Current version:** v12.0.1 (PUBLIC) / v14.0.0-rc.1 (LOCAL CHECKPOINT, push deferred until Stages 7+8 complete)
-**Last updated:** 2026-05-08 (Stage 7.8 OBS integration + 7.6 leftover fixups LANDED; IObsService singleton + ObsService ClientWebSocket WS-v5 + TrayMenuViewModel OBS bindings + MainWindow OBS row live wiring; smoke regression QUALIFIED PASS all 6 dialogs; 60-min OBS-inactive soak CONDITIONAL PASS plateau 300.2 MB both-half diff 0.01 MB; memory band updated 220-260 MB; SHA256 protected files UNCHANGED; 4 files NEW, 4 MODIFIED; +58 KB dist)
+**Last updated:** 2026-05-09 (Stage 8 build pipeline cleanup COMPLETE; `_full_rebuild.ps1` 593 → 419 lines; 4 src/build files deleted; 6 $Use* flag branches collapsed; MSB1008 dotnet publish fix applied; build gate exit 0; SHA256 protected files UNCHANGED)
 
 ## IN-FLIGHT WORK
 
@@ -157,6 +157,10 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 ~08:00 -- Stage 8 -- Build pipeline cleanup COMPLETE
+
+**Scope:** Remove dead code paths from `_full_rebuild.ps1` (flag-gated false-branches that have been `= $true` since Stages 1-3) and stale src/dist artifacts. No source code changes to tray, server, launcher, or audio_spectrum. **Phase 1 (commit `81874a5`):** Deleted 4 source/build files (`src/tray_launcher.cs`, `build_tools/ps2exe/_build_tray.ps1`, `build_tools/ps2exe/_build_spectrum.ps1`, `build_tools/ps2exe/ps2exe.ps1`); removed 10 stale `dist/` subdirs + `dist/server.exe` (42.8 MB Node pkg binary); removed csc.exe detection block and [1d/5] csc.exe compile block (−46 lines). **Phase 2 (commit `353b3e8`):** Collapsed 6 `$Use*` flag if/else wrappers (UseDotnet8Server, UseDotnet8Launcher, UseDotnet8Customize, UseDotnetTrayNative, UseDotnet8TrayCs, UseDotnet8AudioSpectrum); flags retained as documentation comments. `$UseDotnet8Bootstrapper = $false` kept unchanged. Also fixed MSB1008 "only one project can be specified" on all 4 `dotnet publish` calls: root cause was `Start-Process -ArgumentList` embedding literal `"` chars into MSBuild @tempfile; residual MSBuild server (alive from server_dotnet build) prepended CWD `G:\Project Folder\Master FM\` to `"G:\path"`, producing a second positional arg. Fix: `& dotnet publish ... -o $tempPath` (PowerShell call operator) + no-spaces temp dirs (`G:\lnch_pub_tmp`, `G:\cz_pub_tmp`, `G:\tray_pub_tmp`, `G:\as_pub_tmp`). Net: 593 → 419 lines (−174). **Both build gates:** exit 0, MSI built+signed+installed, process launched. **Protected files:** all 4 source files UNCHANGED (SHA256 verified: `src/tray.ps1` `19011F0B...`, `src/tray_native/tray_native.cs` `6B9804A1...`, `src/launcher.cs` `291ED4C9...`, `src/server.js` `C15ED931...`). **Deliverables:** `V14_S8_AUDIT.md`, `V14_S8_LOG.md`, `V14_S8_FINAL_REPORT.md` (gitignored). **Commits:** `1f88425` (STEP 1 OQ-2) `58f95e5` (STEP 2 grep) `81874a5` (Phase 1) `353b3e8` (Phase 2). **Files changed:** `_full_rebuild.ps1` only (4 deleted, 0 source modified).
 
 ### 2026-05-09 ~03:30 -- Stage 7.10 INTERRUPT #2 -- webhook schema + procedure + harness threshold
 
