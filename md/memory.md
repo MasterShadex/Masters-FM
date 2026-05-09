@@ -10,16 +10,17 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
 **Current version:** v14.0.0-rc.2 (local branch ahead; INTERRUPT #3 + Stage 7.8B + Stage 7.8C complete; rc.3 pending Brief 3)
-**Last updated:** 2026-05-09 (Stage 7.8C file-edit-only OBS + cleanup-on-uninstall PASS; 13/13 tests; 8 new commits; Brief 3 Stage 7.7B visual next)
+**Last updated:** 2026-05-09 (Stage 7.8D OBS intent-vs-reality state machine PASS; 9/9 E2E tests; 8 new commits; Brief 3 Stage 7.7B visual next)
 
 ## IN-FLIGHT WORK
 
-**Stage 7.8C -- file-edit-only OBS + cleanup-on-uninstall -- LOCAL COMPLETE 2026-05-09**
-- Brief 2 DONE: file-edit-only OBS toggle; GAP-1/GAP-2 fixes; obs.pending_restart; MastersFM_ObsCleanup.exe; MSI integration
-- 13/13 automated tests PASS; 5 UAT items deferred (require tray/MSI runtime)
-- Prior: Stage 7.10 INTERRUPT #3 (8 commits 5e078f3..cd986e8); Stage 7.8B (11 commits); Stage 7.8C (8 commits 0926fa3..811a10f)
-- rc.3 = INTERRUPT #3 + Brief 2 (Stages 7.8B+7.8C) + Brief 3 (Stage 7.7B visual — NOT STARTED)
-- Next step: Brief 3 (Stage 7.7B visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
+**Stage 7.8D -- OBS intent-vs-reality state machine -- LOCAL COMPLETE 2026-05-09**
+- Bug fixed: obs.enabled never cleared by toggle; 5s App.xaml.cs auto-add re-added source on every restart
+- obs.intent ("on"|"off") replaces obs.enabled as user-intent field; obs.tray_added_uuid for UUID tracking
+- ReconcileAsync (5s initial + 60s recurring) = single source of truth; UUID-targeted remove
+- 9/9 E2E tests PASS; toggle-OFF verified by log; no 5s re-add in log; migration confirmed
+- 8 commits c4e3f70..b525546; no protected files touched; 0W/0E dual-build
+- Next: Brief 3 (Stage 7.7B visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
 
 ## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
 - **Overlay is WebGL-only** (canvas2d removed in v9.4.0). If GPU can't do WebGL -> blank overlay. Consider adding graceful WebGL-unavailable message in overlay.html.
@@ -158,6 +159,28 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 -- Stage 7.8D: OBS intent-vs-reality state machine
+
+**Commits:** `c4e3f70` (STEP 0 backup) `270bc5f` (STEP 1 diagnosis) `f23c4e1` (STEP 2 ObsSceneFileEditor) `c768a2e` (STEP 3 TrayMenuViewModel) `0e35e98` (STEP 4 binding verification) `1ac615c` (STEP 5 remove 5s auto-add) `ef8d9e7` (STEP 6 E2E smoke) `b525546` (STEP 7 dual-build+SHA256)
+**Outcome:** PASS (9/9 E2E tests pass; 3/3 regression checks pass; 0 strikes consumed)
+
+#### Issues fixed
+- **Primary bug (Mode D)** -- obs.enabled never written false by toggle; 5s App.xaml.cs auto-add re-added source on every tray restart; user toggle-OFF appeared to work but reverted
+- **obs.intent config field** -- Replaces obs.enabled as user-intent field ("on"|"off"); migration runs on first 7.8D launch (obs.enabled=true → obs.intent="on"); obs.enabled left as tombstone
+- **obs.tray_added_uuid tracking** -- UUID of source added by this tray instance; written by AutoAddAsync; used by RemoveBrowserSourceByUuid for exact-match remove; foreign sources (same name, different UUID) protected
+- **ReconcileAsync** -- Single source of truth; reads obs.intent + ScanForBrowserSources + OBS process state + file-mtime heuristic; derives ObsToggleState; fires AutoAddAsync or AutoRemoveAsync as needed; 5s initial + 60s recurring via System.Threading.Timer
+- **5s startup auto-add removed from App.xaml.cs** -- Stage 7.8C block that read obs.enabled (always true) and re-added source removed; ReconcileAsync is sole auto-add path
+- **SetObsToggleState dispatcher-safe** -- Checks dispatcher.CheckAccess(); marshals to UI dispatcher; fires OnPropertyChanged(nameof(IsObsEnabled)) explicitly for computed property
+
+#### Architecture changes
+- TrayMenuViewModel: `_obsReconcileTimer` (System.Threading.Timer 5s+60s) replaces `_obsPollTimer` (DispatcherTimer 60s)
+- `IsObsEnabled`: computed property (`_obsToggleState == Added || PendingRestart`); `OnPropertyChanged` explicit in SetObsToggleState
+- `ObsSceneFileEditor.AddBrowserSource`: returns `AddBrowserSourceResult` (Ok/AlreadyPresent/ForeignSource/Failed); accepts optional `knownTrayUuid`
+- `ObsSceneFileEditor.ScanForBrowserSources`: scans all scene-collection JSONs; returns `List<BrowserSourceScanResult>` (Uuid/CollectionPath/Url)
+- `ObsSceneFileEditor.RemoveBrowserSourceByUuid`: UUID-exact-match remove; protects user-added sources
+
+---
 
 ### 2026-05-09 -- Stage 7.8C: file-edit-only OBS port + cleanup-on-uninstall
 
