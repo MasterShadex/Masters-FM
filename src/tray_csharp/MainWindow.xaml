@@ -19,9 +19,14 @@
         Topmost="False"
         ResizeMode="NoResize">
 
+    <!-- INTERRUPT #3 STEP 2 (Issue 7): LeftClickCommand fires ShowMenuCommand
+         which opens the ContextMenu at the cursor position. NoLeftClickDelay
+         suppresses the 500ms OS deferral so the menu appears immediately.
+         DataContext = TrayMenuViewModel is set in code-behind constructor. -->
     <tb:TaskbarIcon x:Name="NotifyIcon"
                     IconSource="pack://application:,,,/MastersFM_Tray_v14;component/assets/MastersFM.ico"
                     ToolTipText="Master's FM v14"
+                    LeftClickCommand="{Binding ShowMenuCommand}"
                     NoLeftClickDelay="True">
 
         <tb:TaskbarIcon.ContextMenu>

@@ -54,10 +54,17 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     /// <summary>
     /// Set by MainWindow.OnLoaded so Quit / Restart commands can close the host
     /// window (dispose TaskbarIcon) before Application.Shutdown. With
-    /// ShutdownMode=OnExplicitShutdown, Shutdown() does NOT fire OnClosing —
+    /// ShutdownMode=OnExplicitShutdown, Shutdown() does NOT fire OnClosing --
     /// explicit pre-close is required for clean NotifyIcon disposal.
     /// </summary>
     internal Action? CleanShutdown { get; set; }
+
+    /// <summary>
+    /// Set by MainWindow.OnLoaded so the ShowMenuCommand (fired on tray left-
+    /// click via LeftClickCommand) can open the ContextMenu at the current
+    /// cursor position without the ViewModel holding a UI reference.
+    /// </summary>
+    internal Action? OpenContextMenu { get; set; }
 
     public TrayMenuViewModel(
         NowPlayingViewModel nowPlaying,
@@ -278,6 +285,16 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     {
         _logger.Log("TrayMenu: Quit Master's FM", "Tray");
         InvokeCleanShutdown();
+    }
+
+    // INTERRUPT #3 STEP 2: Issue 7 -- tray left-click opens menu.
+    // Called via LeftClickCommand on TaskbarIcon (MainWindow.xaml). The
+    // delegate is wired in MainWindow.OnLoaded; no direct UI reference here.
+    [RelayCommand]
+    private void ShowMenu()
+    {
+        _logger.Log("TrayMenu: ShowMenu (left-click)", "Tray");
+        OpenContextMenu?.Invoke();
     }
 
     // Calls the MainWindow-provided clean-shutdown delegate (close host window

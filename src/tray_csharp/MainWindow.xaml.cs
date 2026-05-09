@@ -29,6 +29,11 @@ public partial class MainWindow : Window
         _logger = logger;
         _trayMenuViewModel = trayMenuViewModel;
         InitializeComponent();
+        // INTERRUPT #3 STEP 2: expose ViewModel as Window DataContext so
+        // TaskbarIcon.LeftClickCommand="{Binding ShowMenuCommand}" resolves.
+        // ContextMenu.DataContext is still explicitly set in OnLoaded because
+        // ContextMenu popups do not inherit Window.DataContext from the visual tree.
+        DataContext = trayMenuViewModel;
         Loaded += OnLoaded;
     }
 
@@ -46,6 +51,19 @@ public partial class MainWindow : Window
             _allowClose = true;
             Close();
             Application.Current.Shutdown(0);
+        };
+
+        // INTERRUPT #3 STEP 2: Issue 7 -- wire left-click -> ShowMenu delegate.
+        // Opens the ContextMenu at the current cursor position using WPF
+        // PlacementMode.Mouse (no P/Invoke required). ContextMenu.IsOpen
+        // must be set on the dispatcher thread -- OnLoaded already runs on it.
+        _trayMenuViewModel.OpenContextMenu = () =>
+        {
+            if (NotifyIcon.ContextMenu is { } cm)
+            {
+                cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse;
+                cm.IsOpen = true;
+            }
         };
 
         // Stage 7.6 STEP 11: Q3=C backdrop gate.
