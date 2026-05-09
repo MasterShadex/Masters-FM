@@ -185,6 +185,31 @@ if ($trayCsExit -eq 0) {
     L "  WARN: WPF tray dotnet publish failed (exit $trayCsExit) -- continuing"
 }
 
+# Stage 7.8C STEP 4: MastersFM_ObsCleanup.exe -- MSI-uninstall OBS cleanup helper.
+# Shipped to %PROGRAMDATA%\MastersFM\Cleanup\ by MSI (STEP 5).
+# Framework-dependent (no R2R needed; binary is tiny + rarely executed).
+L "=== Stage 7.8C: building MastersFM_ObsCleanup.exe ==="
+$cleanupOut = Join-Path $root 'dist\obs_cleanup_release'
+$cleanupTmp = 'G:\cleanup_pub_tmp'
+if (Test-Path $cleanupTmp) { Remove-Item $cleanupTmp -Recurse -Force -ErrorAction SilentlyContinue }
+$cleanupResult = & dotnet publish "$root\src\obs_cleanup\MastersFM_ObsCleanup.csproj" -r win-x64 `
+    --self-contained false -c Release -o $cleanupTmp --nologo -v quiet 2>&1
+$cleanupExit = $LASTEXITCODE
+if ($cleanupExit -eq 0) {
+    if (-not (Test-Path $cleanupOut)) { New-Item -ItemType Directory -Path $cleanupOut -Force | Out-Null }
+    Copy-Item "$cleanupTmp\*" $cleanupOut -Force
+    Remove-Item $cleanupTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $cleanupExe = Join-Path $cleanupOut 'MastersFM_ObsCleanup.exe'
+    if (Test-Path $cleanupExe) {
+        $cleanupSz = [math]::Round((Get-Item $cleanupExe).Length / 1KB, 1)
+        L "  MastersFM_ObsCleanup.exe OK ($cleanupSz KB)"
+    }
+} else {
+    Remove-Item $cleanupTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $cleanupResult | ForEach-Object { L "    $_" }
+    L "  WARN: MastersFM_ObsCleanup build failed (exit $cleanupExit) -- continuing"
+}
+
 # Step 1d2: Build audio_spectrum.exe (WASAPI/MME/WDM-KS/ASIO spectrum provider)
 # Stage 2: .NET 8 path (legacy csc.exe+_build_spectrum.ps1 path retired in Stage 8).
 L "[1d2/5] Building audio_spectrum.exe (WASAPI loopback)..."

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Stage 7.8C STEP 4: OBS cleanup console utility.
+       Shipped to %PROGRAMDATA%\MastersFM\Cleanup\ by MSI (STEP 5).
+       Launched from uninstall VBS when OBS is running; polls for OBS exit,
+       removes Master's FM browser source from all scene-collection JSON files,
+       then self-deletes. Framework-dependent on net8.0 (no WPF/WinForms). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>MastersFM_ObsCleanup</AssemblyName>
+    <RootNamespace>MastersFM.ObsCleanup</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>
