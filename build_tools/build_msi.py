@@ -111,6 +111,11 @@ GUID_COMP57  = "{DDDDDDDD-BBBB-7777-8888-999999999997}"  # System.Private.Window
 GUID_COMP58  = "{EEEEEEEE-BBBB-7777-8888-999999999997}"  # WinRT.Runtime.dll
 GUID_COMP59  = "{FFFFFFFF-BBBB-7777-8888-999999999997}"  # Wpf.Ui.Abstractions.dll
 GUID_COMP60  = "{11111111-CCCC-7777-8888-999999999997}"  # Wpf.Ui.dll
+# Stage 7.8C STEP 5: OBS cleanup binary (installed to %PROGRAMDATA%\MastersFM\Cleanup\)
+GUID_COMP61  = "{11111111-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.exe
+GUID_COMP62  = "{22222222-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.dll
+GUID_COMP63  = "{33333333-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.runtimeconfig.json
+GUID_COMP64  = "{44444444-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.deps.json
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
@@ -217,6 +222,19 @@ if os.path.exists(_cs_tray_dll):
         ("dist/tray_csharp_release/Wpf.Ui.dll",                                            "Wpf.Ui.dll",                                            GUID_COMP60),
     ])
 
+# Stage 7.8C STEP 5: OBS cleanup binary — shipped to %PROGRAMDATA%\MastersFM\Cleanup\.
+# Conditional: only included if dist/obs_cleanup_release was built (mirrors other artifact blocks).
+CLEANUP_FILES = []
+_cleanup_exe_path = os.path.join(SRC, "dist", "obs_cleanup_release", "MastersFM_ObsCleanup.exe")
+if os.path.exists(_cleanup_exe_path):
+    _all_cleanup = [
+        ("dist/obs_cleanup_release/MastersFM_ObsCleanup.exe",                "MastersFM_ObsCleanup.exe",                GUID_COMP61),
+        ("dist/obs_cleanup_release/MastersFM_ObsCleanup.dll",                "MastersFM_ObsCleanup.dll",                GUID_COMP62),
+        ("dist/obs_cleanup_release/MastersFM_ObsCleanup.runtimeconfig.json", "MastersFM_ObsCleanup.runtimeconfig.json", GUID_COMP63),
+        ("dist/obs_cleanup_release/MastersFM_ObsCleanup.deps.json",          "MastersFM_ObsCleanup.deps.json",          GUID_COMP64),
+    ]
+    CLEANUP_FILES = [(s, d, g) for s, d, g in _all_cleanup if os.path.exists(os.path.join(SRC, s))]
+
 MSIDBOPEN_CREATE = ctypes.c_wchar_p(3)
 
 msi_dll = ctypes.WinDLL("msi.dll")
@@ -298,7 +316,7 @@ def main():
 
     cab_path = OUT.replace(".msi", ".cab")
     print("[1/3] Building CAB with makecab.exe...")
-    if not build_cab(FILES, cab_path):
+    if not build_cab(FILES + CLEANUP_FILES, cab_path):
         print("ERROR: makecab failed — cab not found")
         sys.exit(1)
     print(f"      CAB: {cab_path}")
@@ -417,6 +435,17 @@ def main():
 
         # ── Step 3: wait ~2s for processes to fully die ──────────────────────
         'oShell.Run "ping -n 3 127.0.0.1", 0, True : '
+
+        # ── Step 3b: spawn MastersFM_ObsCleanup.exe detached (Stage 7.8C) ───
+        # Removes Master's FM browser source from OBS scene-collection files.
+        # Polls for OBS exit if OBS is running; runs immediately if not.
+        # bWaitOnReturn=False: MSI uninstall continues without blocking on OBS.
+        # Self-deletes after completing its cleanup pass.
+        'cleanupExe = oShell.ExpandEnvironmentStrings'
+        '("%ProgramData%\\MastersFM\\Cleanup\\MastersFM_ObsCleanup.exe") : '
+        'If fso.FileExists(cleanupExe) Then '
+            'oShell.Run """" & cleanupExe & """", 0, False : '
+        'End If : '
 
         # ── Step 4: run tray.ps1 -Uninstall (removes OBS source from scenes) ─
         'oShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden'
@@ -584,6 +613,13 @@ def main():
                "ProgramMenuFolder", "TARGETDIR", ".")
     insert_row(db, "INSERT INTO `Directory` (`Directory`,`Directory_Parent`,`DefaultDir`) VALUES (?,?,?)",
                "ProgramMenuAppDir", "ProgramMenuFolder", "Master's FM")
+    # Stage 7.8C STEP 5: %PROGRAMDATA%\MastersFM\Cleanup\ for OBS cleanup binary
+    insert_row(db, "INSERT INTO `Directory` (`Directory`,`Directory_Parent`,`DefaultDir`) VALUES (?,?,?)",
+               "CommonAppDataFolder", "TARGETDIR", ".")
+    insert_row(db, "INSERT INTO `Directory` (`Directory`,`Directory_Parent`,`DefaultDir`) VALUES (?,?,?)",
+               "MFMCommonDataDir", "CommonAppDataFolder", "MastersFM")
+    insert_row(db, "INSERT INTO `Directory` (`Directory`,`Directory_Parent`,`DefaultDir`) VALUES (?,?,?)",
+               "MFMCleanupDir", "MFMCommonDataDir", "Cleanup")
 
     # ── Feature ──────────────────────────────────────────────────────────────
     insert_row(db, "INSERT INTO `Feature` (`Feature`,`Feature_Parent`,`Title`,`Description`,`Display`,`Level`,`Directory_`,`Attributes`) VALUES (?,?,?,?,?,?,?,?)",
@@ -599,6 +635,20 @@ def main():
                    comp, guid, "INSTALLFOLDER", 0, None, file_key)
         insert_row(db, "INSERT INTO `File` (`File`,`Component_`,`FileName`,`FileSize`,`Version`,`Language`,`Attributes`,`Sequence`) VALUES (?,?,?,?,?,?,?,?)",
                    file_key, comp, install_name, size, None, None, 0, i+1)
+        insert_row(db, "INSERT INTO `FeatureComponents` (`Feature_`,`Component_`) VALUES (?,?)",
+                   "MainFeature", comp)
+
+    # Stage 7.8C STEP 5: cleanup binary components (installed to MFMCleanupDir)
+    _cleanup_base_seq = len(FILES) + 1
+    for i, (src_name, install_name, guid) in enumerate(CLEANUP_FILES):
+        src_path = os.path.join(SRC, src_name)
+        size     = os.path.getsize(src_path)
+        comp     = f"CleanupComp_{i+1}"
+        file_key = install_name.replace(" ", "_")
+        insert_row(db, "INSERT INTO `Component` (`Component`,`ComponentId`,`Directory_`,`Attributes`,`Condition`,`KeyPath`) VALUES (?,?,?,?,?,?)",
+                   comp, guid, "MFMCleanupDir", 0, None, file_key)
+        insert_row(db, "INSERT INTO `File` (`File`,`Component_`,`FileName`,`FileSize`,`Version`,`Language`,`Attributes`,`Sequence`) VALUES (?,?,?,?,?,?,?,?)",
+                   file_key, comp, install_name, size, None, None, 0, _cleanup_base_seq + i)
         insert_row(db, "INSERT INTO `FeatureComponents` (`Feature_`,`Component_`) VALUES (?,?)",
                    "MainFeature", comp)
 
@@ -673,7 +723,7 @@ def main():
 
     # ── Media (CAB reference) ─────────────────────────────────────────────────
     insert_row(db, "INSERT INTO `Media` (`DiskId`,`LastSequence`,`DiskPrompt`,`Cabinet`,`VolumeLabel`,`Source`) VALUES (?,?,?,?,?,?)",
-               1, len(FILES), None, "#Data1.cab", None, None)
+               1, len(FILES) + len(CLEANUP_FILES), None, "#Data1.cab", None, None)
 
     # ── Install sequences ─────────────────────────────────────────────────────
     # Major-Upgrade trio:
