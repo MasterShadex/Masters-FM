@@ -9,6 +9,7 @@
 // Heartbeat: GetCurrentProgramScene every 30s when Connected.
 // Log prefix: [OBS].
 
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -57,6 +58,13 @@ public sealed class ObsService : IObsService, IDisposable
     private readonly SemaphoreSlim      _sendLock = new(1, 1);
     private bool                        _started;
     private readonly object             _lock = new();
+
+    // live socket (non-null only while Connected; cleared in RunConnectedLoopAsync finally)
+    private volatile ClientWebSocket? _socket;
+
+    // pending SendRequestAsync calls keyed by requestId
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement?>>
+        _pendingRequests = new();
 
     // ── IObsService ───────────────────────────────────────────────────────────
 
@@ -261,6 +269,7 @@ public sealed class ObsService : IObsService, IDisposable
                 _tel.IncrementCounter(Tel.ConnectSuccesses);
                 SetState(ObsConnectionState.Connected);
                 _log.Log($"connected to OBS at {uri}", Cmp);
+                _socket = ws;  // expose to SendRequestAsync while Connected
                 await RunConnectedLoopAsync(ws, ct);
                 return true;
             }
@@ -295,13 +304,18 @@ public sealed class ObsService : IObsService, IDisposable
                     if (r.MessageType == WebSocketMessageType.Close) return;
                     ms.Write(buf, 0, r.Count);
                 } while (!r.EndOfMessage);
-                // Incoming op=5 Events / op=7 Responses — drained, not acted on
+                DispatchReceived(ms.ToArray());  // op=7 -> TCS; op=5 drained silently
             }
         }
         finally
         {
             heartbeatTimer.Dispose();
             try { await heartbeatTask; } catch { }
+            // Release all pending SendRequestAsync callers
+            foreach (var kvp in _pendingRequests)
+                kvp.Value.TrySetResult(null);
+            _pendingRequests.Clear();
+            _socket = null;
             if (_state == ObsConnectionState.Connected)
             {
                 _tel.IncrementCounter(Tel.Disconnects);
@@ -331,6 +345,76 @@ public sealed class ObsService : IObsService, IDisposable
     }
 
     // ── private: protocol helpers ─────────────────────────────────────────────
+
+    // Dispatch an op=7 response frame to the waiting SendRequestAsync TCS.
+    // Stores the full root element so callers can navigate d.responseData.
+    private void DispatchReceived(byte[] data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("op", out var opEl) || opEl.GetInt32() != 7) return;
+            if (!root.TryGetProperty("d", out var d)) return;
+            if (!d.TryGetProperty("requestId", out var ridEl)) return;
+            var rid = ridEl.GetString();
+            if (rid != null && _pendingRequests.TryRemove(rid, out var tcs))
+                tcs.TrySetResult(root.Clone());  // root so callers do resp.Value.GetProperty("d")
+        }
+        catch { /* malformed frame; ignore */ }
+    }
+
+    // Send an OBS-WS v5 op=6 request and await the matching op=7 response (5s timeout).
+    // Returns the full root JsonElement so callers can navigate d.responseData.
+    // Returns null if not connected or if the request times out.
+    private async Task<JsonElement?> SendRequestAsync(
+        string requestType, object? requestData, CancellationToken ct)
+    {
+        var sock = _socket;
+        if (sock == null || _state != ObsConnectionState.Connected)
+        {
+            _log.Log($"SendRequest: not connected (requestType={requestType})", Cmp);
+            return null;
+        }
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var tcs = new TaskCompletionSource<JsonElement?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingRequests[requestId] = tcs;
+
+        try
+        {
+            var msg = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                op = 6,
+                d = new { requestType, requestId, requestData }
+            });
+
+            await _sendLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await sock.SendAsync(msg, WebSocketMessageType.Text, true, ct)
+                    .ConfigureAwait(false);
+            }
+            finally { _sendLock.Release(); }
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                return await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                _log.LogWarn($"SendRequest timeout: {requestType} id={requestId[..8]}", Cmp);
+                return null;
+            }
+        }
+        finally
+        {
+            _pendingRequests.TryRemove(requestId, out _);
+        }
+    }
 
     private static string ComputeAuth(string password, string salt, string challenge)
     {
@@ -375,19 +459,130 @@ public sealed class ObsService : IObsService, IDisposable
         ConnectionStateChanged?.Invoke(this, new ObsConnectionStateChangedEventArgs(prev, next));
     }
 
-    // ── browser-source operations (stubs; replaced in STEP 3 / STEP 4) ──────────
+    // ── browser-source operations (Stage 7.8B STEP 3 — WebSocket primary path) ─
 
-    public Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default)
-        => Task.FromResult(ObsBrowserSourceResult.Fail("Not yet implemented (STEP 2 stub)"));
+    public async Task<ObsVersionInfo?> GetObsVersionAsync(CancellationToken ct = default)
+    {
+        var resp = await SendRequestAsync("GetVersion", null, ct).ConfigureAwait(false);
+        if (resp == null) return null;
+        try
+        {
+            var responseData = resp.Value.GetProperty("d").GetProperty("responseData");
+            var ver = responseData.GetProperty("obsVersion").GetString() ?? "0.0.0";
+            var p = ver.Split('.');
+            return new ObsVersionInfo(
+                p.Length > 0 && int.TryParse(p[0], out var maj) ? maj : 0,
+                p.Length > 1 && int.TryParse(p[1], out var min) ? min : 0,
+                p.Length > 2 && int.TryParse(p[2], out var pat) ? pat : 0);
+        }
+        catch (Exception ex)
+        {
+            _log.LogErr("GetObsVersionAsync parse", ex, Cmp);
+            return null;
+        }
+    }
 
-    public Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default)
-        => Task.FromResult(false);
+    public async Task<bool> BrowserSourceExistsAsync(CancellationToken ct = default)
+    {
+        var resp = await SendRequestAsync("GetInputList",
+            new { inputKind = "browser_source" }, ct).ConfigureAwait(false);
+        if (resp == null) return false;
+        try
+        {
+            var inputs = resp.Value.GetProperty("d").GetProperty("responseData")
+                .GetProperty("inputs").EnumerateArray();
+            foreach (var input in inputs)
+            {
+                if (input.TryGetProperty("inputName", out var n) &&
+                    n.GetString() == "Master's FM")
+                    return true;
+            }
+            return false;
+        }
+        catch (Exception ex) { _log.LogErr("BrowserSourceExistsAsync parse", ex, Cmp); return false; }
+    }
 
-    public Task<bool> BrowserSourceExistsAsync(CancellationToken ct = default)
-        => Task.FromResult(false);
+    public async Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default)
+    {
+        if (_state != ObsConnectionState.Connected)
+            return ObsBrowserSourceResult.Fail("Not connected to OBS");
 
-    public Task<ObsVersionInfo?> GetObsVersionAsync(CancellationToken ct = default)
-        => Task.FromResult<ObsVersionInfo?>(null);
+        // Version gate: OBS >= 28 required for WebSocket browser-source ops
+        var version = await GetObsVersionAsync(ct).ConfigureAwait(false);
+        if (version == null || !version.SupportsWebSocketBrowserOps)
+        {
+            _log.Log("AddBrowserSource: OBS < 28 or version unknown; WebSocket path unavailable", Cmp);
+            return ObsBrowserSourceResult.Fail("OBS < 28 -- WebSocket path requires file-edit fallback");
+        }
+
+        // Idempotent check
+        if (await BrowserSourceExistsAsync(ct).ConfigureAwait(false))
+        {
+            _log.Log("AddBrowserSource: source already present (idempotent no-op)", Cmp);
+            return ObsBrowserSourceResult.Ok("WebSocket (already present)");
+        }
+
+        // Get scene list; inject into first scene found
+        var sceneListResp = await SendRequestAsync("GetSceneList", null, ct).ConfigureAwait(false);
+        if (sceneListResp == null)
+            return ObsBrowserSourceResult.Fail("GetSceneList request failed or timed out");
+
+        string? firstScene = null;
+        try
+        {
+            foreach (var s in sceneListResp.Value.GetProperty("d")
+                         .GetProperty("responseData").GetProperty("scenes").EnumerateArray())
+            {
+                firstScene = s.GetProperty("sceneName").GetString();
+                break;
+            }
+        }
+        catch (Exception ex) { _log.LogErr("AddBrowserSource: parse SceneList", ex, Cmp); }
+
+        if (firstScene == null)
+            return ObsBrowserSourceResult.Fail("No scenes found in OBS");
+
+        // CreateInput (browser_source) on first scene
+        var createResp = await SendRequestAsync("CreateInput", new
+        {
+            sceneName    = firstScene,
+            inputName    = "Master's FM",
+            inputKind    = "browser_source",
+            inputSettings = new
+            {
+                url    = "http://localhost:4242/?renderer=webgl",
+                width  = 1000,
+                height = 200,
+                fps    = 60,
+                css    = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }"
+            },
+            sceneItemEnabled = true
+        }, ct).ConfigureAwait(false);
+
+        if (createResp == null)
+            return ObsBrowserSourceResult.Fail("CreateInput request failed or timed out");
+
+        _log.Log($"AddBrowserSource: created 'Master's FM' on scene '{firstScene}'", Cmp);
+        return ObsBrowserSourceResult.Ok("WebSocket");
+    }
+
+    public async Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default)
+    {
+        if (_state != ObsConnectionState.Connected) return false;
+
+        // Idempotent: already absent is success
+        if (!await BrowserSourceExistsAsync(ct).ConfigureAwait(false)) return true;
+
+        var resp = await SendRequestAsync("RemoveInput",
+            new { inputName = "Master's FM" }, ct).ConfigureAwait(false);
+
+        if (resp != null)
+            _log.Log("RemoveBrowserSource: 'Master's FM' removed via WebSocket", Cmp);
+        else
+            _log.LogWarn("RemoveBrowserSource: RemoveInput request failed or timed out", Cmp);
+
+        return resp != null;
+    }
 
     // ── IDisposable ───────────────────────────────────────────────────────────
 
