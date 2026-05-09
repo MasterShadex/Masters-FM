@@ -96,12 +96,7 @@ if ($UseDotnet8Server) {
 
 # Step 1b: Build C# binaries
 L "[1b/5] Building C# binaries..."
-$csc = $null
-$paths = @(
-    (Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319\csc.exe"),
-    (Join-Path $env:windir "Microsoft.NET\Framework\v4.0.30319\csc.exe")
-)
-foreach ($p in $paths) { if (Test-Path $p) { $csc = $p; break } }
+# csc.exe detection removed in Stage 8 (no consumers after [1d/5] block deletion).
 
 # MastersFM.exe (launcher) â€” Stage 1: dotnet publish (net8.0-windows, R2R) or legacy csc.exe
 if ($UseDotnet8Launcher) {
@@ -183,48 +178,7 @@ if ($UseDotnet8Customize) {
     }
 }
 
-if ($csc) {
-    # MastersFM_Tray.exe â€” C# exe that hosts PowerShell IN-PROCESS (via
-    # System.Management.Automation). Replaces the separate powershell.exe
-    # child â€” now there's no "Windows PowerShell" entry cluttering Task
-    # Manager; tray.ps1 runs inside an exe whose VersionInfo reports
-    # ProductName "Master's FM", so Task Manager groups it alongside
-    # MastersFM.exe + server.exe under the same app row.
-    L "[1d/5] Compiling MastersFM_Tray.exe (PowerShell host) via csc.exe..."
-    $sma = 'C:\Windows\Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll'
-    if (Test-Path $sma) {
-        $argsT = '/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:MastersFM_Tray.exe ' +
-                 '/reference:System.dll /reference:System.Core.dll ' +
-                 "/reference:$sma src\tray_launcher.cs"
-        $c3 = Start-Process -FilePath $csc -ArgumentList $argsT -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-        if ($c3.ExitCode -eq 0) { L "  MastersFM_Tray.exe OK" } else { L "  WARN: MastersFM_Tray.exe csc exit=$($c3.ExitCode)" }
-    } else {
-        L "  WARN: System.Management.Automation.dll not found - MastersFM_Tray.exe NOT built"
-    }
-
-    # tray_native.dll csc.exe rollback path (active when $UseDotnetTrayNative=$false).
-    # Sub-stage 5.1: the dotnet build path below replaces this when flag is $true.
-    if (-not $UseDotnetTrayNative) {
-        # Pre-compiled P/Invoke + COM types for tray.ps1.
-        # Source moved to src\tray_native\tray_native.cs in sub-stage 5.1.
-        L "[1d3/5] Compiling tray_native.dll (csc.exe, .NET Framework 4.x rollback)..."
-        $argsN = "/nologo /target:library /out:tray_native.dll /reference:System.dll /reference:System.Core.dll src\tray_native\tray_native.cs"
-        $c4 = Start-Process -FilePath $csc -ArgumentList $argsN -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-        if ($c4.ExitCode -eq 0) {
-            L "  tray_native.dll OK (csc.exe rollback)"
-            $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
-            if (Test-Path $signScript) {
-                $dllPath = Join-Path $root 'tray_native.dll'
-                try {
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $dllPath 2>&1 | ForEach-Object { L "    $_" }
-                } catch { L "  WARN: DLL signing failed: $_" }
-            }
-        } else { L "  WARN: tray_native.dll csc exit=$($c4.ExitCode)" }
-    }
-} else {
-    L "  WARN: csc.exe not found -- MastersFM_Tray.exe NOT built"
-    if (-not $UseDotnetTrayNative) { L "  WARN: tray_native.dll also NOT built (set UseDotnetTrayNative=true to use dotnet path)" }
-}
+# [1d/5] tray_launcher.cs csc.exe build + tray_native.dll csc.exe fallback removed in Stage 8 (both paths dead since $UseDotnet8TrayCs and $UseDotnetTrayNative permanently true).
 
 # tray_native.dll dotnet build path (sub-stage 5.1, active when $UseDotnetTrayNative=$true).
 # Builds src\tray_native\tray_native.csproj targeting netstandard2.0 for PS5.1 compatibility.
