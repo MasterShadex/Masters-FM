@@ -217,6 +217,24 @@ public partial class App : Application
         _customizerLauncher = _services.GetRequiredService<ICustomizerLauncher>();
         _logger.Log($"initial state={_discordService.IsEnabled}", "Discord");
         _logger.Log($"initial state={_autoStartService.IsEnabled}", "AutoStart");
+
+        // Default autostart ON on first v14 run. Flag written once; after that,
+        // whatever state the .lnk is in is the user's explicit choice.
+        try
+        {
+            var defaultedOnV14 = _configService?.GetValue<bool>("autostart_defaulted_on_v14", false) ?? false;
+            if (!defaultedOnV14)
+            {
+                if (!_autoStartService.IsEnabled)
+                {
+                    _autoStartService.Enable();
+                    _logger.Log("AutoStart defaulted ON (first v14 run)", "AutoStart");
+                }
+                _configService?.SetValue("autostart_defaulted_on_v14", true);
+            }
+        }
+        catch (Exception ex) { _logger.LogErr("AutoStart default-on", ex, "AutoStart"); }
+
         // Customizer launcher: dry-run path resolution check (no spawn during
         // smoke per brief absolute rule).
         if (_customizerLauncher is CustomizerLauncher concrete)
