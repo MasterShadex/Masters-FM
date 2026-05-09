@@ -38,6 +38,13 @@ public partial class App : Application
     private DetectorOrchestrator? _detectorOrchestrator;
     private IDialogService? _dialogService;
 
+    // -- Stage 7.7B: Reduced-motion detection (STEP 2 / S2.1) --
+    // True when Windows "Animate controls and elements inside windows" is off.
+    // Checked once at startup; dialogs read this to skip transitions that would
+    // disturb accessibility users. Duration resources are overridden to zero
+    // in OnStartup when this is true.
+    public static bool IsReducedMotion { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         // Pre-DI bootstrap logging via static fallback (Logger.EarlyLog).
@@ -92,6 +99,22 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         Logger.EarlyLog("Exception hooks installed (AppDomain + Dispatcher + TaskScheduler)");
+
+        // -- Stage 7.7B: Reduced-motion detection (STEP 2 / S2.1) --
+        IsReducedMotion = DetectReducedMotion();
+        if (IsReducedMotion)
+        {
+            Resources["StandardDuration"]  = new Duration(TimeSpan.Zero);
+            Resources["FastDuration"]      = new Duration(TimeSpan.Zero);
+            Resources["SlowDuration"]      = new Duration(TimeSpan.Zero);
+            Resources["PressDuration"]     = new Duration(TimeSpan.Zero);
+            Resources["AccentBarDuration"] = new Duration(TimeSpan.Zero);
+            Logger.EarlyLog("ReducedMotion=true: animation durations overridden to instant");
+        }
+        else
+        {
+            Logger.EarlyLog("ReducedMotion=false: animation durations use design-system defaults");
+        }
 
         // -- DI container build --
         var collection = new ServiceCollection();
@@ -498,5 +521,28 @@ public partial class App : Application
         // 7.4 visibility-only handler; sub-stages add real handlers (e.g.,
         // 7.5 detection re-toggles platforms when platforms.* changes).
         _logger?.Log($"config changed: keyPath={e.KeyPath ?? "(whole-file)"}", "Bootstrap");
+    }
+
+    /// <summary>
+    /// Stage 7.7B: Returns true if the Windows accessibility "Animate controls
+    /// and elements inside windows" setting is off, or if SPI_GETCLIENTAREAANIMATION
+    /// reports animations disabled. Also checks UserPreferencesMask bit 1
+    /// (UPM_ANIMATION) as a belt-and-suspenders fallback.
+    /// </summary>
+    private static bool DetectReducedMotion()
+    {
+        if (!System.Windows.SystemParameters.ClientAreaAnimation)
+            return true;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Control Panel\Desktop");
+            var mask = key?.GetValue("UserPreferencesMask") as byte[];
+            // Bit 1 of byte 0 (0x02) = UPM_ANIMATION; cleared means animations off.
+            if (mask is { Length: > 0 } && (mask[0] & 0x02) == 0)
+                return true;
+        }
+        catch { /* registry read failure: assume motion enabled */ }
+        return false;
     }
 }
