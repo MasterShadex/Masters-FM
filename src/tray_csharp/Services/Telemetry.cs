@@ -92,9 +92,10 @@ public sealed class Telemetry : ITelemetry
         var events = Get("smtc_events");
         var polls = Get("polls_per_min");
         var webhooks = Get("webhook_sends");
+        var whFails = Get("webhook_send_failures");
         var artHits = Get("art_cache_hits");
         var artMisses = Get("art_cache_misses");
         var trackChanges = Get("track_changes");
-        return $"events={events} polls={polls} webhooks={webhooks} cache={artHits}/{artMisses} tracks={trackChanges}";
+        return $"events={events} polls={polls} webhooks={webhooks}/{whFails} cache={artHits}/{artMisses} tracks={trackChanges}";
     }
 }
