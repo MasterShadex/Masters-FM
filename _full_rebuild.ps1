@@ -5,352 +5,224 @@ if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out
 $ts  = Get-Date -Format 'yyyyMMdd_HHmmss'
 
 # ============================================================================
-# v14.0.0-rc.1 build flags (RC1 ship state)
+# v14.0.0-rc.1 build flags (Stage 8 flattened)
 # ----------------------------------------------------------------------------
-# All five .NET-8-ready flags are $true. csc.exe rollback paths are preserved
-# behind the $false branch of each flag: emergency revert path only, do not
-# delete the csc.exe-side build steps. install_bootstrapper remains on csc.exe
-# ($UseDotnet8Bootstrapper = $false) until a real CA cert + EmbeddedResource
-# items land; see open_issues.md for re-enable steps.
+# All six .NET-8 migration flags permanently $true; csc.exe rollback branches
+# collapsed in Stage 8. Bootstrapper remains disabled ($UseDotnet8Bootstrapper
+# = $false) -- Certum cert pending; see open_issues.md for re-enable steps.
 # ============================================================================
 
-# Stage 1 migration flag: $true = build MastersFM.exe via dotnet publish (net8.0-windows, R2R)
-# RC1 rollback path: set $false to revert to the legacy csc.exe .NET Framework 4.x build.
-$UseDotnet8Launcher = $true
-# Stage 2 migration flag: $true = build audio_spectrum.exe via dotnet publish (net8.0-windows, R2R)
-# RC1 rollback path: set $false to revert to legacy csc.exe via build_tools\ps2exe\_build_spectrum.ps1.
-$UseDotnet8AudioSpectrum = $true
-# Stage 3a migration flag: $true = build customize.exe via dotnet publish (net8.0-windows, R2R)
-# RC1 rollback path: set $false to revert to the legacy csc.exe build.
-$UseDotnet8Customize = $true
-# Stage 3b migration flag: bootstrapper build remains DISABLED ($false) for RC1 ship.
-# Bitdefender flags the self-signed bootstrapper pattern (embedded MSI + self-elevate + cert store mod).
-# Re-enable requires (a) real CA cert (e.g. Certum), (b) EmbeddedResource items for payload.msi +
-# publisher.cer, (c) updated _sign_msi.ps1. RC1 ships hybrid: .NET 8 runtime stack + csc.exe bootstrapper.
+# Stages 1-7: all .NET 8 migration flags permanently $true (csc.exe rollback paths retired in Stage 8).
+# Stage 3b: bootstrapper DISABLED ($false) -- Certum cert pending; see open_issues.md.
+# Bitdefender flags self-signed bootstrapper (embedded MSI + self-elevate + cert store mod).
+# Re-enable: (a) real CA cert, (b) EmbeddedResource items for payload.msi+publisher.cer, (c) update _sign_msi.ps1.
 $UseDotnet8Bootstrapper = $false
-# Stage 4 migration flag: $true = build server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)
-# RC1 default $true. Set $false to fall back to legacy Node.js + @yao-pkg/pkg path (RC1 rollback path).
-$UseDotnet8Server = $true
-# Stage 5 migration flag: $true = build tray_native.dll via dotnet build (netstandard2.0).
-# netstandard2.0 keeps Windows PowerShell 5.1 (.NET Framework 4.x) compatibility AND stays loadable
-# by future PS7 / .NET 8 hosts (Q1=C decision). RC1 rollback path: set $false for csc.exe build.
-$UseDotnetTrayNative = $true
-# Stage 7 migration flag (PowerShell tray to C# port, parallel sibling project).
-# Default OFF; set $true to ALSO build dist/tray_csharp_release/MastersFM_Tray_v14.exe.
-# Stage 7.1B (current): WPF skeleton -- locked stack: H.NotifyIcon.Wpf + WPF-UI +
-# CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection. Replaces the
-# Stage 7.1 WinForms skeleton (committed at f7bb96e + 5fd9c8a; preserved as
-# historical reference). Does NOT install via MSI yet; cutover lands at Stage 7.10.
-# PS tray ships unchanged either way. Rollback: set $false to skip C# tray build.
-$UseDotnet8TrayCs = $true
 $log = "$logDir\rebuild_ps_$ts.log"
 
 function L($msg) { $t = Get-Date -Format 'HH:mm:ss'; "$t  $msg" | Tee-Object -FilePath $log -Append | Write-Host }
 
 L "=== REBUILD START ==="
 
-# Step 1: server.exe -- either .NET ASP.NET Core (Stage 4) or Node.js pkg (legacy)
-if ($UseDotnet8Server) {
-    L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
-    $svOut = Join-Path $root 'dist\server_dotnet_release'
-    $svArgs = "publish `"$root\src\server_dotnet\server_dotnet.csproj`" -r win-x64 --self-contained false " +
-              "-p:PublishReadyToRun=true -c Release -o `"$svOut`" --nologo -v quiet"
-    $sv = Start-Process -FilePath 'dotnet' -ArgumentList $svArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($sv.ExitCode -eq 0) {
-        # Copy server artifacts to root -- MSI picks them up from there.
-        # server.pdb excluded (debug symbols, not shipped).
-        # Stage 4.10 (RC1 fix): DiscordRPC.dll + Newtonsoft.Json.dll added to copy list.
-        # Without them, DiscordRpcService.TryInitClient throws FileNotFoundException at runtime
-        # and the BackgroundService failure brings down the whole host (StopHost default).
-        foreach ($ff in @('server.exe','server.dll','server.deps.json','server.runtimeconfig.json',
-                          'server.staticwebassets.endpoints.json','web.config',
-                          'DiscordRPC.dll','Newtonsoft.Json.dll')) {
-            $fsrc = Join-Path $svOut $ff
-            if (Test-Path $fsrc) { Copy-Item $fsrc "$root\$ff" -Force }
+# Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
+L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
+$svOut = Join-Path $root 'dist\server_dotnet_release'
+$svArgs = "publish `"$root\src\server_dotnet\server_dotnet.csproj`" -r win-x64 --self-contained false " +
+          "-p:PublishReadyToRun=true -c Release -o `"$svOut`" --nologo -v quiet"
+$sv = Start-Process -FilePath 'dotnet' -ArgumentList $svArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
+if ($sv.ExitCode -eq 0) {
+    # Copy server artifacts to root -- MSI picks them up from there.
+    # server.pdb excluded (debug symbols, not shipped).
+    # Stage 4.10 (RC1 fix): DiscordRPC.dll + Newtonsoft.Json.dll added to copy list.
+    # Without them, DiscordRpcService.TryInitClient throws FileNotFoundException at runtime
+    # and the BackgroundService failure brings down the whole host (StopHost default).
+    foreach ($ff in @('server.exe','server.dll','server.deps.json','server.runtimeconfig.json',
+                      'server.staticwebassets.endpoints.json','web.config',
+                      'DiscordRPC.dll','Newtonsoft.Json.dll')) {
+        $fsrc = Join-Path $svOut $ff
+        if (Test-Path $fsrc) { Copy-Item $fsrc "$root\$ff" -Force }
+    }
+    L "  server.exe OK (net8.0, ASP.NET Core, R2R)"
+    # Sign server.exe and server.dll -- unsigned .NET PE files can trigger Defender on first scan
+    $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
+    if (Test-Path $signScript) {
+        foreach ($sf in @('server.exe','server.dll')) {
+            $sfPath = Join-Path $root $sf
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
+            } catch { L "  WARN: signing $sf failed: $_" }
         }
-        L "  server.exe OK (net8.0, ASP.NET Core, R2R)"
-        # Sign server.exe and server.dll -- unsigned .NET PE files can trigger Defender on first scan
-        $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
-        if (Test-Path $signScript) {
-            foreach ($sf in @('server.exe','server.dll')) {
-                $sfPath = Join-Path $root $sf
-                try {
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
-                } catch { L "  WARN: signing $sf failed: $_" }
-            }
-        }
-    } else {
-        L "  FAIL: dotnet publish server exit=$($sv.ExitCode) -- Stage 4 server build failed, aborting"
-        exit 11
     }
 } else {
-    L "[1/5] pkg build (legacy Node.js server)"
-    Push-Location $root
-    & npx @yao-pkg/pkg src\server.js --targets node18-win-x64 --output dist\server.exe
-    $pkgExit = $LASTEXITCODE
-    Pop-Location
-    if ($pkgExit -ne 0) { L "FAIL: pkg exit=$pkgExit"; exit 11 }
-    Copy-Item "$root\dist\server.exe" "$root\server.exe" -Force
-    L "  server.exe OK (legacy Node.js pkg)"
+    L "  FAIL: dotnet publish server exit=$($sv.ExitCode) -- Stage 4 server build failed, aborting"
+    exit 11
 }
 
 # Step 1b: Build C# binaries
 L "[1b/5] Building C# binaries..."
 # csc.exe detection removed in Stage 8 (no consumers after [1d/5] block deletion).
 
-# MastersFM.exe (launcher) â€” Stage 1: dotnet publish (net8.0-windows, R2R) or legacy csc.exe
-if ($UseDotnet8Launcher) {
-    L "  [Stage 1] Building MastersFM.exe via dotnet publish (net8.0-windows, R2R)..."
-    $pubOut = Join-Path $root 'dist\launcher_net8'
-    $dpArgs = "publish `"$root\src\launcher.csproj`" -r win-x64 --self-contained false " +
-              "-p:PublishReadyToRun=true -c Release -o `"$pubOut`" --nologo -v quiet"
-    $dp = Start-Process -FilePath 'dotnet' -ArgumentList $dpArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($dp.ExitCode -eq 0) {
-        # Copy all launcher artifacts to root â€” MSI picks them up from there.
-        # MastersFM.pdb is intentionally excluded (debug symbols, not shipped).
-        foreach ($lf in @('MastersFM.exe','MastersFM.dll','MastersFM.deps.json','MastersFM.runtimeconfig.json')) {
-            $lsrc = Join-Path $pubOut $lf
-            if (Test-Path $lsrc) { Copy-Item $lsrc "$root\$lf" -Force }
-        }
-        L "  MastersFM.exe OK (net8.0-windows, R2R)"
-    } else {
-        L "  FAIL: dotnet publish exit=$($dp.ExitCode) -- Stage 1 launcher build failed, aborting"
-        exit 11
+# MastersFM.exe (launcher) -- Stage 1: .NET 8 path (legacy csc.exe path retired in Stage 8).
+L “  [Stage 1] Building MastersFM.exe via dotnet publish (net8.0-windows, R2R)...”
+$pubOut = Join-Path $root 'dist\launcher_net8'
+# dotnet publish embeds PublishDir into an MSBuild response file; any path with spaces is
+# either split at whitespace (unquoted) or mis-resolved relative to the CWD (quoted with a
+# literal '”' prefix) by the MSBuild server that lingers from the server_dotnet build.
+# Fix: use the PowerShell '&' call operator (passes each arg as a native CLR string, not a
+# single shell-tokenised blob) with a no-spaces temp output dir; copy artifacts afterwards.
+# (Stage 8 investigation: S4 final fix, 2026-05-09)
+$pubTmp = 'G:\lnch_pub_tmp'
+if (Test-Path $pubTmp) { Remove-Item $pubTmp -Recurse -Force -ErrorAction SilentlyContinue }
+$dpOut = & dotnet publish “$root\src\launcher.csproj” -r win-x64 --self-contained false `
+    -p:PublishReadyToRun=true -c Release -o $pubTmp --nologo -v quiet 2>&1
+$dpExit = $LASTEXITCODE
+if ($dpExit -eq 0) {
+    if (-not (Test-Path $pubOut)) { New-Item -ItemType Directory -Path $pubOut -Force | Out-Null }
+    Copy-Item “$pubTmp\*” $pubOut -Force
+    Remove-Item $pubTmp -Recurse -Force -ErrorAction SilentlyContinue
+    # Copy all launcher artifacts to root -- MSI picks them up from there.
+    # MastersFM.pdb is intentionally excluded (debug symbols, not shipped).
+    foreach ($lf in @('MastersFM.exe','MastersFM.dll','MastersFM.deps.json','MastersFM.runtimeconfig.json')) {
+        $lsrc = Join-Path $pubOut $lf
+        if (Test-Path $lsrc) { Copy-Item $lsrc “$root\$lf” -Force }
     }
-} elseif ($csc) {
-    # Legacy csc.exe rollback â€” set $UseDotnet8Launcher = $false at top of script to activate
-    $argsL = "/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:MastersFM.exe " +
-             "/reference:System.Windows.Forms.dll /reference:System.Drawing.dll src\launcher.cs"
-    $c = Start-Process -FilePath $csc -ArgumentList $argsL -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($c.ExitCode -eq 0) { L "  MastersFM.exe OK (legacy csc.exe)" } else { L "  WARN: csc exit=$($c.ExitCode) - MastersFM.exe may be stale" }
+    L “  MastersFM.exe OK (net8.0-windows, R2R)”
 } else {
-    L "  WARN: dotnet not available and csc.exe not found -- MastersFM.exe NOT built"
+    Remove-Item $pubTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $dpOut | ForEach-Object { L “    $_” }
+    L “  FAIL: dotnet publish exit=$dpExit -- Stage 1 launcher build failed, aborting”
+    exit 11
 }
 
-# customize.exe -- Stage 3a: dotnet publish (net8.0-windows, R2R) or legacy csc.exe rollback.
+# customize.exe -- Stage 3a: .NET 8 path (legacy csc.exe path retired in Stage 8).
 L "[1c/5] Building customize.exe (WebView2 host)..."
-if ($UseDotnet8Customize) {
-    $czOut = Join-Path $root 'dist\customize_net8'
-    $czArgs = "publish `"$root\src\customize.csproj`" -r win-x64 --self-contained false " +
-              "-p:PublishReadyToRun=true -c Release -o `"$czOut`" --nologo -v quiet"
-    $cz = Start-Process -FilePath 'dotnet' -ArgumentList $czArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($cz.ExitCode -eq 0) {
-        # Copy customize artifacts to root -- MSI picks them up from there.
-        # customize.pdb excluded (debug symbols, not shipped).
-        # Microsoft.Web.WebView2.Wpf.dll excluded (WPF bindings, not needed for WinForms host).
-        foreach ($cf in @('customize.exe','customize.dll','customize.deps.json','customize.runtimeconfig.json',
-                          'Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll')) {
-            $csrc = Join-Path $czOut $cf
-            if (Test-Path $csrc) { Copy-Item $csrc "$root\$cf" -Force }
+$czOut = Join-Path $root 'dist\customize_net8'
+$czTmp = 'G:\cz_pub_tmp'
+if (Test-Path $czTmp) { Remove-Item $czTmp -Recurse -Force -ErrorAction SilentlyContinue }
+$czOut2 = & dotnet publish "$root\src\customize.csproj" -r win-x64 --self-contained false `
+    -p:PublishReadyToRun=true -c Release -o $czTmp --nologo -v quiet 2>&1
+$czExit = $LASTEXITCODE
+if ($czExit -eq 0) {
+    if (-not (Test-Path $czOut)) { New-Item -ItemType Directory -Path $czOut -Force | Out-Null }
+    Copy-Item "$czTmp\*" $czOut -Force
+    Remove-Item $czTmp -Recurse -Force -ErrorAction SilentlyContinue
+    # Copy customize artifacts to root -- MSI picks them up from there.
+    # customize.pdb excluded (debug symbols, not shipped).
+    # Microsoft.Web.WebView2.Wpf.dll excluded (WPF bindings, not needed for WinForms host).
+    foreach ($cf in @('customize.exe','customize.dll','customize.deps.json','customize.runtimeconfig.json',
+                      'Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll')) {
+        $csrc = Join-Path $czOut $cf
+        if (Test-Path $csrc) { Copy-Item $csrc "$root\$cf" -Force }
+    }
+    L "  customize.exe OK (net8.0-windows, R2R)"
+    # Sign both the stub exe and the managed dll -- unsigned new PE files can
+    # be flagged by Defender on first scan (same as tray_native.dll + audio_spectrum.dll pattern).
+    $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
+    if (Test-Path $signScript) {
+        foreach ($sf in @('customize.exe','customize.dll')) {
+            $sfPath = Join-Path $root $sf
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
+            } catch { L "  WARN: signing $sf failed: $_" }
         }
-        L "  customize.exe OK (net8.0-windows, R2R)"
-        # Sign both the stub exe and the managed dll -- unsigned new PE files can
-        # be flagged by Defender on first scan (same as tray_native.dll + audio_spectrum.dll pattern).
-        $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
-        if (Test-Path $signScript) {
-            foreach ($sf in @('customize.exe','customize.dll')) {
-                $sfPath = Join-Path $root $sf
-                try {
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
-                } catch { L "  WARN: signing $sf failed: $_" }
-            }
-        }
-    } else {
-        L "  FAIL: dotnet publish customize exit=$($cz.ExitCode) -- Stage 3a build failed, aborting"
-        exit 11
     }
 } else {
-    # Legacy csc.exe rollback -- set $UseDotnet8Customize = $false at top of script to activate.
-    if ($csc) {
-        $wv2core = Join-Path $root 'Microsoft.Web.WebView2.Core.dll'
-        $wv2wf   = Join-Path $root 'Microsoft.Web.WebView2.WinForms.dll'
-        if ((Test-Path $wv2core) -and (Test-Path $wv2wf)) {
-            $argsC = '/nologo /target:winexe /win32icon:assets\MastersFM.ico /out:customize.exe ' +
-                     '/reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Core.dll ' +
-                     "/reference:`"$wv2core`" /reference:`"$wv2wf`" src\customize.cs"
-            $c2 = Start-Process -FilePath $csc -ArgumentList $argsC -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-            if ($c2.ExitCode -eq 0) { L "  customize.exe OK (legacy csc.exe)" } else { L "  WARN: customize.exe csc exit=$($c2.ExitCode)" }
-        } else {
-            L "  WARN: WebView2 DLLs missing - customize.exe NOT built (legacy path)"
-        }
-    } else {
-        L "  WARN: csc.exe not found - customize.exe NOT built (legacy path requires csc.exe)"
-    }
+    Remove-Item $czTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $czOut2 | ForEach-Object { L "    $_" }
+    L "  FAIL: dotnet publish customize exit=$czExit -- Stage 3a build failed, aborting"
+    exit 11
 }
 
 # [1d/5] tray_launcher.cs csc.exe build + tray_native.dll csc.exe fallback removed in Stage 8 (both paths dead since $UseDotnet8TrayCs and $UseDotnetTrayNative permanently true).
 
-# tray_native.dll dotnet build path (sub-stage 5.1, active when $UseDotnetTrayNative=$true).
-# Builds src\tray_native\tray_native.csproj targeting netstandard2.0 for PS5.1 compatibility.
-# Does not require csc.exe; runs independently of the if ($csc) block above.
-if ($UseDotnetTrayNative) {
-    L "[1d3/5] Building tray_native.dll (dotnet build, netstandard2.0)..."
-    Push-Location "$root\src\tray_native"
-    try {
-        $buildResult = & dotnet build "tray_native.csproj" -c Release --nologo -o "$root" 2>&1
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0) {
-            $buildResult | ForEach-Object { L "    $_" }
-            L "  ERROR: tray_native dotnet build failed (exit $exitCode)"
-        } else {
-            L "  tray_native.dll OK (dotnet build, netstandard2.0)"
-            $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
-            if (Test-Path $signScript) {
-                $dllPath = Join-Path $root 'tray_native.dll'
-                try {
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $dllPath 2>&1 | ForEach-Object { L "    $_" }
-                } catch { L "  WARN: DLL signing failed: $_" }
-            }
+# tray_native.dll -- Stage 5: dotnet build netstandard2.0 for PS5.1 compat (legacy csc.exe retired in Stage 8).
+L "[1d3/5] Building tray_native.dll (dotnet build, netstandard2.0)..."
+Push-Location "$root\src\tray_native"
+try {
+    $buildResult = & dotnet build "tray_native.csproj" -c Release --nologo -o "$root" 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        $buildResult | ForEach-Object { L "    $_" }
+        L "  ERROR: tray_native dotnet build failed (exit $exitCode)"
+    } else {
+        L "  tray_native.dll OK (dotnet build, netstandard2.0)"
+        $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
+        if (Test-Path $signScript) {
+            $dllPath = Join-Path $root 'tray_native.dll'
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $dllPath 2>&1 | ForEach-Object { L "    $_" }
+            } catch { L "  WARN: DLL signing failed: $_" }
         }
-    } finally {
-        Pop-Location
     }
+} finally {
+    Pop-Location
 }
 
-# Stage 7.1B: optionally build the WPF tray skeleton (parallel sibling project).
-# Active when $UseDotnet8TrayCs = $false (default $false; opt-in for dev).
-# Output: dist\tray_csharp_release\MastersFM_Tray_v14.exe (NOT installed via MSI yet).
-# Failure here does NOT halt the rest of the rebuild; PS tray must still build cleanly.
-# Stack: WPF + H.NotifyIcon.Wpf + WPF-UI + CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection.
+# Stage 7: WPF tray (H.NotifyIcon.Wpf+WPF-UI+CommunityToolkit.Mvvm) -- Stage 7.10 cutover, PS tray retired.
 # Pinned NuGet versions documented in V14_S7_S7_1B_NUGET_PINS.md.
-if ($UseDotnet8TrayCs) {
-    L "=== Stage 7.1B: building WPF tray skeleton (dotnet publish, net8.0-windows, R2R) ==="
-    L "    Pinned NuGets: H.NotifyIcon.Wpf 2.3.2, WPF-UI 4.3.0, CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.DependencyInjection 9.0.15"
-    $trayCsOut  = Join-Path $root 'dist\tray_csharp_release'
-    # Multi-file output (matches launcher.csproj precedent). PublishSingleFile=true with .NET 8
-    # framework-dependent + ReadyToRun bundles WindowsDesktop runtime DLLs (~165 MB skeleton in
-    # the 7.1 strike-1 attempt); multi-file + R2R yields a small exe + apphost + .dll +
-    # .runtimeconfig.json plus the four pinned NuGet DLLs (~5-10 MB total expected for WPF).
-    $trayCsArgs = "publish `"$root\src\tray_csharp\MastersFM_Tray_v14.csproj`" -r win-x64 --self-contained false " +
-                  "-p:PublishReadyToRun=true -c Release -o `"$trayCsOut`" --nologo -v quiet"
-    $trayCsProc = Start-Process -FilePath 'dotnet' -ArgumentList $trayCsArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($trayCsProc.ExitCode -eq 0) {
-        $trayCsExe = Join-Path $trayCsOut 'MastersFM_Tray_v14.exe'
-        if (Test-Path $trayCsExe) {
-            $trayCsSize = [math]::Round((Get-Item $trayCsExe).Length / 1KB, 1)
-            $trayCsTotalKB = [math]::Round(((Get-ChildItem $trayCsOut -File | Measure-Object Length -Sum).Sum) / 1KB, 1)
-            L "=== WPF tray skeleton built: $trayCsExe ($trayCsSize KB exe; $trayCsTotalKB KB total in dist) ==="
-        } else {
-            L "  WARN: WPF tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
-        }
+L "=== Stage 7: building WPF tray (dotnet publish, net8.0-windows, R2R) ==="
+L "    Pinned NuGets: H.NotifyIcon.Wpf 2.3.2, WPF-UI 4.3.0, CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.DependencyInjection 9.0.15"
+$trayCsOut  = Join-Path $root 'dist\tray_csharp_release'
+$trayCsTmp  = 'G:\tray_pub_tmp'
+if (Test-Path $trayCsTmp) { Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue }
+# Multi-file + R2R: small stub exe + apphost + .dll + .runtimeconfig.json + pinned NuGet DLLs.
+$trayCsOut2 = & dotnet publish "$root\src\tray_csharp\MastersFM_Tray_v14.csproj" -r win-x64 `
+    --self-contained false -p:PublishReadyToRun=true -c Release -o $trayCsTmp --nologo -v quiet 2>&1
+$trayCsExit = $LASTEXITCODE
+if ($trayCsExit -eq 0) {
+    if (-not (Test-Path $trayCsOut)) { New-Item -ItemType Directory -Path $trayCsOut -Force | Out-Null }
+    Copy-Item "$trayCsTmp\*" $trayCsOut -Force
+    Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $trayCsExe = Join-Path $trayCsOut 'MastersFM_Tray_v14.exe'
+    if (Test-Path $trayCsExe) {
+        $trayCsSize = [math]::Round((Get-Item $trayCsExe).Length / 1KB, 1)
+        $trayCsTotalKB = [math]::Round(((Get-ChildItem $trayCsOut -File | Measure-Object Length -Sum).Sum) / 1KB, 1)
+        L "=== WPF tray built: $trayCsExe ($trayCsSize KB exe; $trayCsTotalKB KB total in dist) ==="
     } else {
-        L "  WARN: WPF tray dotnet publish failed (exit $($trayCsProc.ExitCode)) -- PS tray build continues"
+        L "  WARN: WPF tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
     }
+} else {
+    Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue
+    L "  WARN: WPF tray dotnet publish failed (exit $trayCsExit) -- continuing"
 }
 
 # Step 1d2: Build audio_spectrum.exe (WASAPI/MME/WDM-KS/ASIO spectrum provider)
-# Stage 2: dotnet publish path replaces the old csc.exe + netstandard.dll facade approach.
-# Legacy fallback retained behind $UseDotnet8AudioSpectrum = $false for rollback.
+# Stage 2: .NET 8 path (legacy csc.exe+_build_spectrum.ps1 path retired in Stage 8).
 L "[1d2/5] Building audio_spectrum.exe (WASAPI loopback)..."
-if ($UseDotnet8AudioSpectrum) {
-    $asOut = Join-Path $root 'dist\audio_spectrum_net8'
-    $asArgs = "publish `"$root\src\audio_spectrum.csproj`" -r win-x64 --self-contained false " +
-              "-p:PublishReadyToRun=true -c Release -o `"$asOut`" --nologo -v quiet"
-    $as = Start-Process -FilePath 'dotnet' -ArgumentList $asArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
-    if ($as.ExitCode -eq 0) {
-        # Copy all audio_spectrum artifacts to root -- MSI picks them up from there.
-        # audio_spectrum.pdb intentionally excluded (debug symbols, not shipped).
-        foreach ($af in @('audio_spectrum.exe','audio_spectrum.dll','audio_spectrum.deps.json','audio_spectrum.runtimeconfig.json','NAudio.Core.dll','NAudio.Wasapi.dll','NAudio.WinMM.dll','NAudio.Asio.dll')) {
-            $asrc = Join-Path $asOut $af
-            if (Test-Path $asrc) { Copy-Item $asrc "$root\$af" -Force }
+$asOut = Join-Path $root 'dist\audio_spectrum_net8'
+$asTmp = 'G:\as_pub_tmp'
+if (Test-Path $asTmp) { Remove-Item $asTmp -Recurse -Force -ErrorAction SilentlyContinue }
+$asOut2 = & dotnet publish "$root\src\audio_spectrum.csproj" -r win-x64 --self-contained false `
+    -p:PublishReadyToRun=true -c Release -o $asTmp --nologo -v quiet 2>&1
+$asExit = $LASTEXITCODE
+if ($asExit -eq 0) {
+    if (-not (Test-Path $asOut)) { New-Item -ItemType Directory -Path $asOut -Force | Out-Null }
+    Copy-Item "$asTmp\*" $asOut -Force
+    Remove-Item $asTmp -Recurse -Force -ErrorAction SilentlyContinue
+    # Copy all audio_spectrum artifacts to root -- MSI picks them up from there.
+    # audio_spectrum.pdb intentionally excluded (debug symbols, not shipped).
+    foreach ($af in @('audio_spectrum.exe','audio_spectrum.dll','audio_spectrum.deps.json','audio_spectrum.runtimeconfig.json','NAudio.Core.dll','NAudio.Wasapi.dll','NAudio.WinMM.dll','NAudio.Asio.dll')) {
+        $asrc = Join-Path $asOut $af
+        if (Test-Path $asrc) { Copy-Item $asrc "$root\$af" -Force }
+    }
+    L "  audio_spectrum.exe OK (net8.0-windows, R2R)"
+    # Sign both the stub exe and the managed dll -- unsigned new PE files can
+    # be flagged by Defender on first scan (same as tray_native.dll pattern).
+    $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
+    if (Test-Path $signScript) {
+        foreach ($sf in @('audio_spectrum.exe','audio_spectrum.dll')) {
+            $sfPath = Join-Path $root $sf
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
+            } catch { L "  WARN: signing $sf failed: $_" }
         }
-        L "  audio_spectrum.exe OK (net8.0-windows, R2R)"
-        # Sign both the stub exe and the managed dll -- unsigned new PE files can
-        # be flagged by Defender on first scan (same as tray_native.dll pattern).
-        $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
-        if (Test-Path $signScript) {
-            foreach ($sf in @('audio_spectrum.exe','audio_spectrum.dll')) {
-                $sfPath = Join-Path $root $sf
-                try {
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
-                } catch { L "  WARN: signing $sf failed: $_" }
-            }
-        }
-    } else {
-        L "  FAIL: dotnet publish audio_spectrum exit=$($as.ExitCode) -- Stage 2 build failed, aborting"
-        exit 11
     }
 } else {
-    # Legacy csc.exe rollback -- set $UseDotnet8AudioSpectrum = $false at top of script to activate.
-    $spec = Join-Path $root 'build_tools\ps2exe\_build_spectrum.ps1'
-    if (Test-Path $spec) {
-        $sp = Start-Process -FilePath 'powershell.exe' `
-            -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$spec`"",'-Root',"`"$root`"") `
-            -Wait -PassThru -NoNewWindow
-        if ($sp.ExitCode -eq 0) { L "  audio_spectrum.exe OK (legacy csc.exe)" } else { L "  WARN: audio_spectrum.exe build exit=$($sp.ExitCode)" }
-    } else {
-        L "  WARN: _build_spectrum.ps1 not found - audio_spectrum.exe NOT built"
-    }
+    Remove-Item $asTmp -Recurse -Force -ErrorAction SilentlyContinue
+    L "  FAIL: dotnet publish audio_spectrum exit=$($as.ExitCode) -- Stage 2 build failed, aborting"
+    exit 11
 }
 
-# Step 1e: rebrand server.exe via resedit (legacy Node server only -- .NET server has its own PE info)
-if (-not $UseDotnet8Server) {
-# Step 1e: rebrand server.exe via resedit (pure-JS PE editor that is pkg-
-# compatible). rcedit CORRUPTS pkg output because its BeginUpdateResource
-# shifts the overlay offset (pkg stores its Node VFS at the overlay). The
-# jet2jet/resedit-js-cli package is pure JavaScript, preserves overlays,
-# and has been tested against pkg binaries.
-# Vendored at build_tools/resedit so builds don't need npm network access.
-L "[1e/5] Rebranding server.exe VersionInfo via resedit..."
-$resedit = Join-Path $root 'build_tools\resedit\node_modules\.bin\resedit.cmd'
-if (Test-Path $resedit) {
-    $srv = Join-Path $root 'server.exe'
-    $srvTmp = Join-Path $env:TEMP 'mastersfm_server_rebrand.exe'
-    if (Test-Path $srv) {
-        # v7.0.0 â€” also replace the Node green-box icon with MastersFM.ico so
-        # server.exe displays the purple Master's FM note in Task Manager /
-        # Details tab / File Properties. The previous rebrand only touched
-        # VersionInfo, leaving pkg's default Node-shaped icon intact.  The
-        # --delete-allicon pair strips every existing icon/groupicon resource
-        # so our --icon lands cleanly without being shadowed.
-        $ico = Join-Path $root 'assets\MastersFM.ico'
-        # resedit flag gotchas discovered during v5 debugging:
-        #  - `--delete-allicon` (one token, dash-separated) is NOT a thing
-        #    resedit actually ships; it was picked up as `--delete-allicon=<next-arg>`
-        #    by yargs and silently consumed --delete-allgroupicon. Result:
-        #    only 1 resource deleted, then the "new" icon was added alongside
-        #    the old one and Windows kept showing pkg's green Node icon.
-        #  - The correct form is two separate `--delete` flags, each taking
-        #    `allicon` / `allgroupicon` as its VALUE. Verified via --verbose
-        #    output â€” "Delete resources. (count = 2)" once fixed.
-        #  - `--icon` REQUIRES `<ID>,<path>` format when you want to place
-        #    the icon at a specific resource ID. ID 1 is what Windows looks
-        #    up for file associations / Task Manager display.
-        $reArgs = @(
-            '--in', "`"$srv`"",
-            '--out', "`"$srvTmp`"",
-            '--product-name', '"Master''s FM"',
-            '--file-description', '"Master''s FM Server"',
-            '--company-name', 'MasterShadex',
-            '--product-version', '5.0.0.0',
-            '--file-version', '5.0.0.0',
-            '--delete', 'allicon',
-            '--delete', 'allgroupicon',
-            '--icon', "`"1,$ico`""
-        ) -join ' '
-        $r = Start-Process -FilePath $resedit -ArgumentList $reArgs -Wait -PassThru -NoNewWindow
-        if ($r.ExitCode -eq 0 -and (Test-Path $srvTmp)) {
-            # Swap in the rebranded binary. Keep the size check as a sanity net â€”
-            # pkg overlay losses show up as dramatic file-size drops.
-            $origSize = (Get-Item $srv).Length
-            $newSize  = (Get-Item $srvTmp).Length
-            $delta    = [Math]::Abs($origSize - $newSize)
-            if ($delta -lt 200000) {
-                Copy-Item $srvTmp $srv -Force
-                Remove-Item $srvTmp -Force -ErrorAction SilentlyContinue
-                L "  server.exe rebranded OK (size delta=$delta bytes)"
-            } else {
-                L "  WARN: resedit output size delta=$delta bytes - likely overlay corruption, keeping original"
-                Remove-Item $srvTmp -Force -ErrorAction SilentlyContinue
-            }
-        } else {
-            L "  WARN: resedit exit=$($r.ExitCode)"
-        }
-    }
-} else {
-    L "  WARN: resedit not found - skipping rebrand"
-}
-} # end if (-not $UseDotnet8Server) -- resedit block skipped for .NET server
+# Step 1e: resedit rebrand removed in Stage 8 (.NET server has its own PE info; legacy Node pkg server retired).
 
 # Step 2: build_msi.py
 L "[2/5] build_msi.py"
