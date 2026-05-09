@@ -505,14 +505,17 @@ public sealed class ObsService : IObsService, IDisposable
     public async Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default)
     {
         if (_state != ObsConnectionState.Connected)
-            return ObsBrowserSourceResult.Fail("Not connected to OBS");
+        {
+            _log.Log("AddBrowserSource: not connected; using file-edit fallback", Cmp);
+            return FallbackAdd();
+        }
 
         // Version gate: OBS >= 28 required for WebSocket browser-source ops
         var version = await GetObsVersionAsync(ct).ConfigureAwait(false);
         if (version == null || !version.SupportsWebSocketBrowserOps)
         {
-            _log.Log("AddBrowserSource: OBS < 28 or version unknown; WebSocket path unavailable", Cmp);
-            return ObsBrowserSourceResult.Fail("OBS < 28 -- WebSocket path requires file-edit fallback");
+            _log.Log("AddBrowserSource: OBS < 28 or version unknown; using file-edit fallback", Cmp);
+            return FallbackAdd();
         }
 
         // Idempotent check
@@ -568,7 +571,11 @@ public sealed class ObsService : IObsService, IDisposable
 
     public async Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default)
     {
-        if (_state != ObsConnectionState.Connected) return false;
+        if (_state != ObsConnectionState.Connected)
+        {
+            _log.Log("RemoveBrowserSource: not connected; using file-edit fallback", Cmp);
+            return new ObsSceneFileEditor(_log).RemoveBrowserSource();
+        }
 
         // Idempotent: already absent is success
         if (!await BrowserSourceExistsAsync(ct).ConfigureAwait(false)) return true;
@@ -582,6 +589,20 @@ public sealed class ObsService : IObsService, IDisposable
             _log.LogWarn("RemoveBrowserSource: RemoveInput request failed or timed out", Cmp);
 
         return resp != null;
+    }
+
+    // ── file-edit fallback helpers (Stage 7.8B STEP 4) ───────────────────────
+
+    private ObsBrowserSourceResult FallbackAdd()
+    {
+        var editor = new ObsSceneFileEditor(_log);
+        var ok = editor.AddBrowserSource(
+            "http://localhost:4242/?renderer=webgl",
+            1000, 200, 60,
+            "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }");
+        return ok
+            ? ObsBrowserSourceResult.Ok("File-edit (OBS restart required)")
+            : ObsBrowserSourceResult.Fail("File-edit path failed (no scene-collection.json found)");
     }
 
     // ── IDisposable ───────────────────────────────────────────────────────────
