@@ -9,16 +9,15 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v12.0.1 (PUBLIC) / v14.0.0-rc.1 (LOCAL CHECKPOINT, push deferred until Stages 7+8 complete)
-**Last updated:** 2026-05-09 (Stage 8 build pipeline cleanup COMPLETE; `_full_rebuild.ps1` 593 → 419 lines; 4 src/build files deleted; 6 $Use* flag branches collapsed; MSB1008 dotnet publish fix applied; build gate exit 0; SHA256 protected files UNCHANGED)
+**Current version:** v14.0.0-rc.2 (pushed to GitHub as Pre-release 2026-05-09; tester announcement pending)
+**Last updated:** 2026-05-09 (Ship-prep V14.0.0-rc.2 COMPLETE; 1h soak PASS; version.json bumped; tag v14.0.0-rc.2 created; pushed main + tag; tester rollout initiated)
 
 ## IN-FLIGHT WORK
 
-**v14.0.0-rc.1 -- Cumulative .NET 8 migration RC (pending GitHub Pre-release publication)**
-- Scope: Stages 1-3 + Stage 4 (4.1-4.11) + Stage 5 MINIMAL
-- Status: LOCAL TAG; commits + tag exist locally; not yet pushed
-- Deferred: Stage 6 (folded into Stage 7), Stage 7 (tray.ps1 to C# port), Stage 8 (build pipeline cleanup)
-- Next step: GitHub Pre-release publication, tester announcement in #v14-rc-feedback channel, await tester feedback before promoting to stable v14.0.0
+**v14.0.0-rc.2 -- Ship-prep complete; pushed to GitHub 2026-05-09**
+- rc.2 = full C# WPF tray + all Stage 7+8 deliverables over rc.1
+- Tester announcement in #v14-rc-feedback posted
+- Next: await tester feedback; stable v14.0.0 promotion in a separate brief after validation window
 
 ## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
 - **Overlay is WebGL-only** (canvas2d removed in v9.4.0). If GPU can't do WebGL -> blank overlay. Consider adding graceful WebGL-unavailable message in overlay.html.
@@ -157,6 +156,33 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 ~17:40 -- Ship-prep V14.0.0-rc.2 ROLLOUT
+
+**Commits (since v14.0.0-rc.1 tag at `44723fb`):** `1f88425` (S8 STEP 1) `58f95e5` (S8 STEP 2) `81874a5` (S8 Phase 1) `353b3e8` (S8 Phase 2) `cf393c8` (S8 STEP 6+7) `8e411c9` (ship RELEASE_NOTES authored) `a26131d` (ship version.json bump) `9b891fc` (ship release notes soak section) + this memory.md APPEND commit. **Tag:** `v14.0.0-rc.2` (annotated; at `9b891fc`). **Outcome:** PASS.
+
+**Delivered:**
+- 1h cutover soak PASS (Stage-8-clean build, launcher-supervised, welcome_seen=true, webhooks aligned, harness INTERRUPT #2 halt logic; user-reduced from 6h default). Plateau 237.4-249.9 MB (target 220-260 MB); both-half mean diff -1.2 MB (target < 10 MB); final-30-sample slope -15.71 MB/h (declining); webhook success 28/28 = 100%; 0 overlay.log ERROR lines.
+- version.json bumped v12.0.1 -> v14.0.0-rc.2 (first version.json change in entire V14 cycle; sha256 `12ad764f`, autoInstall false, msi_url .../v14.0.0-rc.2/Masters-FM-V14.0.0-rc.2.msi)
+- `RELEASE_NOTES_v14.0.0-rc.2.md` authored (276 lines) + finalised with soak section
+- Annotated git tag `v14.0.0-rc.2` created at `9b891fc`
+- GitHub push: `git push origin main` + `git push origin v14.0.0-rc.2` (first push since v14.0.0-rc.1 at `44723fb`)
+- Tester rollout: announcement posted to #v14-rc-feedback
+
+**V14 cycle summary:**
+- Stages: 7.1 / 7.1B / 7.3 / 7.4 / 7.2 / 7.9 / 7.5 / 7.5B / 7.5C / 7.7 / 7.6 / 7.8 / 7.10 / INTERRUPT #1 / INTERRUPT #2 / 8 / Ship-prep
+- Total commits since rc.1 tag: 69 (including this APPEND)
+- Total strikes consumed: 1 of 9 (S7.6 WPF-UI 4.3.0 ThemeKeys.AccentButtonStyleKey -- recovered same session)
+- Calendar: 2026-05-07 (Stage 7.1 skeleton) -> 2026-05-09 (Ship-prep rc.2)
+- Protected files: 4 source files SHA256 UNCHANGED throughout all stages (tray.ps1 `19011F0B`, tray_native.cs `6B9804A1`, launcher.cs `291ED4C9`, server.js `C15ED931`)
+
+**Deferred to post-rc.2:**
+- Stable v14.0.0 promotion (separate brief; after tester-validation window, target 7-14 days)
+- Q-DIALOG-2 ("Test tone" button on audio device dialog)
+- Q-DIALOG-3 (ASIO tab on audio device dialog)
+- B-022 (mid-session SMTC re-subscription full test)
+- OBS-active validation (OBS Studio not available on test machine)
+- Bootstrapper rebuild (CA cert acquisition pending)
 
 ### 2026-05-09 ~08:00 -- Stage 8 -- Build pipeline cleanup COMPLETE
 
