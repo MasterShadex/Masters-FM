@@ -27,6 +27,7 @@ public partial class App : Application
     private bool _ownsMutex;
     private ILogger? _logger;
     private DiagnosticHeartbeat? _heartbeat;
+    private IHeartbeatService? _heartbeatService; // INTERRUPT #3 STEP 5 (Issues 1+8)
     private IConfigService? _configService;
     private IUpdateCheckService? _updateService;
     private IDiscordToggleService? _discordService;
@@ -102,6 +103,7 @@ public partial class App : Application
         collection.AddSingleton<IConfigService, ConfigService>();
         collection.AddSingleton<SlowTickWatchdog>();
         collection.AddSingleton<DiagnosticHeartbeat>();
+        collection.AddSingleton<IHeartbeatService, HeartbeatService>(); // INTERRUPT #3 STEP 5
         // Stage 7.2: Update-check stack.
         collection.AddSingleton<HttpClient>(_ =>
         {
@@ -246,6 +248,10 @@ public partial class App : Application
         _heartbeat = _services.GetRequiredService<DiagnosticHeartbeat>();
         _heartbeat.Start();
 
+        // -- INTERRUPT #3 STEP 5 (Issues 1+8): start position heartbeat (2s cadence) --
+        _heartbeatService = _services.GetRequiredService<IHeartbeatService>();
+        _heartbeatService.Start();
+
         // -- Stage 7.7: First-run check + dialog service ----------------
         _dialogService = _services.GetRequiredService<IDialogService>();
         _logger.Log("DialogService initialized; 5 dialogs registered (Welcome / Audio / Platforms / SetupWizard / Error)", "Bootstrap");
@@ -374,6 +380,10 @@ public partial class App : Application
         {
             _logger?.LogErr("DiagnosticHeartbeat.Stop", ex, "Bootstrap");
         }
+
+        // INTERRUPT #3 STEP 5: stop position heartbeat before container disposal
+        try { _heartbeatService?.Stop(); }
+        catch (Exception ex) { _logger?.LogErr("HeartbeatService.Stop", ex, "Bootstrap"); }
 
         // Stage 7.5: stop detection arms before container disposal
         try { _detectorOrchestrator?.Stop(); } catch (Exception ex) { _logger?.LogErr("DetectorOrchestrator.Stop", ex, "Bootstrap"); }

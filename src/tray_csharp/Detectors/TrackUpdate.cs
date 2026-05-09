@@ -18,6 +18,9 @@ public sealed record TrackUpdate
     public string? PlatformIdentity { get; init; }
     public DateTime ObservedUtc { get; init; } = DateTime.UtcNow;
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+    // INTERRUPT #3 STEP 5 (Issue 8): seek flag. Set to true by HeartbeatService
+    // when position drift exceeds 3000ms relative to expected wall-clock advance.
+    public bool IsSeek { get; init; } = false;
 
     /// <summary>Stable identity key for dedup + caching: source|||artist|||track.</summary>
     public string IdentityKey => string.Format("{0}|||{1}|||{2}",

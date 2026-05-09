@@ -97,6 +97,7 @@ public sealed class WebhookClient
             ["duration"] = update.Duration?.TotalSeconds,
             ["positionMs"] = update.Position?.TotalMilliseconds,
             ["isPaused"] = !update.IsPlaying,
+            ["seek"] = update.IsSeek,       // INTERRUPT #3 STEP 5 (Issue 8)
             ["trackArt"] = update.ArtUri,
             ["tray"] = "csharp14",
             ["observedUtc"] = update.ObservedUtc.ToString("o"),
