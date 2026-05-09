@@ -211,11 +211,50 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         try
         {
             if (_obsService.IsEnabled)
+            {
+                // Turn OFF: remove browser source then disconnect
+                await _obsService.RemoveBrowserSourceAsync();
                 await _obsService.DisconnectAsync();
+            }
             else
+            {
+                // Turn ON: connect, wait for Connected state, then add browser source
                 await _obsService.ConnectAsync();
+                var connected = await WaitForObsConnectedAsync(timeoutMs: 5000);
+                var result = await _obsService.AddBrowserSourceAsync();
+                if (!result.Success)
+                    _logger.LogWarn($"OBS add-source failed: {result.ErrorMessage}", "Tray");
+                else
+                    _logger.Log($"OBS add-source ok via {result.Method}", "Tray");
+                if (!connected)
+                    _logger.LogWarn("OBS: WS did not reach Connected within 5s; file-edit used", "Tray");
+            }
         }
         catch (Exception ex) { _logger.LogErr("ObsService toggle", ex, "Tray"); }
+    }
+
+    // Waits up to timeoutMs for ObsService to reach Connected state.
+    private async Task<bool> WaitForObsConnectedAsync(int timeoutMs = 5000)
+    {
+        if (_obsService.ConnectionState == ObsConnectionState.Connected) return true;
+
+        var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>(
+            System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnState(object? s, ObsConnectionStateChangedEventArgs e)
+        {
+            if (e.NewState == ObsConnectionState.Connected) tcs.TrySetResult(true);
+        }
+
+        _obsService.ConnectionStateChanged += OnState;
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(timeoutMs);
+            await tcs.Task.WaitAsync(cts.Token);
+            return true;
+        }
+        catch (OperationCanceledException) { return false; }
+        finally { _obsService.ConnectionStateChanged -= OnState; }
     }
 
     [RelayCommand]
