@@ -248,6 +248,13 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _logger.Log($"TrayMenu: Check updates (state={state})", "Tray");
         try
         {
+            // INTERRUPT #3 STEP 6 (Issue 3): show the update-progress overlay
+            // before driving the state machine.  ShowUpdateProgressAsync uses
+            // Show() (non-modal) and returns immediately; the window stays open
+            // while download / install progress.  Repeat clicks bring the
+            // existing window to the foreground.
+            await _dialogService.ShowUpdateProgressAsync();
+
             switch (state)
             {
                 case UpdateState.Idle:
@@ -260,7 +267,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
                 case UpdateState.Ready:
                     await _updateService.InstallAsync();
                     break;
-                // Checking / Downloading / Installing: no-op (operation in flight)
+                // Checking / Downloading / Installing: window already visible above.
             }
         }
         catch (Exception ex) { _logger.LogErr("CheckUpdates", ex, "Tray"); }

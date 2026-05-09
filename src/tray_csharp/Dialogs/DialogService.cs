@@ -11,6 +11,7 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using MastersFM.Tray.Services;
+using MastersFM.Tray.Update;
 using MastersFM.Tray.ViewModels;
 
 namespace MastersFM.Tray.Dialogs;
@@ -21,6 +22,11 @@ public sealed class DialogService : IDialogService
 
     private readonly ILogger _logger;
     private readonly IServiceProvider _services;
+    // INTERRUPT #3 STEP 6: non-modal update window singleton guard.
+    // Transient windows created by GetRequiredService<UpdateProgressWindow>() would
+    // otherwise open multiple overlapping windows if the user clicks the menu item
+    // repeatedly. We track the live instance and bring it to front on repeat clicks.
+    private UpdateProgressWindow? _updateWindow;
 
     public DialogService(ILogger logger, IServiceProvider services)
     {
@@ -105,6 +111,31 @@ public sealed class DialogService : IDialogService
             window.Owner = Application.Current.MainWindow;
             window.ShowDialog();
             _logger.Log("Error closed", Component);
+        });
+    }
+
+    // INTERRUPT #3 STEP 6 (Issue 3): show update-progress window.
+    // Non-modal (Show, not ShowDialog) so the async download/install state
+    // machine can progress while the window is open.
+    public Task ShowUpdateProgressAsync()
+    {
+        return ShowOnDispatcherAsync(() =>
+        {
+            if (_updateWindow != null && _updateWindow.IsVisible)
+            {
+                _logger.Log("UpdateProgress already visible; activating", Component);
+                _updateWindow.Activate();
+                return;
+            }
+            _logger.Log("showing UpdateProgress", Component);
+            _updateWindow = _services.GetRequiredService<UpdateProgressWindow>();
+            _updateWindow.Owner = Application.Current.MainWindow;
+            _updateWindow.Closed += (_, _) =>
+            {
+                _logger.Log("UpdateProgress closed", Component);
+                _updateWindow = null;
+            };
+            _updateWindow.Show();
         });
     }
 

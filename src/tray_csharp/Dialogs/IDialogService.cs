@@ -27,6 +27,12 @@ public interface IDialogService
 
     /// <summary>Show Error dialog (Surface 11).</summary>
     Task ShowErrorAsync(string title, string message, Exception? ex = null);
+
+    // INTERRUPT #3 STEP 6 (Issue 3): Show Update-progress window (non-modal).
+    // Uses Show() not ShowDialog() because download/install are long-running
+    // async operations; the window stays open while the state machine advances.
+    // If the window is already visible, brings it to the foreground instead.
+    Task ShowUpdateProgressAsync();
 }
 
 /// <summary>Result of Audio device dialog. Null indicates Cancel.</summary>
