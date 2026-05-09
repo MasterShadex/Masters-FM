@@ -229,26 +229,10 @@ public partial class App : Application
         _obsService = _services.GetRequiredService<IObsService>();
         _obsService.Start();
 
-        // Stage 7.8C STEP 2: 5s startup auto-add via ObsSceneFileEditor (file-edit-only).
-        // Replaces Stage 7.8B WebSocket path (_obsService.AddBrowserSourceAsync).
-        var logForAutoAdd = _logger;
-        var obsEnabledForAdd = _configService?.GetValue<bool>("obs.enabled", false) ?? false;
-        var autoAddEnabled   = _configService?.GetValue<bool>("obs.auto_add", true)  ?? true;
-        if (obsEnabledForAdd && autoAddEnabled)
-        {
-            _ = Task.Delay(5000).ContinueWith(_ =>
-            {
-                try
-                {
-                    var editor = new MastersFM.Tray.Services.ObsSceneFileEditor(logForAutoAdd);
-                    const string url = "http://localhost:4242/?renderer=webgl";
-                    const string css = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }";
-                    editor.AddBrowserSource(url, 1000, 200, 60, css);
-                    logForAutoAdd.Log("OBS startup auto-add complete (file-edit)", "Bootstrap");
-                }
-                catch (Exception ex) { logForAutoAdd.LogErr("OBS startup auto-add", ex, "Bootstrap"); }
-            }, System.Threading.Tasks.TaskScheduler.Default);
-        }
+        // Stage 7.8D: 5s direct-add removed. TrayMenuViewModel.ReconcileAsync
+        // (60s timer, fires immediately on first tick) is the single source of
+        // truth for intent-vs-reality reconciliation. obs.enabled is never read
+        // here; obs.intent is read by ReconcileAsync on its first tick.
 
         // -- Stage 7.5: Detection layer startup --
         // Resolve NowPlayingViewModel so it subscribes to ITrackResolver.TrackChanged
