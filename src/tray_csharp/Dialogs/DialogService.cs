@@ -44,6 +44,7 @@ public sealed class DialogService : IDialogService
             vm.ShowAboutTab = showAboutTab;
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
+            PositionDialogOnCursorMonitor(window);
             window.ShowDialog();
             _logger.Log("Welcome closed", Component);
         });
@@ -60,6 +61,7 @@ public sealed class DialogService : IDialogService
             window.Owner = Application.Current.MainWindow;
             // Trigger initial enumeration if not already loaded
             _ = vm.RefreshAsync();
+            PositionDialogOnCursorMonitor(window);
             window.ShowDialog();
             var result = vm.PendingResult;
             _logger.Log("AudioDevice closed result=" + (result?.DisplayName ?? "(cancelled)"), Component);
@@ -77,6 +79,7 @@ public sealed class DialogService : IDialogService
             vm.RefreshFromConfig();
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
+            PositionDialogOnCursorMonitor(window);
             window.ShowDialog();
             _logger.Log("Platforms closed", Component);
         });
@@ -92,6 +95,7 @@ public sealed class DialogService : IDialogService
             vm.Reset();
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
+            PositionDialogOnCursorMonitor(window);
             window.ShowDialog();
             var completed = vm.Completed;
             _logger.Log("SetupWizard closed completed=" + completed, Component);
@@ -109,6 +113,10 @@ public sealed class DialogService : IDialogService
             vm.Populate(title, message, ex);
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
+            // Stage 7.8B STEP 9: SizeToContent="Height" window — position after layout via ContentRendered
+            // so ActualHeight is available for vertical centring.
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.ContentRendered += (_, _) => PositionDialogOnCursorMonitor(window);
             window.ShowDialog();
             _logger.Log("Error closed", Component);
         });
@@ -137,6 +145,26 @@ public sealed class DialogService : IDialogService
             };
             _updateWindow.Show();
         });
+    }
+
+    // Stage 7.8B STEP 9: centre a modal dialog on the monitor that contains the
+    // mouse cursor.  Screen.WorkingArea is in device pixels; WPF Left/Top are in
+    // logical pixels — accurate for uniform-DPI setups (operator's config).
+    // Mixed-DPI correction is deferred.
+    // Call BEFORE ShowDialog for windows with explicit Width/Height set in XAML.
+    // For SizeToContent windows, subscribe ContentRendered so ActualHeight is known.
+    private static void PositionDialogOnCursorMonitor(Window dialog)
+    {
+        var cursorPos = System.Windows.Forms.Cursor.Position;
+        var screen    = System.Windows.Forms.Screen.FromPoint(cursorPos);
+        var wa        = screen.WorkingArea;
+        // Use actual dimensions if layout has run (ContentRendered path); fall back
+        // to XAML Width/Height when called before ShowDialog.
+        var w = dialog.ActualWidth  > 0 ? dialog.ActualWidth  : dialog.Width;
+        var h = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
+        dialog.WindowStartupLocation = WindowStartupLocation.Manual;
+        dialog.Left = wa.Left + (wa.Width  - w) / 2;
+        dialog.Top  = wa.Top  + (wa.Height - h) / 2;
     }
 
     // -- Dispatcher marshalling helpers --

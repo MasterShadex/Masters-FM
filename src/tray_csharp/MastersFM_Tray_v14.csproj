@@ -12,6 +12,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- Stage 7.8B STEP 9: needed for System.Windows.Forms.Screen (cursor-following dialogs) -->
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MastersFM_Tray_v14</AssemblyName>
@@ -42,9 +44,17 @@
   <!-- Implicit usings: WPF SDK does not include System.IO by default the way the
        WinForms SDK did; Logger.cs (preserved unchanged from Stage 7.1) relies on
        Path / Directory / File without explicit using. Add System.IO to the
-       implicit using set so Logger.cs ports unmodified. -->
+       implicit using set so Logger.cs ports unmodified.
+       Stage 7.8B STEP 9: UseWindowsForms=true (above) causes the SDK to inject a
+       global 'using System.Windows.Forms' which makes 'Application' ambiguous
+       vs System.Windows.Application throughout the WPF code-behind.  Remove the
+       WinForms namespace from the implicit set; the two Screen/Cursor call sites
+       in DialogService.cs already use the fully-qualified form. -->
   <ItemGroup>
     <Using Include="System.IO" />
+    <!-- Suppress WinForms-injected namespaces that collide with WPF equivalents. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <!-- Embed brand icon as a WPF Resource so MainWindow.xaml can reference it via
