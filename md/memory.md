@@ -9,15 +9,17 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.2 (local branch ahead 8 commits; INTERRUPT #3 fixes complete; rc.3 pending Brief 2 + Brief 3)
-**Last updated:** 2026-05-09 (Stage 7.10 INTERRUPT #3 rc.3 functional regression hotfix PASS; 7 issues fixed; 8 local commits; no push/tag yet)
+**Current version:** v14.0.0-rc.2 (local branch ahead; INTERRUPT #3 + Stage 7.8B + Stage 7.8C complete; rc.3 pending Brief 3)
+**Last updated:** 2026-05-09 (Stage 7.8C file-edit-only OBS + cleanup-on-uninstall PASS; 13/13 tests; 8 new commits; Brief 3 Stage 7.7B visual next)
 
 ## IN-FLIGHT WORK
 
-**Stage 7.10 INTERRUPT #3 -- rc.3 functional regression hotfix -- LOCAL COMPLETE 2026-05-09**
-- 7 regressions fixed (issues 1, 2, 3, 4, 5, 7, 8); 8 commits on main (5e078f3..cd986e8); no push/tag yet
-- rc.3 = INTERRUPT #3 + Brief 2 (Stage 7.8B OBS) + Brief 3 (Stage 7.7B visual)
-- Next step: Brief 2 (OBS WebSocket primary + file-edit fallback), then Brief 3 (visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
+**Stage 7.8C -- file-edit-only OBS + cleanup-on-uninstall -- LOCAL COMPLETE 2026-05-09**
+- Brief 2 DONE: file-edit-only OBS toggle; GAP-1/GAP-2 fixes; obs.pending_restart; MastersFM_ObsCleanup.exe; MSI integration
+- 13/13 automated tests PASS; 5 UAT items deferred (require tray/MSI runtime)
+- Prior: Stage 7.10 INTERRUPT #3 (8 commits 5e078f3..cd986e8); Stage 7.8B (11 commits); Stage 7.8C (8 commits 0926fa3..811a10f)
+- rc.3 = INTERRUPT #3 + Brief 2 (Stages 7.8B+7.8C) + Brief 3 (Stage 7.7B visual — NOT STARTED)
+- Next step: Brief 3 (Stage 7.7B visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
 
 ## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
 - **Overlay is WebGL-only** (canvas2d removed in v9.4.0). If GPU can't do WebGL -> blank overlay. Consider adding graceful WebGL-unavailable message in overlay.html.
@@ -156,6 +158,26 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 -- Stage 7.8C: file-edit-only OBS port + cleanup-on-uninstall
+
+**Commits:** `0926fa3` (STEP 0 backup) `b38827e` (STEP 1 diagnosis) `2321b16` (STEP 2 ShowToast API fix) `57b5b2a` (STEP 3 pending_restart+60s timer) `0d2faff` (STEP 4 ObsCleanup new project) `8ea0d59` (STEP 5 MSI cleanup integration) `fff2962` (STEP 6 E2E smoke) `811a10f` (STEP 7 dual-build+SHA256)
+**Outcome:** PASS (13/13 automated tests pass; 5 items deferred to UAT requiring tray/MSI runtime; 0 strikes consumed)
+
+#### Issues fixed
+- **OBS toggle (file-edit-only)** -- Supersedes 7.8B WebSocket path; always file-edits regardless of OBS state; idempotent add (no write if URL matches); BrowserSourceExists() added; 4 WebSocket methods marked [Obsolete] (dead code retained)
+- **GAP-1: URL-update-on-mismatch** -- ObsSceneFileEditor updates URL in-place preserving source UUID when URL changes
+- **GAP-2: JSON parse-back validation** -- `JsonNode.Parse(output) ?? throw` before every scene-file write (safety floor)
+- **obs.pending_restart config** -- TrayMenuViewModel persists PendingRestart state across restarts; 60s polling timer clears suffix after OBS exits; menu shows "(restart OBS to apply)"
+- **MastersFM_ObsCleanup.exe** -- New console project (net8.0-windows, framework-dependent); polls OBS exit every 10s (max 30 polls = 5 min); removes Master's FM browser source + scene_items from all scene-collection JSON files; self-deletes via `cmd /c timeout 5`
+- **MSI uninstall integration** -- build_msi.py: MFMCleanupDir at %ProgramData%\MastersFM\Cleanup\; GUID_COMP61-64 for cleanup binary; VBScript step 3b launches exe on uninstall if OBS running; _full_rebuild.ps1 builds obs_cleanup
+
+#### Architecture notes
+- ObsToggleState enum: NotAdded | Added | PendingRestart
+- ShowToast API corrected: `TaskbarIcon.ShowNotification(title, msg, NotificationIcon.Info)` (H.NotifyIcon.Wpf 2.3.2)
+- System.Threading.Timer (not DispatcherTimer) marshals UI updates via `Application.Current.Dispatcher.BeginInvoke()`
+
+---
 
 ### 2026-05-09 -- Stage 7.8B: OBS browser source port + latency reduction + cursor-following dialog placement
 
