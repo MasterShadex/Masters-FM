@@ -1,0 +1,29 @@
+<!-- Stage 7.7B: Animation duration resources and easing functions.
+     App.xaml.cs overrides the Duration resources to 0:0:0 (instant) when
+     App.IsReducedMotion == true (see STEP 2 / S2.1).
+     Easing functions approximate the cubic-bezier(0.4,0,0.2,1) standard
+     and cubic-bezier(0.16,1,0.3,1) spring using WPF built-ins. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Durations: overridden to 0:0:0 in reduced-motion mode by App.xaml.cs -->
+    <Duration x:Key="StandardDuration">0:0:0.220</Duration>
+    <Duration x:Key="FastDuration">0:0:0.150</Duration>
+    <Duration x:Key="SlowDuration">0:0:0.280</Duration>
+    <Duration x:Key="PressDuration">0:0:0.080</Duration>
+    <Duration x:Key="AccentBarDuration">0:0:8</Duration>
+
+    <!-- Easing functions.
+         Standard: approximates cubic-bezier(0.4, 0, 0.2, 1), material standard. -->
+    <QuadraticEase x:Key="StandardEasing" EasingMode="EaseInOut"/>
+
+    <!-- EaseOut: approximates cubic-bezier(0.0, 0, 0.2, 1). -->
+    <QuadraticEase x:Key="EaseOutEasing" EasingMode="EaseOut"/>
+
+    <!-- Spring: approximates cubic-bezier(0.16, 1, 0.3, 1), used for dialog open. -->
+    <ElasticEase x:Key="SpringEasing" EasingMode="EaseOut" Oscillations="0" Springiness="3"/>
+
+    <!-- EaseIn: approximates cubic-bezier(0.4, 0, 1, 1). -->
+    <QuadraticEase x:Key="EaseInEasing" EasingMode="EaseIn"/>
+
+</ResourceDictionary>

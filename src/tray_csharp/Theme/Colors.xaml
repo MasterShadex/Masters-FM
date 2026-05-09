@@ -1,0 +1,57 @@
+<!-- Stage 7.7B: Design token colors.
+     All tokens from CLAUDE_CODE_INSTRUCTIONS.md Design Direction (locked).
+     Keys are PascalCase; no conflict with WPF-UI keys (those use "Brush" suffix
+     or "SystemAccentColor*" prefix). -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Brand purple -->
+    <SolidColorBrush x:Key="BrandPurpleBase" Color="#8B5CF6"/>
+    <SolidColorBrush x:Key="BrandPurpleDeep" Color="#7C3AED"/>
+    <SolidColorBrush x:Key="BrandPurpleGlow" Color="#A78BFA"/>
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="Surface0" Color="#0A0A0F"/>
+    <SolidColorBrush x:Key="Surface1" Color="#14141B"/>
+    <SolidColorBrush x:Key="Surface2" Color="#1F1F2A"/>
+    <SolidColorBrush x:Key="Surface3" Color="#2A2A38"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimary"   Color="#F5F5F7"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#9999A1"/>
+    <SolidColorBrush x:Key="TextTertiary"  Color="#5C5C66"/>
+
+    <!-- Borders -->
+    <SolidColorBrush x:Key="BorderSubtle" Color="#1A1A24"/>
+    <SolidColorBrush x:Key="BorderFocus"  Color="#8B5CF6"/>
+
+    <!-- Accent bar gradient (top edge of every dialog; shimmer animation in Animations.xaml) -->
+    <LinearGradientBrush x:Key="AccentBarGradient" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#8B5CF6" Offset="0"/>
+        <GradientStop Color="#A78BFA" Offset="0.5"/>
+        <GradientStop Color="#8B5CF6" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- Drop shadow effects.
+         x:Shared="False" prevents DropShadowEffect sharing errors
+         (Effect is element-owned in WPF rendering pipeline). -->
+    <DropShadowEffect x:Key="DialogShadow"      x:Shared="False"
+                      BlurRadius="40" ShadowDepth="20" Direction="270"
+                      Color="#000000" Opacity="0.55"/>
+    <DropShadowEffect x:Key="CardRestingShadow" x:Shared="False"
+                      BlurRadius="4"  ShadowDepth="1"  Direction="270"
+                      Color="#000000" Opacity="0.4"/>
+    <DropShadowEffect x:Key="CardHoverShadow"   x:Shared="False"
+                      BlurRadius="18" ShadowDepth="4"  Direction="270"
+                      Color="#000000" Opacity="0.5"/>
+    <DropShadowEffect x:Key="ButtonHoverShadow" x:Shared="False"
+                      BlurRadius="18" ShadowDepth="4"  Direction="270"
+                      Color="#8B5CF6" Opacity="0.35"/>
+    <DropShadowEffect x:Key="InputFocusShadow"  x:Shared="False"
+                      BlurRadius="8"  ShadowDepth="0"
+                      Color="#8B5CF6" Opacity="0.45"/>
+
+    <!-- Transparent brush convenience resource -->
+    <SolidColorBrush x:Key="Transparent" Color="Transparent"/>
+
+</ResourceDictionary>

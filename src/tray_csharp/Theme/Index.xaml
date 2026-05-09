@@ -1,0 +1,21 @@
+<!-- Stage 7.7B: Master ResourceDictionary for the design system.
+     Merges all theme sub-dictionaries in dependency order:
+       Colors first (brushes + effects used by all others),
+       Typography second (standalone, Segoe UI properties only),
+       Animations third (Duration resources used by Buttons/Inputs triggers),
+       then component styles that reference Colors and Animations.
+     Merged from App.xaml after WPF-UI ThemesDictionary so our tokens
+     can shadow any WPF-UI defaults we choose to override. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Colors.xaml"/>
+        <ResourceDictionary Source="Typography.xaml"/>
+        <ResourceDictionary Source="Animations.xaml"/>
+        <ResourceDictionary Source="Buttons.xaml"/>
+        <ResourceDictionary Source="Inputs.xaml"/>
+        <ResourceDictionary Source="Cards.xaml"/>
+        <ResourceDictionary Source="Icons.xaml"/>
+        <ResourceDictionary Source="BrandIcons.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

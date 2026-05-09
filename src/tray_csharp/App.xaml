@@ -2,7 +2,9 @@
      Fluent Dark theme + brand-purple accent override. StartupUri NOT set;
      App.xaml.cs creates MainWindow manually so DI can inject services.
      Stage 7.7: BoolToVisibilityConverter added for dialog XAML conditional
-     visibility bindings. -->
+     visibility bindings.
+     Stage 7.7B: Theme/Index.xaml merged after WPF-UI dictionaries so our
+     design tokens can shadow WPF-UI defaults. No functional changes. -->
 <Application x:Class="MastersFM.Tray.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -16,6 +18,11 @@
                      lepoco/wpfui standard install pattern. -->
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
+                <!-- Stage 7.7B design system. Loaded after WPF-UI so our
+                     tokens shadow any WPF-UI defaults we choose to override.
+                     Index.xaml merges Colors, Typography, Animations, Buttons,
+                     Inputs, Cards, Icons, BrandIcons in dependency order. -->
+                <ResourceDictionary Source="Theme/Index.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Brand-purple accent override per V14_S7_REPLAN_DESIGN_LANGUAGE.md

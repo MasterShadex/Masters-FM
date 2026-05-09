@@ -1,0 +1,83 @@
+<!-- Stage 7.7B: Card and list row styles.
+     Card variants: resting (CardStyle) and hover-lift (CardHoverStyle).
+     List row style for Audio Source tab list items.
+     Group header style for list section labels.
+     Depends on: Colors.xaml (Surface1, Surface2, BorderSubtle, Text*,
+                              CardRestingShadow, CardHoverShadow). -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- === Card (resting) ===
+         Surface1 background, 1px border-subtle, 12px radius, subtle shadow. -->
+    <Style x:Key="CardStyle" TargetType="Border">
+        <Setter Property="Background"       Value="{StaticResource Surface1}"/>
+        <Setter Property="BorderBrush"      Value="{StaticResource BorderSubtle}"/>
+        <Setter Property="BorderThickness"  Value="1"/>
+        <Setter Property="CornerRadius"     Value="12"/>
+        <Setter Property="Effect"           Value="{StaticResource CardRestingShadow}"/>
+        <Setter Property="Padding"          Value="16"/>
+    </Style>
+
+    <!-- === Card (hover-lift) ===
+         Same as CardStyle but with lift shadow; applied when IsMouseOver.
+         Usage: set Style=CardStyle and add EventTrigger or DataTrigger. -->
+    <Style x:Key="CardHoverStyle" TargetType="Border" BasedOn="{StaticResource CardStyle}">
+        <Setter Property="Effect" Value="{StaticResource CardHoverShadow}"/>
+    </Style>
+
+    <!-- === Card (interactive, with hover trigger) ===
+         For clickable cards; wraps hover state in a trigger. -->
+    <Style x:Key="CardInteractiveStyle" TargetType="Border">
+        <Setter Property="Background"      Value="{StaticResource Surface1}"/>
+        <Setter Property="BorderBrush"     Value="{StaticResource BorderSubtle}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="12"/>
+        <Setter Property="Effect"          Value="{StaticResource CardRestingShadow}"/>
+        <Setter Property="Padding"         Value="16"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Surface2}"/>
+                <Setter Property="Effect"     Value="{StaticResource CardHoverShadow}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- === List row ===
+         56px tall, 16px horizontal padding, transparent resting.
+         Hover: Surface2 bg. Selected: 3px brand-purple left accent + Surface2. -->
+    <Style x:Key="ListRowStyle" TargetType="Border">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Padding"         Value="16,0"/>
+        <Setter Property="Height"          Value="56"/>
+        <Setter Property="Cursor"          Value="Hand"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Surface2}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- === Group header ===
+         32px tall, SubHeading weight, text-secondary color. -->
+    <Style x:Key="GroupHeaderStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily"  Value="Segoe UI"/>
+        <Setter Property="FontSize"    Value="15"/>
+        <Setter Property="FontWeight"  Value="SemiBold"/>
+        <Setter Property="Foreground"  Value="{StaticResource TextSecondary}"/>
+        <Setter Property="Height"      Value="32"/>
+        <Setter Property="Padding"     Value="16,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- === Selected accent border ===
+         3px brand-purple left edge for selected list rows.
+         Usage: place as first child inside ListRowStyle border with HorizontalAlignment=Left. -->
+    <Style x:Key="SelectedAccentStyle" TargetType="Border">
+        <Setter Property="Width"            Value="3"/>
+        <Setter Property="Background"       Value="{StaticResource BrandPurpleBase}"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+        <Setter Property="VerticalAlignment"   Value="Stretch"/>
+    </Style>
+
+</ResourceDictionary>
