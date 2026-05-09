@@ -301,7 +301,40 @@ public partial class App : Application
         // -- Stage 7.7: First-run check + dialog service ----------------
         _dialogService = _services.GetRequiredService<IDialogService>();
         _logger.Log("DialogService initialized; 5 dialogs registered (Welcome / Audio / Platforms / SetupWizard / Error)", "Bootstrap");
-        ScheduleFirstRunCheck();
+
+        // -- Stage 7.7B: WelcomeWindow first-run hero (STEP 3 / S3.1) --
+        // Show WelcomeWindow once on first launch. Uses a separate flag
+        // (app.first_run_shown) so it is decoupled from the old welcome_seen
+        // gate. DialogResult semantics:
+        //   true  -> Get Started -> ScheduleFirstRunCheck -> shows SetupWizard
+        //   false -> Skip Setup  -> mark welcome_seen; wizard does not auto-show
+        bool firstRunShown = _configService?.GetValue<bool>("app.first_run_shown", false) ?? false;
+        _logger.Log($"app.first_run_shown={firstRunShown}", "Bootstrap");
+        if (!firstRunShown)
+        {
+            _logger.Log("first_run_shown=false: showing Welcome hero", "Bootstrap");
+            var welcome = _services.GetRequiredService<WelcomeWindow>();
+            bool? getStarted = welcome.ShowDialog();
+            _configService?.SetValue("app.first_run_shown", true);
+            _logger.Log($"Welcome closed (getStarted={getStarted})", "Bootstrap");
+            if (getStarted == true)
+            {
+                // User chose Get Started: welcome_seen is still false,
+                // so ScheduleFirstRunCheck will show the Setup Wizard.
+                ScheduleFirstRunCheck();
+            }
+            else
+            {
+                // User chose Skip Setup (or closed via X): suppress wizard.
+                _configService?.SetWelcomeSeen(true);
+                _logger.Log("Skip Setup: welcome_seen marked true, wizard suppressed", "Bootstrap");
+            }
+        }
+        else
+        {
+            // Subsequent launches: existing check handles wizard re-show if needed.
+            ScheduleFirstRunCheck();
+        }
 
         _logger.Log("Application.OnStartup completed", "Bootstrap");
 

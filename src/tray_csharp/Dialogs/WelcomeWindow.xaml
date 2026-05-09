@@ -1,189 +1,179 @@
-<!-- Stage 7.7 Surface 04 + Surface 10 (About embedded as tab).
-     All colors via DynamicResource. Patch notes virtualize via WPF
-     ListBox default VirtualizingStackPanel. -->
+<!-- Stage 7.7B: STEP 3 WelcomeWindow first-run hero.
+     Two-column layout: left brand/waveform (280px), right welcome content.
+     Style=AppDialogStyle provides custom chrome (accent bar, title bar, shadow).
+     Waveform bars are created in code-behind (OnLoaded) so we can phase-offset
+     each bar's BeginTime without 32 redundant XAML elements.
+     Trust signals: wordmark prominent, real version, specific feature copy,
+     recognisable platform icons, no urgency, two clear reversible actions. -->
 <Window x:Class="MastersFM.Tray.Dialogs.WelcomeWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        xmlns:vm="clr-namespace:MastersFM.Tray.ViewModels"
         Title="Master's FM"
-        Width="720" Height="680"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-        WindowStyle="None"
-        ResizeMode="NoResize"
-        AllowsTransparency="False">
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        Width="720" Height="480"
+        Style="{StaticResource AppDialogStyle}">
 
-        <!-- Header zone: MouseLeftButtonDown enables drag on the chrome-less window.
-             Button clicks inside the header set Handled=true in ButtonBase and do
-             not bubble to this handler. (INTERRUPT #3 STEP 3, Issue 5) -->
-        <Grid Grid.Row="0" Margin="0,0,0,16"
-              MouseLeftButtonDown="OnTitleBarDrag">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Image Grid.Column="0" Width="64" Height="64"
-                   Source="pack://application:,,,/MastersFM_Tray_v14;component/assets/MastersFM.ico"
-                   VerticalAlignment="Top" />
-            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
-                <TextBlock Text="Welcome to Master's FM"
-                           FontSize="22" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <TextBlock Margin="0,4,0,0">
-                    <Run Text="{Binding CurrentVersion, Mode=OneWay}"
-                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <Run Text="  *  " Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                    <Run Text="Build " Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <Run Text="{Binding BuildDate, Mode=OneWay}"
-                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                </TextBlock>
+    <!-- Two-column content (fills ContentPresenter inside AppDialogStyle chrome) -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!-- Left: brand + waveform panel (fixed 280px) -->
+            <ColumnDefinition Width="280"/>
+            <!-- Right: welcome copy + actions (takes remaining width) -->
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ============================================================
+             LEFT COLUMN: Brand area
+             Surface0 background (deeper than the chrome Surface1) creates
+             a subtle two-tone split that visually separates hero from copy.
+             ============================================================ -->
+        <Border Grid.Column="0"
+                Background="{StaticResource Surface0}"
+                CornerRadius="0,0,0,12">
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Margin="24,0">
+
+                <!-- Wordmark -->
+                <TextBlock Text="Master's FM"
+                           Style="{StaticResource DisplayTextStyle}"
+                           Foreground="{StaticResource BrandPurpleBase}"
+                           TextAlignment="Center"/>
+
+                <!-- Waveform visualization (bars added in code-behind OnLoaded).
+                     VerticalAlignment=Bottom so bars grow upward from the baseline. -->
+                <Canvas x:Name="WaveformCanvas"
+                        Width="232" Height="56"
+                        Margin="0,20,0,0"
+                        HorizontalAlignment="Center"/>
+
+                <!-- Version string -->
+                <TextBlock x:Name="VersionText"
+                           Text="v14.0.0"
+                           Style="{StaticResource TinyTextStyle}"
+                           Foreground="{StaticResource TextTertiary}"
+                           TextAlignment="Center"
+                           Margin="0,12,0,0"/>
             </StackPanel>
-            <Button Grid.Column="2" Content="X" Width="32" Height="32"
-                    Background="Transparent"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    BorderThickness="0"
-                    Click="OnCloseButtonClick" />
-        </Grid>
+        </Border>
 
-        <!-- Body: TabControl -->
-        <TabControl Grid.Row="1"
-                    Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1">
-            <TabItem Header="What's new">
-                <ListBox ItemsSource="{Binding PatchNotes}"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         VirtualizingStackPanel.IsVirtualizing="True"
-                         VirtualizingStackPanel.VirtualizationMode="Recycling">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="0,0,0,12" Padding="12" CornerRadius="6"
-                                    Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
-                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <TextBlock Text="{Binding Version}"
-                                                   FontSize="16" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        <TextBlock Text="  *  " Margin="6,0"
-                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                                        <TextBlock Text="{Binding Date}"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    </StackPanel>
-                                    <ItemsControl ItemsSource="{Binding Notes}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,4,0,4">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Border Grid.Column="0"
-                                                            Background="{DynamicResource SystemAccentColorPrimaryBrush}"
-                                                            CornerRadius="4"
-                                                            Padding="6,2"
-                                                            VerticalAlignment="Top">
-                                                        <TextBlock Text="{Binding Tag}"
-                                                                   FontSize="10" FontWeight="SemiBold"
-                                                                   Foreground="White" />
-                                                    </Border>
-                                                    <TextBlock Grid.Column="1" Margin="8,0,0,0"
-                                                               Text="{Binding Text}"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </TabItem>
+        <!-- ============================================================
+             RIGHT COLUMN: Welcome copy + actions
+             ============================================================ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-            <TabItem Header="About" x:Name="AboutTabItem">
-                <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                    <StackPanel DataContext="{Binding About, RelativeSource={RelativeSource AncestorType=Window}}">
-                        <Image Width="96" Height="96" HorizontalAlignment="Left"
-                               Source="pack://application:,,,/MastersFM_Tray_v14;component/assets/MastersFM.ico" />
-                        <TextBlock Margin="0,12,0,0" FontSize="22" FontWeight="SemiBold"
-                                   Text="{Binding BrandName}"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Margin="0,4,0,0">
-                            <Run Text="{Binding Version}"
-                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <Run Text="  (Build " Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                            <Run Text="{Binding BuildDate}"
-                                 Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                            <Run Text=")" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                        </TextBlock>
-                        <TextBlock Margin="0,4,0,0" Text="{Binding OsCompat}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        <Separator Margin="0,16,0,16" />
-                        <TextBlock Text="{Binding Author}"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <TextBlock Margin="0,4,0,0" Text="{Binding RuntimeStack}"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <Separator Margin="0,16,0,16" />
-                        <Grid Visibility="{Binding ShowTechnicalDetails, Converter={StaticResource BoolToVis}, FallbackValue=Visible}">
-                            <StackPanel>
-                                <TextBlock>
-                                    <Run Text="Discord RPC client_id: "
-                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    <Run Text="{Binding DiscordClientId}"
-                                         FontFamily="Consolas"
-                                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                </TextBlock>
-                                <TextBlock Margin="0,4,0,0">
-                                    <Run Text="Authenticode signed: "
-                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    <Run Text="{Binding AuthenticodeCn}"
-                                         FontFamily="Consolas"
-                                         Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                </TextBlock>
-                            </StackPanel>
-                        </Grid>
-                        <Separator Margin="0,16,0,16" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="GitHub" Margin="0,0,8,0" MinWidth="100"
-                                    Command="{Binding OpenGitHubCommand}" />
-                            <Button Content="Report a bug" Margin="0,0,8,0" MinWidth="120"
-                                    Command="{Binding ReportBugCommand}" />
-                            <Button Content="Open data folder" MinWidth="140"
-                                    Command="{Binding OpenDataFolderCommand}" />
-                        </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
+            <!-- Scrollable content area (in case window is smaller than expected) -->
+            <ScrollViewer Grid.Row="0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="40,32,40,0">
+                <StackPanel>
 
-        <!-- Footer zone -->
-        <Grid Grid.Row="2" Margin="0,16,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <CheckBox Grid.Column="0" Content="Don't show this again"
-                      IsChecked="{Binding DontShowAgain, Mode=TwoWay}"
-                      Visibility="{Binding IsFirstRun, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
-                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                      VerticalAlignment="Center" />
-            <ui:Button Grid.Column="1" Content="Continue" MinWidth="120"
-                       Appearance="Primary"
-                       Click="OnContinueClick" />
+                    <!-- "WELCOME TO" overline -->
+                    <TextBlock Text="WELCOME TO"
+                               Style="{StaticResource TinyTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               Margin="0,0,0,6"/>
+
+                    <!-- Display heading -->
+                    <TextBlock Text="Master's FM"
+                               Style="{StaticResource DisplayTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"
+                               Margin="0,0,0,14"/>
+
+                    <!-- Tagline / body -->
+                    <TextBlock Style="{StaticResource BodyTextStyle}"
+                               Foreground="{StaticResource TextSecondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,24">
+                        Now Playing for streamers. Detect what you're listening to,
+                        show it on your stream — or just enjoy it.
+                    </TextBlock>
+
+                    <!-- Feature bullets -->
+                    <!-- Bullet: Spotify / SoundCloud / YouTube Music -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0"
+                              Data="{StaticResource IconSpeaker}"
+                              Fill="{StaticResource BrandPurpleBase}"
+                              Width="16" Height="16"
+                              Stretch="Uniform"
+                              VerticalAlignment="Top"
+                              Margin="0,2,0,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Margin="10,0,0,0"
+                                   Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="Connects to Spotify, SoundCloud, YouTube Music, and more"/>
+                    </Grid>
+
+                    <!-- Bullet: OBS overlay -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0"
+                              Data="{StaticResource IconCamera}"
+                              Fill="{StaticResource BrandPurpleBase}"
+                              Width="16" Height="16"
+                              Stretch="Uniform"
+                              VerticalAlignment="Top"
+                              Margin="0,2,0,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Margin="10,0,0,0"
+                                   Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="Adds a Now Playing overlay to OBS automatically"/>
+                    </Grid>
+
+                    <!-- Bullet: Customise -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0"
+                              Data="{StaticResource IconSparkle}"
+                              Fill="{StaticResource BrandPurpleBase}"
+                              Width="16" Height="16"
+                              Stretch="Uniform"
+                              VerticalAlignment="Top"
+                              Margin="0,2,0,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Margin="10,0,0,0"
+                                   Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="Customise colors, layout, and animation"/>
+                    </Grid>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Action buttons (pinned to bottom of right column) -->
+            <Border Grid.Row="1"
+                    Padding="40,16,40,24">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button Content="Skip Setup"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Margin="0,0,8,0"
+                            Click="OnSkipSetup"/>
+                    <Button Content="Get Started"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Click="OnGetStarted"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

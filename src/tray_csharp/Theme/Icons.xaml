@@ -82,4 +82,9 @@
         <EllipseGeometry Center="12,13" RadiusX="4" RadiusY="4"/>
     </GeometryGroup>
 
+    <!-- Sparkle: 4-pointed star with elongated vertical/horizontal points.
+         Used for "Customize" feature bullet in WelcomeWindow. -->
+    <PathGeometry x:Key="IconSparkle"
+        Figures="M12 2 L13.2 10.8 L22 12 L13.2 13.2 L12 22 L10.8 13.2 L2 12 L10.8 10.8 Z"/>
+
 </ResourceDictionary>

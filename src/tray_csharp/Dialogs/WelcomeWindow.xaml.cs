@@ -1,85 +1,162 @@
-// Stage 7.7 Surface 04 + Surface 10. Welcome dialog code-behind. Hosts
-// AboutViewModel as a sub-context for the embedded About tab. Continue
-// button persists welcome_seen if appropriate.
+// Stage 7.7B STEP 3: WelcomeWindow first-run hero code-behind.
+// Handles waveform bar creation + animation (OnLoaded), AppDialogStyle
+// PART_ template wiring (OnApplyTemplate), and two action buttons.
+//
+// DialogResult semantics:
+//   true  = Get Started -> App.xaml.cs opens SetupWizard
+//   false = Skip Setup  -> App.xaml.cs does nothing; tray menu only
+//
+// Waveform: 32 bars created in C# to avoid 300+ lines of XAML repetition.
+// Each bar uses DoubleAnimation on Canvas.BottomProperty (simulates grow-from-
+// base) via HeightProperty + Canvas.SetBottom(bar, 0), phase-offset with
+// a deterministic BeginTime so bars never all peak at once. When
+// App.IsReducedMotion is true, bars are placed statically from seed 42.
 
 using System.Windows;
 using System.Windows.Controls;
-using MastersFM.Tray.Services;
-using MastersFM.Tray.ViewModels;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 
 namespace MastersFM.Tray.Dialogs;
 
 public partial class WelcomeWindow : Window
 {
-    private readonly ILogger _logger;
-    private readonly IConfigService _config;
-    public AboutViewModel About { get; }
+    // Deterministic seed so reduced-motion static heights are consistent
+    // across launches (user sees the same "frozen" waveform every time).
+    private const int WaveformSeed = 42;
+    private const int BarCount    = 32;
+    private const int BarWidth    = 4;
+    private const int BarGap      = 4;
+    private const int BarMinH     = 8;
+    private const int BarMaxH     = 48;
+    private const int CanvasHeight = 56;
 
-    public WelcomeWindow(ILogger logger, IConfigService config, AboutViewModel about)
+    public WelcomeWindow()
     {
-        _logger = logger;
-        _config = config;
-        About = about;
         InitializeComponent();
-        // Activate About tab when VM signals showAboutTab=true
-        DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
     }
 
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    // -------------------------------------------------------------------------
+    // Template parts (AppDialogStyle PART_ wiring)
+    // -------------------------------------------------------------------------
+
+    public override void OnApplyTemplate()
     {
-        if (DataContext is WelcomeViewModel vm && vm.ShowAboutTab)
+        base.OnApplyTemplate();
+
+        // PART_TitleBar: enable drag for the WindowStyle=None chrome.
+        if (GetTemplateChild("PART_TitleBar") is FrameworkElement titleBar)
         {
-            // Find TabControl and select About tab (index 1)
-            if (FindVisualChild<TabControl>(this) is TabControl tc)
-            {
-                tc.SelectedIndex = 1;
-            }
+            titleBar.MouseLeftButtonDown += OnTitleBarDrag;
         }
+
+        // PART_CloseButton: treat as Skip Setup (DialogResult=false).
+        if (GetTemplateChild("PART_CloseButton") is Button closeBtn)
+        {
+            closeBtn.Click += (_, _) =>
+            {
+                DialogResult = false;
+            };
+        }
+
+        // PART_MinimizeButton stays Collapsed (default in AppDialogStyle).
     }
 
-    private void OnContinueClick(object sender, RoutedEventArgs e)
+    // -------------------------------------------------------------------------
+    // Loaded: build waveform bars
+    // -------------------------------------------------------------------------
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        BuildWaveform();
+    }
+
+    private void BuildWaveform()
+    {
+        var canvas = WaveformCanvas;
+        if (canvas == null) return;
+
+        // Resolve brand purple glow brush from resources (may not exist in designer).
+        Brush barBrush;
         try
         {
-            if (DataContext is WelcomeViewModel vm)
+            var baseBrush = (SolidColorBrush)FindResource("BrandPurpleGlow");
+            barBrush = new SolidColorBrush(baseBrush.Color) { Opacity = 0.7 };
+        }
+        catch
+        {
+            barBrush = new SolidColorBrush(Color.FromRgb(0xA7, 0x8B, 0xFA)) { Opacity = 0.7 };
+        }
+
+        var rng = new Random(WaveformSeed);
+
+        for (int i = 0; i < BarCount; i++)
+        {
+            int startH = rng.Next(BarMinH, BarMaxH + 1);
+            int endH   = rng.Next(BarMinH, BarMaxH + 1);
+
+            var bar = new Border
             {
-                if (vm.IsFirstRun && vm.DontShowAgain)
-                {
-                    _config.SetWelcomeSeen(true);
-                    _logger.Log("welcome_seen persisted via Continue + DontShowAgain", "Welcome");
-                }
-            }
+                Width           = BarWidth,
+                Height          = startH,
+                Background      = barBrush,
+                CornerRadius    = new CornerRadius(2, 2, 0, 0),
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
+
+            // Position bar on canvas: left edge + gap, pinned to canvas bottom.
+            Canvas.SetLeft(bar, i * (BarWidth + BarGap));
+            Canvas.SetBottom(bar, 0);
+            canvas.Children.Add(bar);
+
+            if (App.IsReducedMotion) continue;
+
+            // Animate Height from startH to endH, auto-reverse, repeat forever.
+            // BeginTime phase-offsets each bar so they don't all peak together.
+            int durationMs = rng.Next(300, 801);
+            int beginMs    = rng.Next(0, 500);
+
+            var anim = new DoubleAnimation
+            {
+                From            = startH,
+                To              = endH,
+                Duration        = new Duration(TimeSpan.FromMilliseconds(durationMs)),
+                AutoReverse     = true,
+                RepeatBehavior  = RepeatBehavior.Forever,
+                BeginTime       = TimeSpan.FromMilliseconds(beginMs),
+                EasingFunction  = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+
+            bar.BeginAnimation(HeightProperty, anim);
         }
-        catch (Exception ex)
-        {
-            _logger.LogErr("Continue click", ex, "Welcome");
-        }
-        Close();
     }
 
-    private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+    // -------------------------------------------------------------------------
+    // Action buttons
+    // -------------------------------------------------------------------------
+
+    private void OnGetStarted(object sender, RoutedEventArgs e)
     {
-        Close();
+        // true -> App.xaml.cs interprets as "open Setup Wizard".
+        DialogResult = true;
     }
 
-    // INTERRUPT #3 STEP 3 (Issue 5): enable drag on WindowStyle=None window.
-    // Button clicks in the header set e.Handled=true in ButtonBase so they do
-    // not bubble to this handler; only bare-area clicks reach DragMove().
-    private void OnTitleBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void OnSkipSetup(object sender, RoutedEventArgs e)
     {
-        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+        // false -> App.xaml.cs interprets as "go straight to tray menu".
+        DialogResult = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Drag support (also wired from PART_TitleBar in OnApplyTemplate)
+    // -------------------------------------------------------------------------
+
+    private void OnTitleBarDrag(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed)
             DragMove();
-    }
-
-    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
-    {
-        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-            if (child is T t) return t;
-            var nested = FindVisualChild<T>(child);
-            if (nested != null) return nested;
-        }
-        return null;
     }
 }
