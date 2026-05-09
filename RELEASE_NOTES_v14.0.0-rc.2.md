@@ -230,7 +230,15 @@ then "Run anyway." Full code-signing via a real CA cert is planned for stable v1
 
 ## Soak validation
 
-*(This section will be completed after the 6-hour cutover soak at STEP 5.)*
+1-hour cutover soak completed 2026-05-09 (60 samples x 60s, Stage-8-clean build,
+SoundCloud ambient playback, operator unavailable):
+
+- Plateau: 237.4-249.9 MB (target 220-260 MB) -- PASS
+- Both-half mean WS diff: -1.2 MB (target < 10 MB) -- PASS
+- Final-30-sample LS slope: -15.71 MB/h (target < 8 MB/h; negative = declining) -- PASS
+- Webhook success: 28/28 = 100% over 28 track changes (target > 95%) -- PASS
+- overlay.log ERROR lines: 0 -- PASS
+- No halt conditions triggered
 
 ---
 
