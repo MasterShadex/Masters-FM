@@ -66,6 +66,10 @@ public partial class MainWindow : Window
             }
         };
 
+        // Stage 7.8C: wire OBS toggle balloon-tip delegate.
+        _trayMenuViewModel.ShowToast = (title, message) =>
+            NotifyIcon.ShowNotification(title, message, H.NotifyIcon.Core.NotificationIcon.Info);
+
         // Stage 7.6 STEP 11: Q3=C backdrop gate.
         // ContextMenuExtensions.ApplyMica is internal in WPF-UI 4.3.0 and cannot be
         // called directly. Equivalent via the public API: WindowBackdrop.ApplyBackdrop

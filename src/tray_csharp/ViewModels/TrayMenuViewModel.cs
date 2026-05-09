@@ -51,6 +51,15 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     [ObservableProperty]
     private string _obsTooltip = "Click to enable OBS integration";
 
+    // Stage 7.8C: file-edit state machine (replaces ObsConnectionState-driven labels)
+    private ObsToggleState _obsToggleState;
+
+    /// <summary>
+    /// Wired by MainWindow.OnLoaded so OBS toggle can show balloon tips without
+    /// a direct UI reference in the ViewModel.
+    /// </summary>
+    internal Action<string, string>? ShowToast { get; set; }
+
     /// <summary>
     /// Set by MainWindow.OnLoaded so Quit / Restart commands can close the host
     /// window (dispose TaskbarIcon) before Application.Shutdown. With
@@ -92,17 +101,23 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         // Derive initial update label from current state
         _updateLabel = LabelForState(_updateService.CurrentState);
 
-        // Stage 7.8: snapshot initial OBS state
-        var (obsLabel, obsTooltip, obsEnabled) = LabelsForObsState(_obsService.ConnectionState);
-        _obsLabel   = obsLabel;
-        _obsTooltip = obsTooltip;
-        _isObsEnabled = obsEnabled;
+        // Stage 7.8C: init ObsToggleState from scene files (replaces WebSocket-state init)
+        try
+        {
+            var initEditor = new ObsSceneFileEditor(_logger);
+            _obsToggleState = initEditor.BrowserSourceExists()
+                ? ObsToggleState.Added
+                : ObsToggleState.NotAdded;
+        }
+        catch { _obsToggleState = ObsToggleState.NotAdded; }
+        UpdateObsMenuFromToggleState();
 
         // Subscribe to state changes
         _discordService.StateChanged += (_, enabled) => IsDiscordEnabled = enabled;
         _autoStartService.StateChanged += (_, enabled) => IsAutoStartEnabled = enabled;
         _updateService.StateChanged += OnUpdateStateChanged;
-        _obsService.ConnectionStateChanged += OnObsStateChanged;
+        // Stage 7.8C: WebSocket connection-state events no longer drive menu labels.
+        // _obsService.ConnectionStateChanged += OnObsStateChanged;  // dead (Stage 7.8C)
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────
@@ -204,58 +219,90 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         catch (Exception ex) { _logger.LogErr("AutoStartService.Toggle", ex, "Tray"); }
     }
 
+    // Stage 7.8C: file-edit-only OBS toggle (replaces Stage 7.8B WebSocket path).
+    // WebSocket call sites (_obsService.ConnectAsync / AddBrowserSourceAsync /
+    // RemoveBrowserSourceAsync) removed; WaitForObsConnectedAsync removed.
+    // Stage 8.5 (post-rc.3) decides removal of dead WebSocket methods on ObsService.
     [RelayCommand]
-    private async Task ToggleObsAsync()
+    private Task ToggleObsAsync()
     {
-        _logger.Log($"TrayMenu: OBS toggle -> {!_obsService.IsEnabled}", "Tray");
+        _logger.Log($"TrayMenu: OBS toggle (state={_obsToggleState})", "Tray");
         try
         {
-            if (_obsService.IsEnabled)
+            var editor = new ObsSceneFileEditor(_logger);
+            const string CanonUrl = "http://localhost:4242/?renderer=webgl";
+            const string CanonCss = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }";
+
+            if (_obsToggleState == ObsToggleState.Added)
             {
-                // Turn OFF: remove browser source then disconnect
-                await _obsService.RemoveBrowserSourceAsync();
-                await _obsService.DisconnectAsync();
+                // Toggle OFF: file-edit remove
+                var removed = editor.RemoveBrowserSource();
+                if (removed)
+                {
+                    if (IsObsRunning())
+                    {
+                        SetObsToggleState(ObsToggleState.PendingRestart);
+                        ShowToast?.Invoke(
+                            "Master's FM",
+                            "OBS overlay will be removed next time you restart OBS.");
+                    }
+                    else
+                    {
+                        SetObsToggleState(ObsToggleState.NotAdded);
+                    }
+                }
             }
             else
             {
-                // Turn ON: connect, wait for Connected state, then add browser source
-                await _obsService.ConnectAsync();
-                var connected = await WaitForObsConnectedAsync(timeoutMs: 5000);
-                var result = await _obsService.AddBrowserSourceAsync();
-                if (!result.Success)
-                    _logger.LogWarn($"OBS add-source failed: {result.ErrorMessage}", "Tray");
-                else
-                    _logger.Log($"OBS add-source ok via {result.Method}", "Tray");
-                if (!connected)
-                    _logger.LogWarn("OBS: WS did not reach Connected within 5s; file-edit used", "Tray");
+                // Toggle ON: file-edit add (idempotent; updates URL if mismatched)
+                var added = editor.AddBrowserSource(CanonUrl, 1000, 200, 60, CanonCss);
+                if (added || editor.BrowserSourceExists())
+                {
+                    if (IsObsRunning())
+                    {
+                        SetObsToggleState(ObsToggleState.PendingRestart);
+                        ShowToast?.Invoke(
+                            "Master's FM",
+                            "OBS overlay added. Restart OBS to load it.");
+                    }
+                    else
+                    {
+                        SetObsToggleState(ObsToggleState.Added);
+                    }
+                }
             }
         }
-        catch (Exception ex) { _logger.LogErr("ObsService toggle", ex, "Tray"); }
+        catch (Exception ex) { _logger.LogErr("OBS toggle", ex, "Tray"); }
+        return Task.CompletedTask;
     }
 
-    // Waits up to timeoutMs for ObsService to reach Connected state.
-    private async Task<bool> WaitForObsConnectedAsync(int timeoutMs = 5000)
+    // Stage 7.8C: sets ObsToggleState + updates menu labels atomically.
+    private void SetObsToggleState(ObsToggleState state)
     {
-        if (_obsService.ConnectionState == ObsConnectionState.Connected) return true;
-
-        var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>(
-            System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnState(object? s, ObsConnectionStateChangedEventArgs e)
-        {
-            if (e.NewState == ObsConnectionState.Connected) tcs.TrySetResult(true);
-        }
-
-        _obsService.ConnectionStateChanged += OnState;
-        try
-        {
-            using var cts = new System.Threading.CancellationTokenSource(timeoutMs);
-            await tcs.Task.WaitAsync(cts.Token);
-            return true;
-        }
-        catch (OperationCanceledException) { return false; }
-        finally { _obsService.ConnectionStateChanged -= OnState; }
+        _obsToggleState = state;
+        UpdateObsMenuFromToggleState();
     }
+
+    private void UpdateObsMenuFromToggleState()
+    {
+        (var lbl, var tip, var enabled) = _obsToggleState switch
+        {
+            ObsToggleState.Added          => ("OBS overlay (added)",
+                                             "Master's FM overlay is active; click to remove", true),
+            ObsToggleState.PendingRestart => ("OBS overlay (restart OBS to apply)",
+                                             "Changes take effect on next OBS restart", true),
+            _                            => ("OBS overlay",
+                                            "Click to add Master's FM to OBS", false),
+        };
+        ObsLabel    = lbl;
+        ObsTooltip  = tip;
+        IsObsEnabled = enabled;
+    }
+
+    private static bool IsObsRunning() =>
+        Process.GetProcessesByName("obs64").Length > 0
+        || Process.GetProcessesByName("obs32").Length > 0
+        || Process.GetProcessesByName("obs").Length  > 0;
 
     [RelayCommand]
     private async Task OpenPatchNotesAsync()
@@ -352,4 +399,15 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         else
             Application.Current.Shutdown(0);
     }
+}
+
+/// <summary>Stage 7.8C: file-edit OBS toggle state machine.</summary>
+public enum ObsToggleState
+{
+    /// <summary>No Master's FM source in OBS scene collections.</summary>
+    NotAdded,
+    /// <summary>Source added to scene collections; OBS reload not required (was closed).</summary>
+    Added,
+    /// <summary>Source added or removed while OBS was running; takes effect after OBS restart.</summary>
+    PendingRestart,
 }

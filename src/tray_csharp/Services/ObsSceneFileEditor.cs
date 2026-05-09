@@ -25,8 +25,35 @@ internal sealed class ObsSceneFileEditor
     // ── public API ────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Returns true if any scene collection on disk contains a "Master's FM" browser source.
+    /// Stage 7.8C: used to initialise ObsToggleState at tray startup.
+    /// </summary>
+    public bool BrowserSourceExists()
+    {
+        var paths = GetSceneCollectionPaths();
+        foreach (var path in paths)
+        {
+            try
+            {
+                var json = File.ReadAllText(path, NoBomUtf8);
+                var root = JsonNode.Parse(json);
+                var sources = root?["sources"]?.AsArray();
+                if (sources == null) continue;
+                foreach (var src in sources)
+                {
+                    if (src?["name"]?.GetValue<string>() == "Master's FM")
+                        return true;
+                }
+            }
+            catch { /* best-effort */ }
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Adds a Master's FM browser source to every scene collection on disk.
-    /// Idempotent: no-op for collections that already contain the source.
+    /// Idempotent: no-op for collections whose URL already matches; updates URL
+    /// in-place (preserving UUID) if a source with a different URL is found.
     /// Returns true if at least one collection was modified.
     /// </summary>
     public bool AddBrowserSource(string url, int width, int height, int fps, string css)
@@ -116,14 +143,26 @@ internal sealed class ObsSceneFileEditor
         var root = JsonNode.Parse(json);
         if (root == null) return false;
 
-        // Idempotent check: skip if Master's FM source already exists
+        // Idempotent check: if Master's FM source already exists, check URL.
+        // Stage 7.8C GAP-1 fix: update URL in-place (preserving UUID) if different.
         var sources = root["sources"]?.AsArray();
         if (sources != null)
         {
             foreach (var src in sources)
             {
-                if (src?["name"]?.GetValue<string>() == "Master's FM")
-                    return false;
+                if (src?["name"]?.GetValue<string>() != "Master's FM") continue;
+                var existingUrl = src?["settings"]?["url"]?.GetValue<string>();
+                if (string.Equals(existingUrl, url, StringComparison.Ordinal))
+                    return false; // URL already matches -- true no-op
+                // URL mismatch: update in-place, preserve UUID and all other fields
+                if (src?["settings"] is JsonObject settings)
+                    settings["url"] = url;
+                var updatedOutput = root.ToJsonString(WriteOpts);
+                // Stage 7.8C GAP-2: validate parse-back before write
+                _ = JsonNode.Parse(updatedOutput)
+                    ?? throw new InvalidOperationException("JSON output parse-back failed (URL update)");
+                File.WriteAllText(path, updatedOutput, NoBomUtf8);
+                return true;
             }
         }
 
@@ -231,7 +270,11 @@ internal sealed class ObsSceneFileEditor
             }
         }
 
-        File.WriteAllText(path, root.ToJsonString(WriteOpts), NoBomUtf8);
+        // Stage 7.8C GAP-2: validate parse-back before writing (Safety Floor S5)
+        var addOutput = root.ToJsonString(WriteOpts);
+        _ = JsonNode.Parse(addOutput)
+            ?? throw new InvalidOperationException("JSON output parse-back failed (add)");
+        File.WriteAllText(path, addOutput, NoBomUtf8);
         return true;
     }
 
@@ -280,7 +323,13 @@ internal sealed class ObsSceneFileEditor
         }
 
         if (modified)
-            File.WriteAllText(path, root.ToJsonString(WriteOpts), NoBomUtf8);
+        {
+            // Stage 7.8C GAP-2: validate parse-back before writing (Safety Floor S5)
+            var removeOutput = root.ToJsonString(WriteOpts);
+            _ = JsonNode.Parse(removeOutput)
+                ?? throw new InvalidOperationException("JSON output parse-back failed (remove)");
+            File.WriteAllText(path, removeOutput, NoBomUtf8);
+        }
 
         return modified;
     }

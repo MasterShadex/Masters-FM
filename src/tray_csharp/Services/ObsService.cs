@@ -460,7 +460,11 @@ public sealed class ObsService : IObsService, IDisposable
     }
 
     // ── browser-source operations (Stage 7.8B STEP 3 — WebSocket primary path) ─
+    // Stage 7.8C: these four methods are DEAD CODE — retained as revert option only.
+    // Call sites in TrayMenuViewModel + App.xaml.cs have been replaced with
+    // ObsSceneFileEditor (file-edit-only path).  Stage 8.5 (post-rc.3) decides removal.
 
+    [Obsolete("Stage 7.8C: WebSocket path retired. File-edit via ObsSceneFileEditor is canonical. Retained as revert option.")]
     public async Task<ObsVersionInfo?> GetObsVersionAsync(CancellationToken ct = default)
     {
         var resp = await SendRequestAsync("GetVersion", null, ct).ConfigureAwait(false);
@@ -482,6 +486,7 @@ public sealed class ObsService : IObsService, IDisposable
         }
     }
 
+    [Obsolete("Stage 7.8C: WebSocket path retired. File-edit via ObsSceneFileEditor is canonical. Retained as revert option.")]
     public async Task<bool> BrowserSourceExistsAsync(CancellationToken ct = default)
     {
         var resp = await SendRequestAsync("GetInputList",
@@ -502,6 +507,7 @@ public sealed class ObsService : IObsService, IDisposable
         catch (Exception ex) { _log.LogErr("BrowserSourceExistsAsync parse", ex, Cmp); return false; }
     }
 
+    [Obsolete("Stage 7.8C: WebSocket path retired. File-edit via ObsSceneFileEditor is canonical. Retained as revert option.")]
     public async Task<ObsBrowserSourceResult> AddBrowserSourceAsync(CancellationToken ct = default)
     {
         if (_state != ObsConnectionState.Connected)
@@ -569,6 +575,7 @@ public sealed class ObsService : IObsService, IDisposable
         return ObsBrowserSourceResult.Ok("WebSocket");
     }
 
+    [Obsolete("Stage 7.8C: WebSocket path retired. File-edit via ObsSceneFileEditor is canonical. Retained as revert option.")]
     public async Task<bool> RemoveBrowserSourceAsync(CancellationToken ct = default)
     {
         if (_state != ObsConnectionState.Connected)

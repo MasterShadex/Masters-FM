@@ -229,25 +229,25 @@ public partial class App : Application
         _obsService = _services.GetRequiredService<IObsService>();
         _obsService.Start();
 
-        // Stage 7.8B STEP 5: 5s startup auto-add (mirrors tray.ps1:5162-5177)
-        var obsForAutoAdd = _obsService;
+        // Stage 7.8C STEP 2: 5s startup auto-add via ObsSceneFileEditor (file-edit-only).
+        // Replaces Stage 7.8B WebSocket path (_obsService.AddBrowserSourceAsync).
         var logForAutoAdd = _logger;
-        var autoAddEnabled = _configService?.GetValue<bool>("obs.auto_add", true) ?? true;
-        if (obsForAutoAdd.IsEnabled && autoAddEnabled)
+        var obsEnabledForAdd = _configService?.GetValue<bool>("obs.enabled", false) ?? false;
+        var autoAddEnabled   = _configService?.GetValue<bool>("obs.auto_add", true)  ?? true;
+        if (obsEnabledForAdd && autoAddEnabled)
         {
-            _ = Task.Run(async () =>
+            _ = Task.Delay(5000).ContinueWith(_ =>
             {
-                await Task.Delay(5000);
                 try
                 {
-                    var result = await obsForAutoAdd.AddBrowserSourceAsync();
-                    if (!result.Success)
-                        logForAutoAdd.LogWarn($"OBS startup auto-add failed: {result.ErrorMessage}", "Bootstrap");
-                    else
-                        logForAutoAdd.Log($"OBS startup auto-add ok via {result.Method}", "Bootstrap");
+                    var editor = new MastersFM.Tray.Services.ObsSceneFileEditor(logForAutoAdd);
+                    const string url = "http://localhost:4242/?renderer=webgl";
+                    const string css = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }";
+                    editor.AddBrowserSource(url, 1000, 200, 60, css);
+                    logForAutoAdd.Log("OBS startup auto-add complete (file-edit)", "Bootstrap");
                 }
                 catch (Exception ex) { logForAutoAdd.LogErr("OBS startup auto-add", ex, "Bootstrap"); }
-            });
+            }, System.Threading.Tasks.TaskScheduler.Default);
         }
 
         // -- Stage 7.5: Detection layer startup --
