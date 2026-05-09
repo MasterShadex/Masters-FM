@@ -62,37 +62,42 @@ public sealed class WebhookClient
         catch (TaskCanceledException)
         {
             // Server down or slow; PS pattern is to log once and continue
+            _logger.LogWarn($"webhook send timeout/cancel: {update.Source} {update.Artist} - {update.Track}", Component);
             _telemetry.IncrementCounter("webhook_send_errors");
+            _telemetry.IncrementCounter("webhook_send_failures");
         }
         catch (HttpRequestException)
         {
-            // Server not running; silent (PS S15 pattern)
+            // Server not running; warn once (PS S15 pattern: fire-and-forget, no retry)
+            _logger.LogWarn($"webhook send HTTP error: {update.Source} {update.Artist} - {update.Track}", Component);
             _telemetry.IncrementCounter("webhook_send_errors");
+            _telemetry.IncrementCounter("webhook_send_failures");
         }
         catch (Exception ex)
         {
             _logger.LogErr("webhook send", ex, Component);
             _telemetry.IncrementCounter("webhook_send_errors");
+            _telemetry.IncrementCounter("webhook_send_failures");
         }
     }
 
     private static string BuildJsonPayload(TrackUpdate update)
     {
-        // Match PS S15 webhook JSON shape. Key fields per server.js receiver
-        // contract: source, artist, track, album, durationMs, positionMs,
-        // isPaused, art (URI). Plus 7.5 addition: tray="csharp14" version
-        // field (Q3 default) so server.js logs which tray emitted during
-        // parallel period.
+        // Match PS S15 / WebhookHandler contract. Key fields:
+        // source, artist, track, album, duration (float seconds), positionMs,
+        // isPaused, trackArt (URI). Plus 7.5 addition: tray="csharp14" version
+        // field (Q3 default) so server logs which tray emitted during parallel period.
+        // NOTE: server reads "duration" (seconds) and "trackArt" -- not "durationMs"/"art".
         var obj = new JsonObject
         {
             ["source"] = update.Source,
             ["artist"] = update.Artist,
             ["track"] = update.Track,
             ["album"] = update.Album,
-            ["durationMs"] = update.Duration?.TotalMilliseconds,
+            ["duration"] = update.Duration?.TotalSeconds,
             ["positionMs"] = update.Position?.TotalMilliseconds,
             ["isPaused"] = !update.IsPlaying,
-            ["art"] = update.ArtUri,
+            ["trackArt"] = update.ArtUri,
             ["tray"] = "csharp14",
             ["observedUtc"] = update.ObservedUtc.ToString("o"),
         };
