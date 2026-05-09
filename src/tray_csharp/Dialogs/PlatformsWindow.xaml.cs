@@ -1,30 +1,51 @@
-// Stage 7.7 Surface 06 code-behind.
+// Stage 7.7B STEP 5: PlatformsWindow code-behind.
+// Visual rebuild. Injects NowPlayingViewModel for the right-column Now Playing
+// card. PART_ template parts wired in OnApplyTemplate. Platform toggle logic
+// unchanged (still stored via PlatformsViewModel.IsEnabled TwoWay binding).
 
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using MastersFM.Tray.ViewModels;
 
 namespace MastersFM.Tray.Dialogs;
 
 public partial class PlatformsWindow : Window
 {
-    public PlatformsWindow()
+    /// <summary>
+    /// Now Playing data for the right-column card. Bound in XAML via
+    /// RelativeSource AncestorType=Window bindings.
+    /// </summary>
+    public NowPlayingViewModel NowPlaying { get; }
+
+    public PlatformsWindow(NowPlayingViewModel nowPlaying)
     {
+        NowPlaying = nowPlaying;
         InitializeComponent();
     }
 
-    private void OnCloseClick(object sender, RoutedEventArgs e)
+    // -------------------------------------------------------------------------
+    // Template parts (AppDialogStyle PART_ wiring)
+    // -------------------------------------------------------------------------
+
+    public override void OnApplyTemplate()
     {
-        Close();
+        base.OnApplyTemplate();
+
+        if (GetTemplateChild("PART_TitleBar") is FrameworkElement titleBar)
+            titleBar.MouseLeftButtonDown += OnTitleBarDrag;
+
+        if (GetTemplateChild("PART_CloseButton") is Button closeBtn)
+            closeBtn.Click += (_, _) => Close();
     }
 
-    private void OnCloseButtonClick(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
+    // -------------------------------------------------------------------------
+    // Drag
+    // -------------------------------------------------------------------------
 
-    // INTERRUPT #3 STEP 3 (Issue 5): enable drag on WindowStyle=None window.
-    private void OnTitleBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void OnTitleBarDrag(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+        if (e.ButtonState == MouseButtonState.Pressed)
             DragMove();
     }
 }

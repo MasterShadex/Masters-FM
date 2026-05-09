@@ -1,86 +1,357 @@
-<!-- Stage 7.7 Surface 06. Platforms dialog. 8 toggles; per-platform
-     auto-persist on change via VM PersistToggle path. All colors via
-     DynamicResource. -->
+<!-- Stage 7.7B: STEP 5 PlatformsWindow visual rebuild.
+     Two-column layout: left (Platforms list with brand icons + Active pills),
+     right (Now Playing card from NowPlayingViewModel).
+     AppDialogStyle chrome. 580x460.
+     DataContext = PlatformsViewModel (set by DialogService).
+     NowPlaying property on Window exposes NowPlayingViewModel for right column. -->
 <Window x:Class="MastersFM.Tray.Dialogs.PlatformsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        Title="Platform detection"
-        Width="580" Height="540"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
-        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-        WindowStyle="None"
-        ResizeMode="NoResize">
-    <Grid Margin="24">
+        Title="Platforms"
+        Width="580" Height="460"
+        Style="{StaticResource AppDialogStyle}">
+
+    <Window.Resources>
+        <!-- Active pill: ToggleButton styled as a pill.
+             IsChecked=True -> BrandPurpleBase "ACTIVE" label.
+             IsChecked=False -> Surface3 "OFF" label. -->
+        <Style x:Key="ActivePillStyle" TargetType="ToggleButton">
+            <Setter Property="Background"     Value="{StaticResource Surface3}"/>
+            <Setter Property="Foreground"     Value="{StaticResource TextTertiary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor"         Value="Hand"/>
+            <Setter Property="Padding"        Value="8,3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Pill"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <TextBlock x:Name="Label"
+                                       Text="OFF"
+                                       Style="{StaticResource TinyTextStyle}"
+                                       Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Pill" Property="Background"
+                                        Value="{StaticResource BrandPurpleBase}"/>
+                                <Setter TargetName="Label" Property="Text" Value="ACTIVE"/>
+                                <Setter TargetName="Label" Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Platform list item container -->
+        <Style x:Key="PlatformListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding"         Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="RowBg"
+                                Background="Transparent"
+                                Height="48">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBg" Property="Background"
+                                        Value="{StaticResource Surface2}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- ====================================================
+         Content area (inside AppDialogStyle chrome)
+         ==================================================== -->
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
+            <!-- Header (72px) -->
+            <RowDefinition Height="72"/>
+            <!-- Two-column body -->
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- INTERRUPT #3 STEP 3 (Issue 5): drag on chrome-less window. -->
-        <Grid Grid.Row="0" Margin="0,0,0,16"
-              MouseLeftButtonDown="OnTitleBarDrag">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="Platform detection"
-                           FontSize="22" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <TextBlock Margin="0,4,0,0"
-                           Text="Pick which apps Master's FM listens to."
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        <!-- === HEADER === -->
+        <Border Grid.Row="0"
+                BorderBrush="{StaticResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="24,0">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Platforms"
+                           Style="{StaticResource DisplayTextStyle}"
+                           Foreground="{StaticResource TextPrimary}"/>
+                <TextBlock Text="Master's FM watches for music from these apps."
+                           Style="{StaticResource CaptionTextStyle}"
+                           Foreground="{StaticResource TextSecondary}"
+                           Margin="0,3,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="X" Width="32" Height="32"
-                    Background="Transparent"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    BorderThickness="0"
-                    Click="OnCloseButtonClick" />
-        </Grid>
+        </Border>
 
-        <ListBox Grid.Row="1"
-                 ItemsSource="{Binding Platforms}"
-                 Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}"
-                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                 BorderThickness="1">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Grid Margin="4,8" MinHeight="48">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            <TextBlock Text="{Binding HelperText}" FontSize="11"
-                                       Margin="0,2,0,0"
-                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                        </StackPanel>
-                        <ui:ToggleSwitch Grid.Column="1"
-                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                          VerticalAlignment="Center" />
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
-
-        <Grid Grid.Row="2" Margin="0,16,0,0">
+        <!-- === TWO-COLUMN BODY === -->
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <!-- Left: platform list -->
+                <ColumnDefinition Width="*"/>
+                <!-- Separator -->
+                <ColumnDefinition Width="1"/>
+                <!-- Right: Now Playing -->
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0"
-                       Text="Toggles save automatically."
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-            <ui:Button Grid.Column="1" Content="Close" MinWidth="100"
-                       Appearance="Primary"
-                       Click="OnCloseClick" />
+
+            <!-- LEFT COLUMN: Platforms -->
+            <Grid Grid.Column="0" Margin="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <!-- Footer: auto-save hint -->
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Sub-heading -->
+                <TextBlock Grid.Row="0"
+                           Text="Platforms"
+                           Style="{StaticResource SubHeadingTextStyle}"
+                           Foreground="{StaticResource TextSecondary}"
+                           Margin="16,12,16,8"/>
+
+                <!-- Platform list -->
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding Platforms}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ItemContainerStyle="{StaticResource PlatformListItemStyle}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="16,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="24"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Brand icon (defaults to Speaker; DataTriggers
+                                     switch to brand-specific geometry by PlatformId) -->
+                                <Path x:Name="BrandIcon"
+                                      Grid.Column="0"
+                                      Data="{StaticResource IconSpeaker}"
+                                      Fill="{StaticResource BrandPurpleGlow}"
+                                      Opacity="0.85"
+                                      Width="20" Height="20"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"/>
+
+                                <!-- Platform name -->
+                                <TextBlock Grid.Column="1"
+                                           Margin="10,0,0,0"
+                                           Text="{Binding DisplayName}"
+                                           Style="{StaticResource BodyStrongTextStyle}"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           VerticalAlignment="Center"/>
+
+                                <!-- Active / Off pill toggle -->
+                                <ToggleButton Grid.Column="2"
+                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                              Style="{StaticResource ActivePillStyle}"
+                                              VerticalAlignment="Center"/>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="spotify">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconSpotify}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="soundcloud">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconSoundCloud}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="vlc">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconVLC}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="applemusic">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconAppleMusic}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="youtubemusic">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconYouTubeMusic}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding PlatformId}" Value="tidal">
+                                    <Setter TargetName="BrandIcon" Property="Data"
+                                            Value="{StaticResource BrandIconTidal}"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Auto-save hint -->
+                <TextBlock Grid.Row="2"
+                           Text="Toggles save automatically."
+                           Style="{StaticResource CaptionTextStyle}"
+                           Foreground="{StaticResource TextTertiary}"
+                           Margin="16,8,16,12"/>
+            </Grid>
+
+            <!-- Vertical separator -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource BorderSubtle}"/>
+
+            <!-- RIGHT COLUMN: Now Playing -->
+            <Grid Grid.Column="2" Margin="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Sub-heading -->
+                <TextBlock Grid.Row="0"
+                           Text="Now Playing"
+                           Style="{StaticResource SubHeadingTextStyle}"
+                           Foreground="{StaticResource TextSecondary}"
+                           Margin="16,12,16,8"/>
+
+                <!-- Content: track card OR empty state -->
+                <Grid Grid.Row="1" Margin="16,0,16,16">
+
+                    <!-- Empty state: visible when IsPlaying=false -->
+                    <Border x:Name="EmptyState"
+                            Padding="16"
+                            VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NowPlaying.IsPlaying,
+                                                 RelativeSource={RelativeSource AncestorType=Window},
+                                                 FallbackValue=False}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="Nothing playing right now."
+                                   Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextTertiary}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                    </Border>
+
+                    <!-- Track card: shown when IsPlaying=true -->
+                    <Border VerticalAlignment="Top"
+                            Padding="16">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NowPlaying.IsPlaying,
+                                                 RelativeSource={RelativeSource AncestorType=Window},
+                                                 FallbackValue=False}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <!-- Album art + text row -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Album art (64x64, rounded 8px).
+                                     If ArtImageSource is null, shows gradient placeholder. -->
+                                <Border Grid.Column="0"
+                                        Width="64" Height="64"
+                                        CornerRadius="8"
+                                        ClipToBounds="True">
+                                    <!-- Placeholder gradient (always visible as bg) -->
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#8B5CF6"/>
+                                            <GradientStop Offset="1" Color="#4C1D95"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Image Source="{Binding NowPlaying.ArtImageSource,
+                                                   RelativeSource={RelativeSource AncestorType=Window}}"
+                                           Stretch="UniformToFill"/>
+                                </Border>
+
+                                <!-- Track + Artist -->
+                                <StackPanel Grid.Column="1"
+                                            Margin="12,0,0,0"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding NowPlaying.Track,
+                                                              RelativeSource={RelativeSource AncestorType=Window},
+                                                              FallbackValue='Unknown track'}"
+                                               Style="{StaticResource BodyStrongTextStyle}"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding NowPlaying.Artist,
+                                                              RelativeSource={RelativeSource AncestorType=Window},
+                                                              FallbackValue=''}"
+                                               Style="{StaticResource BodyTextStyle}"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,2,0,0"/>
+                                    <!-- Source pill -->
+                                    <Border Padding="6,2" CornerRadius="4" Margin="0,6,0,0"
+                                            HorizontalAlignment="Left"
+                                            Background="{StaticResource BrandPurpleDeep}">
+                                        <TextBlock Text="{Binding NowPlaying.Source,
+                                                                  RelativeSource={RelativeSource AncestorType=Window},
+                                                                  FallbackValue=''}"
+                                                   Style="{StaticResource TinyTextStyle}"
+                                                   Foreground="{StaticResource BrandPurpleGlow}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Listening indicator (pulsing dot + label) -->
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,12,0,0"
+                                        HorizontalAlignment="Center">
+                                <!-- Pulsing dot -->
+                                <Ellipse x:Name="PulsingDot"
+                                         Width="8" Height="8"
+                                         Fill="{StaticResource BrandPurpleBase}"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,6,0">
+                                    <Ellipse.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     From="1.0" To="0.2"
+                                                                     Duration="{StaticResource SlowDuration}"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Ellipse.Triggers>
+                                </Ellipse>
+                                <TextBlock Text="Listening..."
+                                           Style="{StaticResource CaptionTextStyle}"
+                                           Foreground="{StaticResource TextTertiary}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
     </Grid>
 </Window>
