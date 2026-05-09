@@ -10,7 +10,7 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
 **Current version:** v14.0.0-rc.2 (local branch ahead; INTERRUPT #3 + Stage 7.8B + Stage 7.8C complete; rc.3 pending Brief 3)
-**Last updated:** 2026-05-09 (Stage 7.8D OBS intent-vs-reality state machine PASS; 9/9 E2E tests; 8 new commits; Brief 3 Stage 7.7B visual next)
+**Last updated:** 2026-05-09 (AutoStart default-ON (c302682) + Stage 7.8D OBS intent-vs-reality state machine PASS; 9/9 E2E tests; 9 new commits)
 
 ## IN-FLIGHT WORK
 
@@ -19,7 +19,13 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 - obs.intent ("on"|"off") replaces obs.enabled as user-intent field; obs.tray_added_uuid for UUID tracking
 - ReconcileAsync (5s initial + 60s recurring) = single source of truth; UUID-targeted remove
 - 9/9 E2E tests PASS; toggle-OFF verified by log; no 5s re-add in log; migration confirmed
-- 8 commits c4e3f70..b525546; no protected files touched; 0W/0E dual-build
+- 9 commits c4e3f70..c302682; no protected files touched; 0W/0E dual-build
+
+**AutoStart default-ON -- LOCAL COMPLETE 2026-05-09** (`c302682`)
+- New installations now default start-on-login to ON (creates Startup .lnk)
+- One-shot guard: `autostart_defaulted_on_v14` config flag written on first v14 run; never re-defaults after user opts out
+- Code block in App.xaml.cs `OnStartup` after _autoStartService.IsEnabled log (lines 221-236)
+- NOTE: WPF .NET builds store intermediate obj at `G:\Project Folder\Master FM\src\obj\MastersFM_Tray_v14\` (redirected by `src/Directory.Build.props`); deleting `tray_csharp/obj` is wrong -- must delete `src/obj/MastersFM_Tray_v14\`
 - Next: Brief 3 (Stage 7.7B visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
 
 ## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
@@ -159,6 +165,18 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 -- AutoStart default-ON on first v14 run
+
+**Commit:** `c302682`
+**Outcome:** PASS (0W/0E build; raw byte search confirms string literals in installed DLL)
+
+- Added default-ON block in `App.xaml.cs` `OnStartup` (lines 221-236): reads `autostart_defaulted_on_v14` flag; if absent, enables the startup .lnk via `_autoStartService.Enable()` and writes the flag
+- One-shot guard prevents re-defaulting after user opts out
+- `catch` uses non-null `_logger.LogErr(...)` (no `?.`) to avoid CS8602 nullable cascade
+- WPF obj dir is `src/obj/MastersFM_Tray_v14/` (NOT `tray_csharp/obj/`) per `src/Directory.Build.props` `BaseIntermediateOutputPath` redirect; `dotnet clean` alone is insufficient -- must delete the redirected path
+
+---
 
 ### 2026-05-09 -- Stage 7.8D: OBS intent-vs-reality state machine
 
