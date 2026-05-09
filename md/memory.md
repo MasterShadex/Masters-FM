@@ -9,15 +9,15 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.2 (pushed to GitHub as Pre-release 2026-05-09; tester announcement pending)
-**Last updated:** 2026-05-09 (Ship-prep V14.0.0-rc.2 COMPLETE; 1h soak PASS; version.json bumped; tag v14.0.0-rc.2 created; pushed main + tag; tester rollout initiated)
+**Current version:** v14.0.0-rc.2 (local branch ahead 8 commits; INTERRUPT #3 fixes complete; rc.3 pending Brief 2 + Brief 3)
+**Last updated:** 2026-05-09 (Stage 7.10 INTERRUPT #3 rc.3 functional regression hotfix PASS; 7 issues fixed; 8 local commits; no push/tag yet)
 
 ## IN-FLIGHT WORK
 
-**v14.0.0-rc.2 -- Ship-prep complete; pushed to GitHub 2026-05-09**
-- rc.2 = full C# WPF tray + all Stage 7+8 deliverables over rc.1
-- Tester announcement in #v14-rc-feedback posted
-- Next: await tester feedback; stable v14.0.0 promotion in a separate brief after validation window
+**Stage 7.10 INTERRUPT #3 -- rc.3 functional regression hotfix -- LOCAL COMPLETE 2026-05-09**
+- 7 regressions fixed (issues 1, 2, 3, 4, 5, 7, 8); 8 commits on main (5e078f3..cd986e8); no push/tag yet
+- rc.3 = INTERRUPT #3 + Brief 2 (Stage 7.8B OBS) + Brief 3 (Stage 7.7B visual)
+- Next step: Brief 2 (OBS WebSocket primary + file-edit fallback), then Brief 3 (visual rebuild), then rc.3 ship-prep (version.json bump, 6h soak, tag, push, tester announcement)
 
 ## LANGUAGE / ARCHITECTURE RECOMMENDATION (2026-04-30 planning notes; V14 .NET 8 migration was subsequently undertaken and shipped as v14.0.0-rc.1)
 - **Overlay is WebGL-only** (canvas2d removed in v9.4.0). If GPU can't do WebGL -> blank overlay. Consider adding graceful WebGL-unavailable message in overlay.html.
@@ -156,6 +156,45 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-09 -- Stage 7.10 INTERRUPT #3: rc.3 functional regression hotfix
+
+**Commits:** `5e078f3` (STEP 1 diagnosis) `febdba9` (STEP 2) `a09899a` (STEP 3) `5dfdd9c` (STEP 4) `f3e9991` (STEP 5) `df2424e` (STEP 6) `5a49acb` (STEP 7) `cd986e8` (STEP 9 smoke)
+**Outcome:** PASS
+
+#### Issues fixed
+- Issue 1 (skip not detected) -- HeartbeatService 2s DispatcherTimer; seek detection via position-drift vs. wall-elapsed (>3000ms threshold)
+- Issue 2 (Audio Source missing MME) -- winmm.dll P/Invoke (AudioApi.cs); MME tab in AudioDeviceWindow; audio.selectedBackend in config; KS surfaces via existing WinRT DeviceClass.AudioRender path; ASIO deferred
+- Issue 3 (Check for Updates no overlay) -- UpdateProgressWindow was never shown; ShowUpdateProgressAsync() added to IDialogService + DialogService; TrayMenuViewModel.CheckUpdatesAsync() calls it before state-machine dispatch; singleton guard prevents duplicate windows
+- Issue 4 (dialogs wrong monitor) -- Owner was set but pointed to hidden host at (-1000,-1000) Width=0 Height=0; fix: WindowStartupLocation changed to CenterScreen in 4 dialog XAML files
+- Issue 5 (windows not draggable) -- MouseLeftButtonDown="OnTitleBarDrag" + DragMove() added to all 5 dialog XAML/code-behinds
+- Issue 7 (tray left-click) -- LeftClickCommand="{Binding ShowMenuCommand}" on TaskbarIcon; new ShowMenu() RelayCommand; OpenContextMenu delegate wired in MainWindow.OnLoaded
+- Issue 8 (pause not detected) -- HeartbeatService fires on 2s DispatcherTimer; sends IsPlaying state direct to webhook, bypassing dedup gate; `seek` field added to TrackUpdate + BuildJsonPayload
+
+#### Architecture changes
+- New `IHeartbeatService` + `HeartbeatService` in src/tray_csharp/Services/; singleton registered in App.xaml.cs; Start()/Stop() lifecycle
+- New `bool IsSeek { get; init; }` field on TrackUpdate; `["seek"] = update.IsSeek` in WebhookClient.BuildJsonPayload
+- New telemetry counter: `heartbeat_sends` (incremented per HeartbeatService tick)
+- New `AudioApi.cs` service with winmm.dll P/Invoke; `MmeDevice` struct; `EnumerateMmeOutputDevices()`
+- MME tab in AudioDeviceWindow.xaml; `MmeDevices` + `HasMme` observables on AudioDeviceViewModel
+- `audio.selectedBackend` written to config on Apply; MME selection restored from config across sessions
+
+#### Deferred
+- Issue 6 (visual quality) -- Brief 3 (Stage 7.7B visual rebuild)
+- Issue 9 (OBS overlay add) -- Brief 2 (Stage 7.8B OBS port)
+- ASIO enumeration -- no COM P/Invoke per INTERRUPT #3 absolute constraint
+- ID-29 candidate: browser-source epoch position estimation between SMTC events (Audit A OQ-5)
+- ID-30 candidate: seek detection Path B (tlFresh timeline-freshness) -- requires SmtcEventBridge plumbing
+
+#### Verification
+- Dual-build PASS (Release + Debug; 0 warnings, 0 errors)
+- Protected files SHA256 UNCHANGED (tray.ps1, tray_native.cs, launcher.cs, server.js all MATCH)
+- E2E functional smoke PASS (17/17 static analysis; runtime playback T13-T16 recommended before rc.3 tag)
+- 0 strikes consumed
+
+#### Process improvements (carry forward)
+- Future stage briefs MUST include functional parity verification, not just memory parity. The rc.2 6h soak passed memory gates while all 7 functional regressions were already shipping.
+- Future briefs MUST exercise the user-facing flow on a fresh install before any release artifact is pushed.
 
 ### 2026-05-09 ~17:40 -- Ship-prep V14.0.0-rc.2 ROLLOUT
 
