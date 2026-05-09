@@ -21,8 +21,11 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header zone -->
-        <Grid Grid.Row="0" Margin="0,0,0,16">
+        <!-- Header zone: MouseLeftButtonDown enables drag on the chrome-less window.
+             Button clicks inside the header set Handled=true in ButtonBase and do
+             not bubble to this handler. (INTERRUPT #3 STEP 3, Issue 5) -->
+        <Grid Grid.Row="0" Margin="0,0,0,16"
+              MouseLeftButtonDown="OnTitleBarDrag">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />

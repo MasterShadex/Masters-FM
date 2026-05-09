@@ -21,7 +21,9 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,8">
+        <!-- INTERRUPT #3 STEP 3 (Issue 5): drag on chrome-less window. -->
+        <Grid Grid.Row="0" Margin="0,0,0,8"
+              MouseLeftButtonDown="OnTitleBarDrag">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

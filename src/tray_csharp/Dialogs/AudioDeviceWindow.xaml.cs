@@ -39,4 +39,11 @@ public partial class AudioDeviceWindow : Window
         }
         Close();
     }
+
+    // INTERRUPT #3 STEP 3 (Issue 5): enable drag on WindowStyle=None window.
+    private void OnTitleBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+            DragMove();
+    }
 }

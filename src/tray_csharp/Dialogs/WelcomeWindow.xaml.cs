@@ -62,6 +62,15 @@ public partial class WelcomeWindow : Window
         Close();
     }
 
+    // INTERRUPT #3 STEP 3 (Issue 5): enable drag on WindowStyle=None window.
+    // Button clicks in the header set e.Handled=true in ButtonBase so they do
+    // not bubble to this handler; only bare-area clicks reach DragMove().
+    private void OnTitleBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+            DragMove();
+    }
+
     private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
     {
         for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
