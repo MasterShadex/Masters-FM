@@ -4,6 +4,10 @@
 // Reads and writes %APPDATA%\obs-studio\basic\scenes\*.json directly.
 // OBS must be restarted to pick up changes when it is running.
 // UTF-8 no-BOM output (NoBomUtf8) to match OBS scene-collection format.
+//
+// Stage 7.8D: AddBrowserSource returns AddBrowserSourceResult with UUID.
+// New: RemoveBrowserSourceByUuid (UUID-targeted; protects user-added sources).
+// New: ScanForBrowserSources returns metadata for all Master's FM entries.
 
 using System.Diagnostics;
 using System.Text;
@@ -11,6 +15,26 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace MastersFM.Tray.Services;
+
+// ── Result types ──────────────────────────────────────────────────────────────
+
+/// <summary>Stage 7.8D: result of AddBrowserSource, carrying the UUID.</summary>
+public sealed record AddBrowserSourceResult(bool Success, string? Uuid, string? Reason)
+{
+    public static AddBrowserSourceResult Ok(string uuid) =>
+        new(true, uuid, null);
+    public static AddBrowserSourceResult AlreadyPresent(string uuid) =>
+        new(true, uuid, "already present (idempotent)");
+    public static AddBrowserSourceResult ForeignSource(string uuid) =>
+        new(false, uuid, "user-added Master's FM source exists; not modified");
+    public static AddBrowserSourceResult Failed(string reason) =>
+        new(false, null, reason);
+}
+
+/// <summary>Stage 7.8D: entry returned by ScanForBrowserSources.</summary>
+public sealed record BrowserSourceScanResult(string Uuid, string CollectionPath, string Url);
+
+// ── Editor ────────────────────────────────────────────────────────────────────
 
 internal sealed class ObsSceneFileEditor
 {
@@ -51,42 +75,115 @@ internal sealed class ObsSceneFileEditor
     }
 
     /// <summary>
-    /// Adds a Master's FM browser source to every scene collection on disk.
-    /// Idempotent: no-op for collections whose URL already matches; updates URL
-    /// in-place (preserving UUID) if a source with a different URL is found.
-    /// Returns true if at least one collection was modified.
+    /// Stage 7.8D: returns metadata for every "Master's FM" browser source found
+    /// across all scene collections. Used by ReconcileStateAsync to distinguish
+    /// "ours" (UUID matches obs.tray_added_uuid) from foreign user-added sources.
     /// </summary>
-    public bool AddBrowserSource(string url, int width, int height, int fps, string css)
+    public List<BrowserSourceScanResult> ScanForBrowserSources()
+    {
+        var results = new List<BrowserSourceScanResult>();
+        var paths = GetSceneCollectionPaths();
+        foreach (var path in paths)
+        {
+            try
+            {
+                var json = File.ReadAllText(path, NoBomUtf8);
+                var root = JsonNode.Parse(json);
+                var sources = root?["sources"]?.AsArray();
+                if (sources == null) continue;
+                foreach (var src in sources)
+                {
+                    if (src?["name"]?.GetValue<string>() != "Master's FM") continue;
+                    var uuid = src?["uuid"]?.GetValue<string>() ?? "";
+                    var url  = src?["settings"]?["url"]?.GetValue<string>() ?? "";
+                    results.Add(new BrowserSourceScanResult(uuid, path, url));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogErr($"[ObsSceneFileEditor] ScanForBrowserSources failed for {path}",
+                    ex, "OBS");
+            }
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Stage 7.8D: Adds a Master's FM browser source to every scene collection.
+    /// Returns AddBrowserSourceResult carrying the UUID (new or existing).
+    /// Pass <paramref name="knownTrayUuid"/> so the editor can recognise "our" source
+    /// and distinguish it from user-added sources with the same name.
+    /// </summary>
+    public AddBrowserSourceResult AddBrowserSource(
+        string url, int width, int height, int fps, string css,
+        string? knownTrayUuid = null)
     {
         WarnIfObsRunning();
         var paths = GetSceneCollectionPaths();
         if (paths.Length == 0)
         {
             _logger.LogWarn("[ObsSceneFileEditor] No scene-collection files found", "OBS");
-            return false;
+            return AddBrowserSourceResult.Failed("no scene-collection files found");
         }
 
-        bool anyModified = false;
+        // Generate ONE UUID for this add operation; reused across all collections
+        // so that obs.tray_added_uuid maps to the same source in every collection.
+        var generatedUuid = Guid.NewGuid().ToString();
+
+        string? resultUuid = null;
+        bool anyAdded      = false;
+        bool anyPresent    = false;
+        bool anyForeign    = false;
+        string? foreignUuid = null;
+
         foreach (var path in paths)
         {
             try
             {
-                if (AddToCollection(path, url, width, height, fps, css))
+                var r = AddToCollection(path, url, width, height, fps, css,
+                    generatedUuid, knownTrayUuid);
+                switch (r.Kind)
                 {
-                    _logger.Log($"[ObsSceneFileEditor] Added 'Master's FM' to {path}", "OBS");
-                    anyModified = true;
+                    case CollectionAddKind.Added:
+                        anyAdded = true;
+                        resultUuid = r.Uuid;
+                        _logger.Log(
+                            $"[ObsSceneFileEditor] Added 'Master's FM' uuid={r.Uuid} to {path}",
+                            "OBS");
+                        break;
+                    case CollectionAddKind.AlreadyPresent:
+                        anyPresent = true;
+                        resultUuid ??= r.Uuid;
+                        break;
+                    case CollectionAddKind.ForeignSource:
+                        anyForeign = true;
+                        foreignUuid ??= r.Uuid;
+                        _logger.LogWarn(
+                            $"[ObsSceneFileEditor] foreign source detected: name=Master's FM " +
+                            $"uuid={r.Uuid} in {path}; not modified", "OBS");
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogErr($"[ObsSceneFileEditor] Failed for {path}", ex, "OBS");
+                _logger.LogErr($"[ObsSceneFileEditor] AddBrowserSource failed for {path}",
+                    ex, "OBS");
             }
         }
-        return anyModified;
+
+        if (anyAdded)
+            return AddBrowserSourceResult.Ok(resultUuid!);
+        if (anyPresent)
+            return AddBrowserSourceResult.AlreadyPresent(resultUuid!);
+        if (anyForeign)
+            return AddBrowserSourceResult.ForeignSource(foreignUuid!);
+        return AddBrowserSourceResult.Failed("no collections modified");
     }
 
     /// <summary>
-    /// Removes the Master's FM browser source from every scene collection on disk.
+    /// Removes the Master's FM browser source from every scene collection on disk
+    /// by source NAME. Kept for compatibility — used by MastersFM_ObsCleanup.exe
+    /// on uninstall (aggressive name-based nuke is intentional there).
     /// Returns true if at least one collection was modified.
     /// </summary>
     public bool RemoveBrowserSource()
@@ -108,7 +205,42 @@ internal sealed class ObsSceneFileEditor
             }
             catch (Exception ex)
             {
-                _logger.LogErr($"[ObsSceneFileEditor] Failed for {path}", ex, "OBS");
+                _logger.LogErr($"[ObsSceneFileEditor] RemoveBrowserSource failed for {path}",
+                    ex, "OBS");
+            }
+        }
+        return anyModified;
+    }
+
+    /// <summary>
+    /// Stage 7.8D: UUID-targeted remove. Removes ONLY sources whose uuid field
+    /// exactly matches <paramref name="targetUuid"/>. Protects user-added sources
+    /// with the same name but a different UUID. Idempotent (returns false if absent).
+    /// </summary>
+    public bool RemoveBrowserSourceByUuid(string targetUuid)
+    {
+        if (string.IsNullOrEmpty(targetUuid)) return false;
+        WarnIfObsRunning();
+        var paths = GetSceneCollectionPaths();
+        if (paths.Length == 0) return false;
+
+        bool anyModified = false;
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (RemoveFromCollectionByUuid(path, targetUuid))
+                {
+                    _logger.Log(
+                        $"[ObsSceneFileEditor] Removed uuid={targetUuid} from {path}", "OBS");
+                    anyModified = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogErr(
+                    $"[ObsSceneFileEditor] RemoveBrowserSourceByUuid failed for {path}",
+                    ex, "OBS");
             }
         }
         return anyModified;
@@ -136,44 +268,63 @@ internal sealed class ObsSceneFileEditor
         return Directory.GetFiles(dir, "*.json");
     }
 
-    private bool AddToCollection(string path, string url, int width, int height,
-        int fps, string css)
+    // ── Internal result for AddToCollection ──────────────────────────────────
+
+    private enum CollectionAddKind { Added, AlreadyPresent, ForeignSource, Skipped }
+    private readonly record struct CollectionAddResult(CollectionAddKind Kind, string? Uuid);
+
+    private CollectionAddResult AddToCollection(
+        string path, string url, int width, int height, int fps, string css,
+        string generatedUuid, string? knownTrayUuid)
     {
         var json = File.ReadAllText(path, NoBomUtf8);
         var root = JsonNode.Parse(json);
-        if (root == null) return false;
+        if (root == null) return new(CollectionAddKind.Skipped, null);
 
         // Idempotent check: if Master's FM source already exists, check URL.
         // Stage 7.8C GAP-1 fix: update URL in-place (preserving UUID) if different.
+        // Stage 7.8D: distinguish "ours" (UUID matches knownTrayUuid) from "foreign".
         var sources = root["sources"]?.AsArray();
         if (sources != null)
         {
             foreach (var src in sources)
             {
                 if (src?["name"]?.GetValue<string>() != "Master's FM") continue;
-                var existingUrl = src?["settings"]?["url"]?.GetValue<string>();
+                var existingUuid = src?["uuid"]?.GetValue<string>() ?? "";
+                var existingUrl  = src?["settings"]?["url"]?.GetValue<string>() ?? "";
+
                 if (string.Equals(existingUrl, url, StringComparison.Ordinal))
-                    return false; // URL already matches -- true no-op
-                // URL mismatch: update in-place, preserve UUID and all other fields
-                if (src?["settings"] is JsonObject settings)
-                    settings["url"] = url;
-                var updatedOutput = root.ToJsonString(WriteOpts);
-                // Stage 7.8C GAP-2: validate parse-back before write
-                _ = JsonNode.Parse(updatedOutput)
-                    ?? throw new InvalidOperationException("JSON output parse-back failed (URL update)");
-                File.WriteAllText(path, updatedOutput, NoBomUtf8);
-                return true;
+                    return new(CollectionAddKind.AlreadyPresent, existingUuid); // URL already matches
+
+                // URL mismatch — is this "ours"?
+                bool isOurs = !string.IsNullOrEmpty(knownTrayUuid)
+                    && string.Equals(existingUuid, knownTrayUuid, StringComparison.Ordinal);
+
+                if (isOurs)
+                {
+                    // Update URL in-place, preserve UUID (Stage 7.8C GAP-1)
+                    if (src?["settings"] is JsonObject settings)
+                        settings["url"] = url;
+                    var updatedOutput = root.ToJsonString(WriteOpts);
+                    _ = JsonNode.Parse(updatedOutput)
+                        ?? throw new InvalidOperationException(
+                            "JSON output parse-back failed (URL update)");
+                    File.WriteAllText(path, updatedOutput, NoBomUtf8);
+                    return new(CollectionAddKind.Added, existingUuid);
+                }
+
+                // URL differs and UUID doesn't match ours — foreign source
+                return new(CollectionAddKind.ForeignSource, existingUuid);
             }
         }
 
         // Build new browser_source entry (matches tray.ps1:3905-3940 schema)
-        var sourceUuid = Guid.NewGuid().ToString();
         var newSource = new JsonObject
         {
             ["versioned_id"]           = "browser_source",
             ["id"]                     = "browser_source",
             ["name"]                   = "Master's FM",
-            ["uuid"]                   = sourceUuid,
+            ["uuid"]                   = generatedUuid,
             ["settings"]               = new JsonObject
             {
                 ["url"]                    = url,
@@ -220,7 +371,6 @@ internal sealed class ObsSceneFileEditor
                 var sceneName = sceneEntry?["name"]?.GetValue<string>();
                 if (sceneName == null) continue;
 
-                // Find the matching "scene" source and append item to its items list
                 var allSources = root["sources"]?.AsArray();
                 if (allSources == null) continue;
                 foreach (var src in allSources)
@@ -231,7 +381,6 @@ internal sealed class ObsSceneFileEditor
                     var items = src?["settings"]?["items"]?.AsArray();
                     if (items == null) continue;
 
-                    // Next scene-item id = max existing + 1
                     long nextId = 1;
                     foreach (var item in items)
                     {
@@ -242,7 +391,7 @@ internal sealed class ObsSceneFileEditor
                     items.Add(new JsonObject
                     {
                         ["name"]            = "Master's FM",
-                        ["source_uuid"]     = sourceUuid,
+                        ["source_uuid"]     = generatedUuid,
                         ["visible"]         = true,
                         ["locked"]          = false,
                         ["pos"]             = new JsonObject { ["x"] = 0.0, ["y"] = 0.0 },
@@ -275,7 +424,7 @@ internal sealed class ObsSceneFileEditor
         _ = JsonNode.Parse(addOutput)
             ?? throw new InvalidOperationException("JSON output parse-back failed (add)");
         File.WriteAllText(path, addOutput, NoBomUtf8);
-        return true;
+        return new(CollectionAddKind.Added, generatedUuid);
     }
 
     private bool RemoveFromCollection(string path)
@@ -328,6 +477,54 @@ internal sealed class ObsSceneFileEditor
             var removeOutput = root.ToJsonString(WriteOpts);
             _ = JsonNode.Parse(removeOutput)
                 ?? throw new InvalidOperationException("JSON output parse-back failed (remove)");
+            File.WriteAllText(path, removeOutput, NoBomUtf8);
+        }
+
+        return modified;
+    }
+
+    // Stage 7.8D: UUID-targeted remove helper
+    private bool RemoveFromCollectionByUuid(string path, string targetUuid)
+    {
+        var json = File.ReadAllText(path, NoBomUtf8);
+        var root = JsonNode.Parse(json);
+        if (root == null) return false;
+
+        bool modified = false;
+        var sources = root["sources"]?.AsArray();
+        if (sources == null) return false;
+
+        // Remove ONLY the source whose uuid == targetUuid
+        for (int i = sources.Count - 1; i >= 0; i--)
+        {
+            var srcUuid = sources[i]?["uuid"]?.GetValue<string>();
+            if (!string.Equals(srcUuid, targetUuid, StringComparison.Ordinal)) continue;
+            sources.RemoveAt(i);
+            modified = true;
+        }
+
+        // Remove scene_items referencing the removed source by UUID
+        if (modified)
+        {
+            foreach (var src in sources)
+            {
+                if (src?["id"]?.GetValue<string>() != "scene") continue;
+                var items = src["settings"]?["items"]?.AsArray();
+                if (items == null) continue;
+                for (int i = items.Count - 1; i >= 0; i--)
+                {
+                    if (items[i]?["source_uuid"]?.GetValue<string>() == targetUuid)
+                    {
+                        items.RemoveAt(i);
+                    }
+                }
+            }
+
+            // Stage 7.8C GAP-2: validate parse-back before writing (Safety Floor S5)
+            var removeOutput = root.ToJsonString(WriteOpts);
+            _ = JsonNode.Parse(removeOutput)
+                ?? throw new InvalidOperationException(
+                    "JSON output parse-back failed (remove by uuid)");
             File.WriteAllText(path, removeOutput, NoBomUtf8);
         }
 

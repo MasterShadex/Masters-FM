@@ -603,11 +603,11 @@ public sealed class ObsService : IObsService, IDisposable
     private ObsBrowserSourceResult FallbackAdd()
     {
         var editor = new ObsSceneFileEditor(_log);
-        var ok = editor.AddBrowserSource(
+        var result = editor.AddBrowserSource(
             "http://localhost:4242/?renderer=webgl",
             1000, 200, 60,
             "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }");
-        return ok
+        return result.Success
             ? ObsBrowserSourceResult.Ok("File-edit (OBS restart required)")
             : ObsBrowserSourceResult.Fail("File-edit path failed (no scene-collection.json found)");
     }
