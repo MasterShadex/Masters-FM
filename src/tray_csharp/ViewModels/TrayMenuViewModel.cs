@@ -3,15 +3,11 @@
 // states (Discord / AutoStart), a state-driven update label, and 10
 // RelayCommands wired to IDialogService / toggle services / update service.
 //
-// Thread safety: Discord and AutoStart StateChanged events fire synchronously
-// on the calling thread (Toggle() is sync; callers are on UI thread via menu
-// click). UpdateCheckService.StateChanged may fire on a thread-pool thread
-// (CheckNowAsync / DownloadAsync complete async); OnUpdateStateChanged
-// marshals to the UI dispatcher.
-//
-// Stage 7.8C STEP 3: obs.pending_restart config field persists PendingRestart
-// state across tray restarts. 60s polling timer auto-clears the suffix once
-// OBS has stopped running (file-edit already applied; just need the reload).
+// Stage 7.8C: OBS toggle state machine + file-edit-only path.
+// Stage 7.8D: intent vs. reality state machine. obs.intent config field
+// separates user intent ("on"|"off") from on-disk OBS reality. UUID tracking
+// via obs.tray_added_uuid prevents stomping user-added sources. ReconcileStateAsync
+// is the single source of truth; 5s startup direct-add replaced by reconcile timer.
 
 using System.Diagnostics;
 using System.Windows;
@@ -34,53 +30,27 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private readonly IConfigService _configService;
     private readonly ILogger _logger;
 
-    // Stage 7.8C STEP 3: 60s timer polls for OBS exit while in PendingRestart.
-    private System.Threading.Timer? _obsPollTimer;
+    // Stage 7.8D: reconcile timer (replaces Stage 7.8C 60s OBS-exit poll timer).
+    private System.Threading.Timer? _obsReconcileTimer;
 
-    // NowPlaying is exposed as a pass-through so XAML DataTemplates can
-    // bind directly to its observable Artist, Track, ArtUri properties.
-    public NowPlayingViewModel NowPlaying { get; }
-
-    [ObservableProperty]
-    private bool _isDiscordEnabled;
-
-    [ObservableProperty]
-    private bool _isAutoStartEnabled;
-
-    [ObservableProperty]
-    private string _updateLabel = "Check for updates";
-
-    [ObservableProperty]
-    private bool _isObsEnabled;
-
-    [ObservableProperty]
-    private string _obsLabel = "OBS overlay";
-
-    [ObservableProperty]
-    private string _obsTooltip = "Click to enable OBS integration";
-
-    // Stage 7.8C: file-edit state machine (replaces ObsConnectionState-driven labels)
+    // Stage 7.8D: file-edit state machine (intent × on-disk reality).
     private ObsToggleState _obsToggleState;
 
-    /// <summary>
-    /// Wired by MainWindow.OnLoaded so OBS toggle can show balloon tips without
-    /// a direct UI reference in the ViewModel.
-    /// </summary>
+    public NowPlayingViewModel NowPlaying { get; }
+
+    [ObservableProperty] private bool _isDiscordEnabled;
+    [ObservableProperty] private bool _isAutoStartEnabled;
+    [ObservableProperty] private string _updateLabel = "Check for updates";
+    [ObservableProperty] private string _obsLabel    = "OBS overlay";
+    [ObservableProperty] private string _obsTooltip  = "Click to enable OBS integration";
+
+    /// <summary>Stage 7.8D: computed from _obsToggleState; fires OnPropertyChanged explicitly.</summary>
+    public bool IsObsEnabled =>
+        _obsToggleState == ObsToggleState.Added ||
+        _obsToggleState == ObsToggleState.PendingRestart;
+
     internal Action<string, string>? ShowToast { get; set; }
-
-    /// <summary>
-    /// Set by MainWindow.OnLoaded so Quit / Restart commands can close the host
-    /// window (dispose TaskbarIcon) before Application.Shutdown. With
-    /// ShutdownMode=OnExplicitShutdown, Shutdown() does NOT fire OnClosing --
-    /// explicit pre-close is required for clean NotifyIcon disposal.
-    /// </summary>
     internal Action? CleanShutdown { get; set; }
-
-    /// <summary>
-    /// Set by MainWindow.OnLoaded so the ShowMenuCommand (fired on tray left-
-    /// click via LeftClickCommand) can open the ContextMenu at the current
-    /// cursor position without the ViewModel holding a UI reference.
-    /// </summary>
     internal Action? OpenContextMenu { get; set; }
 
     public TrayMenuViewModel(
@@ -104,61 +74,62 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _configService = configService;
         _logger = logger;
 
-        // Snapshot initial toggle states
-        _isDiscordEnabled = _discordService.IsEnabled;
+        _isDiscordEnabled  = _discordService.IsEnabled;
         _isAutoStartEnabled = _autoStartService.IsEnabled;
-
-        // Derive initial update label from current state
         _updateLabel = LabelForState(_updateService.CurrentState);
 
-        // Stage 7.8C: init ObsToggleState from scene files (replaces WebSocket-state init)
+        // Stage 7.8D: migrate obs.enabled (Stage 7.8B/C) → obs.intent.
+        // Run migration if obs.intent is absent (empty = not set).
+        // obs.pending_restart: ignored on read going forward (derived from disk + process state).
         try
         {
-            var initEditor = new ObsSceneFileEditor(_logger);
-            _obsToggleState = initEditor.BrowserSourceExists()
+            var existingIntent = _configService.GetValue<string>("obs.intent", "") ?? "";
+            if (string.IsNullOrEmpty(existingIntent))
+            {
+                var wasEnabled = _configService.GetValue<bool>("obs.enabled", false);
+                _configService.SetValue("obs.intent", wasEnabled ? "on" : "off");
+                _logger.Log(
+                    $"[ObsState] migrated obs.enabled={wasEnabled} → obs.intent={(wasEnabled ? "on" : "off")}",
+                    "OBS");
+                // Leave obs.enabled as tombstone (Stage 8.5 will clean it)
+            }
+        }
+        catch (Exception ex) { _logger.LogErr("obs.intent migration", ex, "OBS"); }
+
+        // Initial state: sync read of intent + scene file (before first reconcile)
+        try
+        {
+            var intent = _configService.GetValue<string>("obs.intent", "off") ?? "off";
+            var trayUuid = _configService.GetValue<string>("obs.tray_added_uuid", "") ?? "";
+            var editor = new ObsSceneFileEditor(_logger);
+            var sources = editor.ScanForBrowserSources();
+            var oursPresent = !string.IsNullOrEmpty(trayUuid)
+                && sources.Any(s => string.Equals(s.Uuid, trayUuid, StringComparison.Ordinal));
+            _obsToggleState = (intent == "on" && oursPresent)
                 ? ObsToggleState.Added
                 : ObsToggleState.NotAdded;
         }
         catch { _obsToggleState = ObsToggleState.NotAdded; }
 
-        // Stage 7.8C STEP 3: override with PendingRestart if config says so AND OBS is
-        // still running. If OBS has already exited since last tray session, the pending
-        // change was already applied on OBS startup — BrowserSourceExists() above is
-        // already correct, so clear the stale flag and keep the resolved state.
-        try
-        {
-            if (_configService.GetValue<bool>("obs.pending_restart", false))
-            {
-                if (IsObsRunning())
-                    _obsToggleState = ObsToggleState.PendingRestart;
-                else
-                    _configService.SetValue("obs.pending_restart", false); // stale flag — clear
-            }
-        }
-        catch (Exception ex) { _logger.LogErr("obs.pending_restart init read", ex, "OBS"); }
+        SetObsToggleState(_obsToggleState, LabelForObsState(_obsToggleState));
 
-        UpdateObsMenuFromToggleState();
+        // Stage 7.8D: reconcile timer — 5s initial + 60s recurring.
+        // Replaces Stage 7.8C 5s direct-add (App.xaml.cs) and 60s OBS-exit poll.
+        _obsReconcileTimer = new System.Threading.Timer(
+            _ => _ = ReconcileAsync(),
+            null,
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60));
 
-        // Stage 7.8C STEP 3: start 60s OBS-exit polling timer. Fires only when in
-        // PendingRestart; a guard at the top of the callback makes other firings a no-op.
-        _obsPollTimer = new System.Threading.Timer(
-            OnObsPollTick, null,
-            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
-
-        // Subscribe to state changes
-        _discordService.StateChanged += (_, enabled) => IsDiscordEnabled = enabled;
+        _discordService.StateChanged  += (_, enabled) => IsDiscordEnabled  = enabled;
         _autoStartService.StateChanged += (_, enabled) => IsAutoStartEnabled = enabled;
-        _updateService.StateChanged += OnUpdateStateChanged;
-        // Stage 7.8C: WebSocket connection-state events no longer drive menu labels.
-        // _obsService.ConnectionStateChanged += OnObsStateChanged;  // dead (Stage 7.8C)
+        _updateService.StateChanged   += OnUpdateStateChanged;
     }
 
-    // ── Event handlers ───────────────────────────────────────────────────────
+    // ── Update state ─────────────────────────────────────────────────────────
 
     private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
     {
         var label = LabelForState(e.NewState);
-        // UpdateCheckService may fire on a thread-pool thread; marshal to UI.
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null || dispatcher.CheckAccess())
             UpdateLabel = label;
@@ -174,40 +145,6 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         UpdateState.Ready       => "Install update",
         UpdateState.Installing  => "Installing...",
         _                       => "Check for updates"
-    };
-
-    // Stage 7.8: OBS state → menu label/tooltip/checkbox
-    private void OnObsStateChanged(object? sender, ObsConnectionStateChangedEventArgs e)
-    {
-        var (label, tooltip, enabled) = LabelsForObsState(e.NewState);
-        // ConnectionStateChanged fires on the thread-pool; marshal to UI dispatcher.
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher == null || dispatcher.CheckAccess())
-        {
-            IsObsEnabled = enabled;
-            ObsLabel     = label;
-            ObsTooltip   = tooltip;
-        }
-        else
-        {
-            dispatcher.BeginInvoke(() =>
-            {
-                IsObsEnabled = enabled;
-                ObsLabel     = label;
-                ObsTooltip   = tooltip;
-            });
-        }
-    }
-
-    private static (string label, string tooltip, bool enabled) LabelsForObsState(ObsConnectionState state) => state switch
-    {
-        ObsConnectionState.Disabled       => ("OBS overlay",                   "Click to enable OBS integration",          false),
-        ObsConnectionState.Disconnected   => ("OBS overlay (offline)",          "OBS not running — will connect when OBS starts", true),
-        ObsConnectionState.Connecting     => ("OBS overlay (connecting…)", "Connecting to OBS…",                  true),
-        ObsConnectionState.Authenticating => ("OBS overlay (connecting…)", "Authenticating with OBS…",            true),
-        ObsConnectionState.Connected      => ("OBS overlay (live)",             "Connected to OBS",                         true),
-        ObsConnectionState.Error          => ("OBS overlay (error)",            "Connection error; retrying with backoff",  true),
-        _                                 => ("OBS overlay",                   "Click to enable OBS integration",          false),
     };
 
     // ── Commands ─────────────────────────────────────────────────────────────
@@ -252,123 +189,224 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         catch (Exception ex) { _logger.LogErr("AutoStartService.Toggle", ex, "Tray"); }
     }
 
-    // Stage 7.8C: file-edit-only OBS toggle (replaces Stage 7.8B WebSocket path).
-    // WebSocket call sites (_obsService.ConnectAsync / AddBrowserSourceAsync /
-    // RemoveBrowserSourceAsync) removed; WaitForObsConnectedAsync removed.
-    // Stage 8.5 (post-rc.3) decides removal of dead WebSocket methods on ObsService.
+    // Stage 7.8D: intent-driven toggle. Sets obs.intent then reconciles.
     [RelayCommand]
-    private Task ToggleObsAsync()
+    private async Task ToggleObsAsync()
     {
-        _logger.Log($"TrayMenu: OBS toggle (state={_obsToggleState})", "Tray");
         try
         {
-            var editor = new ObsSceneFileEditor(_logger);
-            const string CanonUrl = "http://localhost:4242/?renderer=webgl";
-            const string CanonCss = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }";
-
-            if (_obsToggleState == ObsToggleState.Added)
-            {
-                // Toggle OFF: file-edit remove
-                var removed = editor.RemoveBrowserSource();
-                if (removed)
-                {
-                    if (IsObsRunning())
-                    {
-                        SetObsToggleState(ObsToggleState.PendingRestart);
-                        ShowToast?.Invoke(
-                            "Master's FM",
-                            "OBS overlay will be removed next time you restart OBS.");
-                    }
-                    else
-                    {
-                        SetObsToggleState(ObsToggleState.NotAdded);
-                    }
-                }
-            }
-            else
-            {
-                // Toggle ON: file-edit add (idempotent; updates URL if mismatched)
-                var added = editor.AddBrowserSource(CanonUrl, 1000, 200, 60, CanonCss);
-                if (added || editor.BrowserSourceExists())
-                {
-                    if (IsObsRunning())
-                    {
-                        SetObsToggleState(ObsToggleState.PendingRestart);
-                        ShowToast?.Invoke(
-                            "Master's FM",
-                            "OBS overlay added. Restart OBS to load it.");
-                    }
-                    else
-                    {
-                        SetObsToggleState(ObsToggleState.Added);
-                    }
-                }
-            }
+            var currentIntent = _configService.GetValue<string>("obs.intent", "off") ?? "off";
+            var newIntent = currentIntent == "on" ? "off" : "on";
+            _configService.SetValue("obs.intent", newIntent);
+            _logger.Log($"[ObsState] toggle: intent {currentIntent} → {newIntent}", "OBS");
+            await ReconcileAsync();
         }
-        catch (Exception ex) { _logger.LogErr("OBS toggle", ex, "Tray"); }
+        catch (Exception ex) { _logger.LogErr("[ObsState] toggle failed", ex, "OBS"); }
+    }
+
+    // ── Stage 7.8D: OBS state machine ────────────────────────────────────────
+
+    /// <summary>
+    /// Single source of truth for OBS toggle state. Reads obs.intent + scene files
+    /// + OBS process state and derives the correct ObsToggleState. Fires AutoAdd
+    /// or AutoRemove as needed. Safe to call from any thread.
+    /// </summary>
+    private Task ReconcileAsync()
+    {
+        try
+        {
+            var intent   = _configService.GetValue<string>("obs.intent", "off") ?? "off";
+            var trayUuid = _configService.GetValue<string>("obs.tray_added_uuid", "") ?? "";
+
+            var editor  = new ObsSceneFileEditor(_logger);
+            var sources = editor.ScanForBrowserSources();
+
+            var ours    = sources.FirstOrDefault(s =>
+                !string.IsNullOrEmpty(trayUuid) &&
+                string.Equals(s.Uuid, trayUuid, StringComparison.Ordinal));
+            var foreign = sources.FirstOrDefault(s =>
+                string.IsNullOrEmpty(trayUuid) ||
+                !string.Equals(s.Uuid, trayUuid, StringComparison.Ordinal));
+
+            bool oursPresent    = ours != null;
+            bool foreignPresent = foreign != null;
+            bool obsRunning     = IsObsRunning();
+
+            bool fileChangedAfterObsStart = false;
+            if (obsRunning && oursPresent && ours != null)
+            {
+                var obsStart = GetObsProcessStartTimeUtc();
+                if (obsStart.HasValue)
+                {
+                    var fileMtime = File.GetLastWriteTimeUtc(ours.CollectionPath);
+                    fileChangedAfterObsStart = fileMtime > obsStart.Value;
+                }
+            }
+
+            if (foreignPresent && !oursPresent)
+                _logger.LogWarn($"[ObsState] foreign source detected: uuid={foreign!.Uuid}; not modified", "OBS");
+
+            ObsToggleState newState;
+            string newLabel;
+            bool needAdd    = false;
+            bool needRemove = false;
+
+            if (intent == "on")
+            {
+                if (oursPresent)
+                {
+                    if (obsRunning && fileChangedAfterObsStart)
+                    {
+                        newState = ObsToggleState.PendingRestart;
+                        newLabel = "OBS overlay (restart OBS to apply)";
+                    }
+                    else
+                    {
+                        newState = ObsToggleState.Added;
+                        newLabel = "OBS overlay (added)";
+                    }
+                }
+                else if (foreignPresent)
+                {
+                    // Foreign source present — skip add, log warning
+                    newState = ObsToggleState.NotAdded;
+                    newLabel = "OBS overlay";
+                }
+                else
+                {
+                    newState = ObsToggleState.NotAdded;
+                    newLabel = "OBS overlay (adding…)";
+                    needAdd  = true;
+                }
+            }
+            else // intent == "off"
+            {
+                if (oursPresent)
+                {
+                    newState   = ObsToggleState.NotAdded;
+                    newLabel   = "OBS overlay (removing…)";
+                    needRemove = true;
+                }
+                else
+                {
+                    newState = ObsToggleState.NotAdded;
+                    newLabel = "OBS overlay";
+                }
+            }
+
+            _logger.Log(
+                $"[ObsState] reconcile: intent={intent} ours={oursPresent} foreign={foreignPresent} " +
+                $"obs={(obsRunning ? "running" : "stopped")} fileNewer={fileChangedAfterObsStart} " +
+                $"→ {newState}", "OBS");
+
+            SetObsToggleState(newState, newLabel);
+
+            if (needAdd)    _ = Task.Run(AutoAddAsync);
+            if (needRemove) _ = Task.Run(() => AutoRemoveAsync(trayUuid));
+        }
+        catch (Exception ex) { _logger.LogErr("[ObsState] ReconcileAsync", ex, "OBS"); }
         return Task.CompletedTask;
     }
 
-    // Stage 7.8C: sets ObsToggleState + updates menu labels atomically.
-    // Stage 7.8C STEP 3: also persists obs.pending_restart to config so the
-    // suffix survives a tray restart (e.g. user restarts Master's FM before OBS).
-    private void SetObsToggleState(ObsToggleState state)
+    private async Task AutoAddAsync()
     {
-        _obsToggleState = state;
         try
         {
-            _configService.SetValue("obs.pending_restart", state == ObsToggleState.PendingRestart);
+            var intent = _configService.GetValue<string>("obs.intent", "off") ?? "off";
+            if (intent != "on") return; // intent changed since reconcile fired
+
+            var trayUuid = _configService.GetValue<string>("obs.tray_added_uuid", "") ?? "";
+            var editor   = new ObsSceneFileEditor(_logger);
+            const string url = "http://localhost:4242/?renderer=webgl";
+            const string css = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }";
+
+            var result = editor.AddBrowserSource(url, 1000, 200, 60, css, trayUuid);
+            if (result.Success && result.Uuid != null)
+            {
+                _configService.SetValue("obs.tray_added_uuid", result.Uuid);
+                _logger.Log($"[ObsState] AutoAdd succeeded: uuid={result.Uuid}", "OBS");
+            }
+            else
+            {
+                _logger.LogWarn($"[ObsState] AutoAdd: {result.Reason}", "OBS");
+            }
+
+            await ReconcileAsync(); // update state after add
         }
-        catch (Exception ex) { _logger.LogErr("obs.pending_restart write", ex, "OBS"); }
-        UpdateObsMenuFromToggleState();
+        catch (Exception ex) { _logger.LogErr("[ObsState] AutoAddAsync", ex, "OBS"); }
     }
 
-    private void UpdateObsMenuFromToggleState()
+    private async Task AutoRemoveAsync(string uuid)
     {
-        (var lbl, var tip, var enabled) = _obsToggleState switch
+        try
         {
-            ObsToggleState.Added          => ("OBS overlay (added)",
-                                             "Master's FM overlay is active; click to remove", true),
-            ObsToggleState.PendingRestart => ("OBS overlay (restart OBS to apply)",
-                                             "Changes take effect on next OBS restart", true),
-            _                            => ("OBS overlay",
-                                            "Click to add Master's FM to OBS", false),
-        };
-        ObsLabel    = lbl;
-        ObsTooltip  = tip;
-        IsObsEnabled = enabled;
+            if (string.IsNullOrEmpty(uuid)) return;
+            var editor  = new ObsSceneFileEditor(_logger);
+            var removed = editor.RemoveBrowserSourceByUuid(uuid);
+            if (removed)
+                _logger.Log($"[ObsState] AutoRemove succeeded: uuid={uuid}", "OBS");
+            else
+                _logger.LogWarn($"[ObsState] AutoRemove: uuid={uuid} not found (already absent)", "OBS");
+
+            await ReconcileAsync(); // update state after remove
+        }
+        catch (Exception ex) { _logger.LogErr("[ObsState] AutoRemoveAsync", ex, "OBS"); }
     }
+
+    /// <summary>
+    /// Stage 7.8D: sets state + label atomically; fires OnPropertyChanged for both
+    /// ObsLabel (via [ObservableProperty] setter) and IsObsEnabled (computed — explicit).
+    /// Safe to call from any thread; marshals to UI dispatcher as needed.
+    /// </summary>
+    private void SetObsToggleState(ObsToggleState newState, string newLabel)
+    {
+        void Update()
+        {
+            var prev = _obsToggleState;
+            if (prev == newState && ObsLabel == newLabel) return;
+            _obsToggleState = newState;
+            ObsLabel    = newLabel; // [ObservableProperty] fires OnPropertyChanged(ObsLabel)
+            ObsTooltip  = newState switch
+            {
+                ObsToggleState.Added          => "Master's FM overlay is active; click to remove",
+                ObsToggleState.PendingRestart => "Changes take effect on next OBS restart",
+                _                             => "Click to add Master's FM to OBS"
+            };
+            OnPropertyChanged(nameof(IsObsEnabled)); // computed — must fire explicitly
+            _logger.Log($"[ObsState] transition: {prev} → {newState}", "OBS");
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+            Update();
+        else
+            dispatcher.Invoke(Update);
+    }
+
+    private static string LabelForObsState(ObsToggleState s) => s switch
+    {
+        ObsToggleState.Added          => "OBS overlay (added)",
+        ObsToggleState.PendingRestart => "OBS overlay (restart OBS to apply)",
+        _                             => "OBS overlay"
+    };
 
     private static bool IsObsRunning() =>
         Process.GetProcessesByName("obs64").Length > 0
         || Process.GetProcessesByName("obs32").Length > 0
         || Process.GetProcessesByName("obs").Length  > 0;
 
-    // Stage 7.8C STEP 3: 60s poll — clear PendingRestart suffix when OBS has exited.
-    // Fires on a thread-pool thread (System.Threading.Timer); marshals state change
-    // to the UI dispatcher. Guard: no-op unless currently PendingRestart.
-    private void OnObsPollTick(object? state)
+    private static DateTime? GetObsProcessStartTimeUtc()
     {
-        if (_obsToggleState != ObsToggleState.PendingRestart) return;
-        if (IsObsRunning()) return;
-
-        // OBS has stopped — the file-edit changes have been applied on its last start.
-        // Resolve final state from scene files and clear the pending flag.
-        try
-        {
-            var editor = new ObsSceneFileEditor(_logger);
-            var exists  = editor.BrowserSourceExists();
-            var newState = exists ? ObsToggleState.Added : ObsToggleState.NotAdded;
-            _logger.Log($"[OBS poll] OBS exited; resolving PendingRestart -> {newState}", "OBS");
-
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.CheckAccess())
-                SetObsToggleState(newState);
-            else
-                dispatcher.BeginInvoke(() => SetObsToggleState(newState));
-        }
-        catch (Exception ex) { _logger.LogErr("OBS poll-tick state resolve", ex, "OBS"); }
+        var procs = Process.GetProcessesByName("obs64")
+            .Concat(Process.GetProcessesByName("obs32"))
+            .Concat(Process.GetProcessesByName("obs"))
+            .ToArray();
+        if (procs.Length == 0) return null;
+        try { return procs[0].StartTime.ToUniversalTime(); }
+        catch { return null; }
     }
+
+    // ── Other commands ────────────────────────────────────────────────────────
 
     [RelayCommand]
     private async Task OpenPatchNotesAsync()
@@ -400,13 +438,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _logger.Log($"TrayMenu: Check updates (state={state})", "Tray");
         try
         {
-            // INTERRUPT #3 STEP 6 (Issue 3): show the update-progress overlay
-            // before driving the state machine.  ShowUpdateProgressAsync uses
-            // Show() (non-modal) and returns immediately; the window stays open
-            // while download / install progress.  Repeat clicks bring the
-            // existing window to the foreground.
             await _dialogService.ShowUpdateProgressAsync();
-
             switch (state)
             {
                 case UpdateState.Idle:
@@ -419,7 +451,6 @@ public sealed partial class TrayMenuViewModel : ObservableObject
                 case UpdateState.Ready:
                     await _updateService.InstallAsync();
                     break;
-                // Checking / Downloading / Installing: window already visible above.
             }
         }
         catch (Exception ex) { _logger.LogErr("CheckUpdates", ex, "Tray"); }
@@ -447,8 +478,6 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     }
 
     // INTERRUPT #3 STEP 2: Issue 7 -- tray left-click opens menu.
-    // Called via LeftClickCommand on TaskbarIcon (MainWindow.xaml). The
-    // delegate is wired in MainWindow.OnLoaded; no direct UI reference here.
     [RelayCommand]
     private void ShowMenu()
     {
@@ -456,8 +485,6 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         OpenContextMenu?.Invoke();
     }
 
-    // Calls the MainWindow-provided clean-shutdown delegate (close host window
-    // first to dispose TaskbarIcon) then falls back to raw Shutdown if not set.
     private void InvokeCleanShutdown()
     {
         if (CleanShutdown != null)
