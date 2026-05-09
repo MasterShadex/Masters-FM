@@ -8,7 +8,7 @@
         xmlns:vm="clr-namespace:MastersFM.Tray.ViewModels"
         Title="Master's FM"
         Width="720" Height="680"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
         WindowStyle="None"
