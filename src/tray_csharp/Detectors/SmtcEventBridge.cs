@@ -28,7 +28,7 @@ namespace MastersFM.Tray.Detectors;
 
 public sealed class SmtcEventBridge : IDisposable
 {
-    private const int DrainCadenceMs = 250;
+    private const int DrainCadenceMs = 100;  // was 250 (Stage 7.8B latency reduction)
     private const int CanaryCadenceMs = 30000;
     private const string Component = "Detect-SMTC";
 
@@ -79,7 +79,7 @@ public sealed class SmtcEventBridge : IDisposable
             return;
         }
 
-        // Drain timer (250ms cadence; matches watcher internal BurstWindowMs)
+        // Drain timer (100ms cadence; was 250ms, halved at Stage 7.8B for latency reduction)
         _drainTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(DrainCadenceMs)

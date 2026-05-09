@@ -14,8 +14,14 @@ public interface ITrackResolver
     /// <summary>Most recently emitted track. Null at startup.</summary>
     TrackUpdate? CurrentTrack { get; }
 
-    /// <summary>Called by SmtcEventBridge or DetectorOrchestrator when a new TrackUpdate is observed. Resolver dedups (skip if same identity as CurrentTrack), updates current, fires TrackChanged event, queues webhook.</summary>
-    void OnTrackChanged(TrackUpdate update);
+    /// <summary>
+    /// Called by SmtcEventBridge, DetectorOrchestrator, or HeartbeatService.
+    /// forcePositionRefresh=false (default): dedup gate active; fires TrackChanged + webhook only for new tracks.
+    /// forcePositionRefresh=true (heartbeat path): bypasses dedup; always sends webhook for
+    /// position/pause/seek; does NOT fire TrackChanged (avoids spurious UI updates).
+    /// Stage 7.8B: heartbeat now routes through here instead of WebhookClient directly.
+    /// </summary>
+    void OnTrackChanged(TrackUpdate update, bool forcePositionRefresh = false);
 
     /// <summary>Fires when CurrentTrack identity differs from prior. NowPlayingViewModel + tray menu (7.6) subscribe.</summary>
     event EventHandler<TrackUpdate>? TrackChanged;

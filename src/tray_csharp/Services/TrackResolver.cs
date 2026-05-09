@@ -38,17 +38,24 @@ public sealed class TrackResolver : ITrackResolver
         _webhook = webhook;
     }
 
-    public void OnTrackChanged(TrackUpdate update)
+    public void OnTrackChanged(TrackUpdate update, bool forcePositionRefresh = false)
     {
         if (update == null) return;
         var key = update.IdentityKey;
 
+        // Stage 7.8B: forcePositionRefresh=true bypasses dedup gate (heartbeat path).
+        if (forcePositionRefresh)
+        {
+            lock (_lock) { _current = update; }
+            _ = _webhook.SendTrackUpdateAsync(update, CancellationToken.None);
+            _telemetry.IncrementCounter("webhook_heartbeat_sends");
+            return;
+        }
+
         bool isNew;
-        TrackUpdate prior;
         lock (_lock)
         {
             isNew = !string.Equals(key, _currentKey, StringComparison.Ordinal);
-            prior = _current!;
             if (isNew)
             {
                 _current = update;
@@ -80,10 +87,16 @@ public sealed class TrackResolver : ITrackResolver
             _logger.LogErr("TrackChanged subscriber", ex, Component);
         }
 
-        // Art cache (best-effort; non-blocking)
+        // Stage 7.8B: art prefetch fires in parallel with webhook (was sequential before).
+        // Warms the ArtLruCache so art is ready when overlay requests it.
         if (!string.IsNullOrEmpty(update.ArtUri))
         {
-            _artCache.Touch(update.ArtUri);
+            var artUri = update.ArtUri;
+            _ = Task.Run(() =>
+            {
+                try { _artCache.Touch(artUri); }
+                catch { /* best-effort */ }
+            });
         }
 
         // Webhook (fire-and-forget; matches PS S15 fire-and-forget pattern)

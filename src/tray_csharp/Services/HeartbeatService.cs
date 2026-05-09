@@ -21,11 +21,12 @@ namespace MastersFM.Tray.Services;
 public sealed class HeartbeatService : IHeartbeatService
 {
     private const string Component = "Heartbeat";
-    private const double IntervalSeconds = 2.0;
+    private const double IntervalSeconds = 1.0;  // was 2.0 (Stage 7.8B latency reduction)
     private const double SeekThresholdMs = 3000.0;
 
     private readonly ITrackResolver _trackResolver;
-    private readonly WebhookClient _webhook;
+    // Stage 7.8B: _webhook removed; heartbeat now routes through _trackResolver.OnTrackChanged
+    // with forcePositionRefresh=true, keeping telemetry clean and dedup gate architecture intact.
     private readonly ITelemetry _telemetry;
     private readonly ILogger _logger;
 
@@ -36,12 +37,10 @@ public sealed class HeartbeatService : IHeartbeatService
 
     public HeartbeatService(
         ITrackResolver trackResolver,
-        WebhookClient webhook,
         ITelemetry telemetry,
         ILogger logger)
     {
         _trackResolver = trackResolver;
-        _webhook = webhook;
         _telemetry = telemetry;
         _logger = logger;
     }
@@ -120,8 +119,9 @@ public sealed class HeartbeatService : IHeartbeatService
             // fields (Artist, Track, ArtUri, etc.) are preserved unchanged.
             var hb = track with { ObservedUtc = now, IsSeek = isSeek };
 
-            // Fire-and-forget -- same pattern as TrackResolver.cs:90.
-            _ = _webhook.SendTrackUpdateAsync(hb, CancellationToken.None);
+            // Stage 7.8B: route through TrackResolver with forcePositionRefresh=true
+            // (bypasses dedup gate; increments webhook_heartbeat_sends in TrackResolver).
+            _trackResolver.OnTrackChanged(hb, forcePositionRefresh: true);
             _telemetry.IncrementCounter("heartbeat_sends");
         }
         catch (Exception ex)
