@@ -6,10 +6,15 @@
 # Usage (run AFTER starting MastersFM_Tray.exe + server.exe):
 #   powershell -ExecutionPolicy Bypass -File "_soak_7_10.ps1" [-TrayPid <pid>] [-OutJson <path>]
 #
-# Halt conditions (per Stage 7.10 brief):
-#   1. WS plateau > 280 MB
-#   2. Both-half mean diff > 15 MB (genuine drift, not GC sawtooth)
-#   3. Final-30-min end-to-end slope > 8 MB/h
+# Halt conditions (INTERRUPT #2 revised -- immune to Hour-1 burst-load step-shift):
+#   1. WS ceiling > 280 MB (any sample)
+#   2. Both-half mean diff > 15 MB (sample count >= 60, ~60 min)
+#   3. Final-30-min slope > 8 MB/h (sample count >= 90, ~90 min)
+#      Slope gate suppressed for first 90 min -- listening burst / ArtLruCache fill
+#      produces a one-time step function that dominates LS but is not a leak.
+#
+# Launch pre-flight: script verifies MastersFM_Tray + server are running.
+# If absent: kills orphans, launches via MastersFM.exe, re-verifies, aborts if missing.
 #
 # Listening-session tag: set $env:S710_LISTENING_START when active listening begins;
 #   harness tags those samples in output with "listening"=true.
@@ -57,42 +62,52 @@ function Parse-Heartbeat($line) {
     if ($line -match 'wmp=([\d\.,]+)ms')          { $r.wmp_p99    = [double]($Matches[1] -replace ',','.') }
     if ($line -match 'webhook=([\d\.,]+)ms')      { $r.wh_p99     = [double]($Matches[1] -replace ',','.') }
     if ($line -match 'smtc=([\d\.,]+)ms')         { $r.smtc_p99   = [double]($Matches[1] -replace ',','.') }
-    # telemetry summary (extract a few counters)
-    if ($line -match 'track_changes=(\d+)')       { $r.track_changes    = [long]$Matches[1] }
-    if ($line -match 'webhook_sends=(\d+)')       { $r.webhook_sends    = [long]$Matches[1] }
-    if ($line -match 'smtc_events=(\d+)')         { $r.smtc_events      = [long]$Matches[1] }
-    if ($line -match 'webhook_send_errors=(\d+)') { $r.wh_errors        = [long]$Matches[1] }
+    # Telemetry summary fields match GetHeartbeatSummary format:
+    # "events=N polls=N webhooks=S/F cache=H/M tracks=N"
+    if ($line -match 'tracks=(\d+)')             { $r.track_changes = [long]$Matches[1] }
+    if ($line -match 'webhooks=(\d+)/(\d+)')     { $r.webhook_sends = [long]$Matches[1]; $r.wh_fails = [long]$Matches[2] }
+    if ($line -match 'events=(\d+)')             { $r.smtc_events   = [long]$Matches[1] }
     return $r
 }
 
+function Get-WsHalfDiff($samples) {
+    # Returns (second-half mean - first-half mean) in MB, or $null if < 4 samples.
+    # Positive value = memory growing; negative = shrinking. Displayed per-sample.
+    $ws_vals = $samples | Where-Object { $_.ContainsKey('ws') } | ForEach-Object { $_.ws }
+    if ($ws_vals.Count -lt 4) { return $null }
+    $mid   = [int]($ws_vals.Count / 2)
+    $first = ($ws_vals[0..($mid-1)] | Measure-Object -Average).Average
+    $last  = ($ws_vals[$mid..($ws_vals.Count-1)] | Measure-Object -Average).Average
+    return [Math]::Round($last - $first, 1)
+}
+
 function Check-HaltConditions($samples) {
-    $ws_vals = $samples | Where-Object { $_.ws } | ForEach-Object { $_.ws }
+    $ws_vals = $samples | Where-Object { $_.ContainsKey('ws') } | ForEach-Object { $_.ws }
     if ($ws_vals.Count -lt 2) { return $null }
 
-    # 1. Plateau ceiling
+    # 1. CEILING BREAKER (any sample count >= 1)
     $peak = ($ws_vals | Measure-Object -Maximum).Maximum
     if ($peak -gt $HALT_WS_CEIL_MB) {
         return "HALT: WS peak ${peak}MB > ${HALT_WS_CEIL_MB}MB ceiling"
     }
 
-    # 2. Both-half mean diff (only after enough samples)
-    if ($ws_vals.Count -ge 20) {
-        $mid   = [int]($ws_vals.Count / 2)
-        $first = ($ws_vals[0..($mid-1)] | Measure-Object -Average).Average
-        $last  = ($ws_vals[$mid..($ws_vals.Count-1)] | Measure-Object -Average).Average
-        $diff  = $last - $first
+    # 2. BOTH-HALF MEAN DIFF PRIMARY (sample count >= 60, ~60 min)
+    #    Gate deferred past Hour 1 so ArtLruCache burst-fill step-shift cannot
+    #    trigger a false halt: step-shifts that settle show stable halves by 60 min.
+    if ($ws_vals.Count -ge 60) {
+        $diff = Get-WsHalfDiff $samples
         if ($diff -gt $HALT_HALFDIFF_MB) {
-            $diffR = [Math]::Round($diff, 1)
-            return "HALT: both-half mean diff ${diffR}MB > ${HALT_HALFDIFF_MB}MB"
+            return "HALT: both-half mean diff ${diff}MB > ${HALT_HALFDIFF_MB}MB"
         }
     }
 
-    # 3. Final-30-min slope (last 30 samples = 30 min)
-    if ($ws_vals.Count -ge 30) {
+    # 3. RELAXED SLOPE (sample count >= 90, ~90 min)
+    #    Suppressed for first 90 min -- Hour 1 listening burst produces a WS
+    #    step-function that dominates LS regression but is not a genuine leak.
+    if ($ws_vals.Count -ge 90) {
         $tail = $ws_vals[($ws_vals.Count-30)..($ws_vals.Count-1)]
         $n    = $tail.Count
         $x    = 0..($n-1)
-        # linear regression slope (simple, in MB/sample = MB/min)
         $xm   = ($x | Measure-Object -Average).Average
         $ym   = ($tail | Measure-Object -Average).Average
         $num  = 0; $den = 0
@@ -101,15 +116,54 @@ function Check-HaltConditions($samples) {
             $den += ($x[$i] - $xm) * ($x[$i] - $xm)
         }
         $slope_per_min = if ($den -ne 0) { $num / $den } else { 0 }
-        $slope_mBh     = $slope_per_min * 60.0
-        if ($slope_mBh -gt $HALT_SLOPE_MBH) {
-            $sR = [Math]::Round($slope_mBh, 2)
+        $slope_mbh     = $slope_per_min * 60.0
+        if ($slope_mbh -gt $HALT_SLOPE_MBH) {
+            $sR = [Math]::Round($slope_mbh, 2)
             return "HALT: final-30-min slope ${sR}MB/h > ${HALT_SLOPE_MBH}MB/h"
         }
     }
 
     return $null
 }
+
+# ----- launcher pre-flight ----------------------------------------------------
+# Verifies MastersFM_Tray AND server are both running (launcher-supervised).
+# If absent: kills MastersFM* orphans, launches via MastersFM.exe, re-verifies.
+# Aborts with STEP-4 compliant error if verification still fails.
+function Invoke-LauncherPreFlight {
+    $launcherExe = Join-Path $env:LOCALAPPDATA 'MastersFM\MastersFM.exe'
+    $haveTray    = [bool](Get-Process -Name 'MastersFM_Tray' -ErrorAction SilentlyContinue)
+    $haveServer  = [bool](Get-Process -Name 'server'         -ErrorAction SilentlyContinue)
+
+    if (-not $haveTray -or -not $haveServer) {
+        Write-Host "[pre-flight] processes absent (tray=$haveTray server=$haveServer) -- relaunching via launcher" -ForegroundColor Yellow
+        Stop-Process -Name 'MastersFM*' -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if (-not (Test-Path $launcherExe)) {
+            Write-Host "[pre-flight] ABORT: MastersFM.exe not found at: $launcherExe" -ForegroundColor Red
+            Write-Host "[pre-flight] Build and install before running soak." -ForegroundColor Red
+            exit 1
+        }
+        Start-Process $launcherExe
+        Write-Host "[pre-flight] launched -- waiting 5s for children..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
+        $haveTray   = [bool](Get-Process -Name 'MastersFM_Tray' -ErrorAction SilentlyContinue)
+        $haveServer = [bool](Get-Process -Name 'server'         -ErrorAction SilentlyContinue)
+    }
+
+    if (-not $haveTray -or -not $haveServer) {
+        Write-Host "[pre-flight] ABORT: launch verification failed (tray=$haveTray server=$haveServer)" -ForegroundColor Red
+        Write-Host "[pre-flight] Both MastersFM_Tray.exe AND server.exe must be running." -ForegroundColor Red
+        Write-Host "[pre-flight] Manual launch: Start-Process '$launcherExe'" -ForegroundColor Red
+        exit 1
+    }
+
+    # Invalidate stale TrayPid -- relaunched process has a new PID; force auto-detect.
+    $script:TrayPid = 0
+    Write-Host "[pre-flight] OK: MastersFM_Tray + server both running" -ForegroundColor Green
+}
+
+Invoke-LauncherPreFlight
 
 # ----- tray process check ------------------------------------------------------
 function Get-TrayProcess {
@@ -169,11 +223,13 @@ while ($sampleN -lt $MaxSamples -and -not $haltReason) {
 
                         $samples.Add($parsed)
 
-                        $wsStr = "$($parsed.ws)MB"
-                        $gcStr = if ($parsed.ContainsKey('gc'))   { " gc=$($parsed.gc)MB" }   else { '' }
-                        $prStr = if ($parsed.ContainsKey('priv')) { " priv=$($parsed.priv)MB" } else { '' }
-                        Write-Host ("[{0:D3}/{1}] T+{2:F0}min ws={3}{4}{5} h={6} t={7}" -f `
-                            $sampleN, $MaxSamples, $elapsed, $wsStr, $gcStr, $prStr,
+                        $wsStr   = "$($parsed.ws)MB"
+                        $gcStr   = if ($parsed.ContainsKey('gc'))   { " gc=$($parsed.gc)MB" }     else { '' }
+                        $prStr   = if ($parsed.ContainsKey('priv')) { " priv=$($parsed.priv)MB" } else { '' }
+                        $hd      = Get-WsHalfDiff $samples
+                        $hdStr   = if ($null -ne $hd) { " hd=${hd}MB" } else { '' }
+                        Write-Host ("[{0:D3}/{1}] T+{2:F0}min ws={3}{4}{5}{6} h={7} t={8}" -f `
+                            $sampleN, $MaxSamples, $elapsed, $wsStr, $gcStr, $prStr, $hdStr,
                             $(if ($parsed.ContainsKey('handles')) { $parsed.handles } else { '?' }),
                             $(if ($parsed.ContainsKey('threads')) { $parsed.threads } else { '?' }))
 
@@ -233,21 +289,24 @@ if ($ws_all.Count -ge 30) {
     $slope_final = if ($den -ne 0) { [Math]::Round($num / $den * 60.0, 2) } else { 0 }
 }
 
-$duration_h = [Math]::Round($samples.Count * $CADENCE_S / 3600.0, 2)
-$verdict    = if ($haltReason) { 'FAIL' } elseif ($ws_max -gt 260) { 'PARTIAL' } else { 'PASS' }
+$duration_h  = [Math]::Round($samples.Count * $CADENCE_S / 3600.0, 2)
+$verdict     = if ($haltReason) { 'FAIL' } elseif ($ws_max -gt 260) { 'PARTIAL' } else { 'PASS' }
+$ws_halfdiff = Get-WsHalfDiff $samples
+if ($null -eq $ws_halfdiff) { $ws_halfdiff = 0.0 }
 
 $summary = @{
-    stage       = '7.10'
-    stamp       = $Stamp
-    samples     = $samples.Count
-    duration_h  = $duration_h
-    ws_min_MB   = $ws_min
-    ws_max_MB   = $ws_max
-    ws_mean_MB  = $ws_mean
-    slope_final_MBh = $slope_final
-    halt_reason = $haltReason
-    verdict     = $verdict
-    data        = $samples
+    stage              = '7.10'
+    stamp              = $Stamp
+    samples            = $samples.Count
+    duration_h         = $duration_h
+    ws_min_MB          = $ws_min
+    ws_max_MB          = $ws_max
+    ws_mean_MB         = $ws_mean
+    both_half_diff_MB  = $ws_halfdiff
+    slope_final_MBh    = $slope_final
+    halt_reason        = $haltReason
+    verdict            = $verdict
+    data               = $samples
 }
 
 $json = $summary | ConvertTo-Json -Depth 5 -Compress
@@ -265,6 +324,7 @@ Write-Host "=== S7.10 SOAK SUMMARY ==="
 Write-Host "  samples   : $($samples.Count) / $MaxSamples"
 Write-Host "  duration  : $duration_h h"
 Write-Host "  ws min/mean/max: $ws_min / $ws_mean / $ws_max MB"
+Write-Host "  both-half diff : $ws_halfdiff MB  (halt threshold: $HALT_HALFDIFF_MB)"
 Write-Host "  slope (final 30): $slope_final MB/h  (halt threshold: $HALT_SLOPE_MBH)"
 Write-Host "  verdict   : $verdict"
 Write-Host "  output    : $OutJson"
