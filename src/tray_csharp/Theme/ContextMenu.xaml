@@ -1,0 +1,138 @@
+<!-- Stage 7.7B STEP 5: Context-menu styles.
+     Three styles: AppContextMenuStyle (popup shell), AppMenuItemStyle (row),
+     AppMenuSeparatorStyle (divider line).
+     Depends on: Colors.xaml (Surface1, Surface2, BorderSubtle, TextPrimary,
+                              BrandPurpleBase, CardHoverShadow),
+                 Icons.xaml (IconCheck).
+     Class K fix: all cross-file resource refs inside ControlTemplate content
+     use DynamicResource (not StaticResource). WPF DeferredResourceReference
+     in ControlTemplate resolves against the owning ResourceDictionary scope
+     only; DynamicResource defers to element-bind time when Application.Resources
+     is fully accessible. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- === ContextMenu shell ===
+         Surface1 background, 1px BorderSubtle, 12px radius, CardHoverShadow.
+         Inner padding 4px keeps items away from the rounded corner clips.
+         On Win11 22H2+ the code-behind overrides Background to Transparent
+         and applies Acrylic; the CornerRadius stays in effect regardless. -->
+    <Style x:Key="AppContextMenuStyle" TargetType="ContextMenu">
+        <Setter Property="Background"      Value="{DynamicResource Surface1}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource BorderSubtle}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding"         Value="4"/>
+        <Setter Property="FontFamily"      Value="Segoe UI"/>
+        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="MinWidth"        Value="220"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="12"
+                            Padding="{TemplateBinding Padding}"
+                            Effect="{DynamicResource CardHoverShadow}">
+                        <ItemsPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- === MenuItem row ===
+         36px tall; 3-column layout: 16px icon | 8px gap | * label | 8px gap | 16px check.
+         IsHighlighted trigger: Surface2 hover background.
+         IsChecked trigger: BrandPurpleBase check mark visible in check column.
+         IsEnabled=False: 45% opacity, arrow cursor.
+         Icon column: renders MenuItem.Icon content (set per-item in XAML).
+         Check column: Path rendered from IconCheck; hidden by default, shown
+         when IsChecked=True (used for Discord, AutoStart, OBS toggles). -->
+    <Style x:Key="AppMenuItemStyle" TargetType="MenuItem">
+        <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="FontFamily"  Value="Segoe UI"/>
+        <Setter Property="FontSize"    Value="13"/>
+        <Setter Property="Padding"     Value="8,0"/>
+        <Setter Property="Cursor"      Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Root"
+                            Background="Transparent"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <Grid Height="36">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="16"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Icon column: displays MenuItem.Icon content.
+                                 Items without an icon leave this slot empty. -->
+                            <ContentPresenter Grid.Column="0"
+                                              Content="{TemplateBinding Icon}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Center"/>
+
+                            <!-- Label column: the Header string or custom Header object. -->
+                            <ContentPresenter x:Name="HeaderContent"
+                                              Grid.Column="2"
+                                              Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center"
+                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
+
+                            <!-- Check column: brand-purple checkmark for toggle items.
+                                 Collapsed by default; Visible when IsChecked=True. -->
+                            <Path x:Name="CheckMark"
+                                  Grid.Column="4"
+                                  Data="{DynamicResource IconCheck}"
+                                  Fill="{DynamicResource BrandPurpleBase}"
+                                  Width="12" Height="12"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Center"
+                                  Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource Surface2}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="CheckMark" Property="Visibility"
+                                    Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- === Separator ===
+         1px BorderSubtle horizontal rule; 8px top and bottom margin, 8px side inset.
+         Replaces the OS-default separator with a design-system-matched divider. -->
+    <Style x:Key="AppMenuSeparatorStyle" TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Margin="8,4"
+                            Height="1"
+                            Background="{DynamicResource BorderSubtle}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

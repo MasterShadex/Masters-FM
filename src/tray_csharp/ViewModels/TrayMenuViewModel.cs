@@ -43,6 +43,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     [ObservableProperty] private string _updateLabel = "Check for updates";
     [ObservableProperty] private string _obsLabel    = "OBS overlay";
     [ObservableProperty] private string _obsTooltip  = "Click to enable OBS integration";
+    [ObservableProperty] private string _nowPlayingHeaderText = "v14.0.0-rc.2 - ready";
 
     /// <summary>Stage 7.8D: computed from _obsToggleState; fires OnPropertyChanged explicitly.</summary>
     public bool IsObsEnabled =>
@@ -123,6 +124,36 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _discordService.StateChanged  += (_, enabled) => IsDiscordEnabled  = enabled;
         _autoStartService.StateChanged += (_, enabled) => IsAutoStartEnabled = enabled;
         _updateService.StateChanged   += OnUpdateStateChanged;
+
+        // Stage 7.7B STEP 5: keep header subtitle current when track changes.
+        NowPlaying.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(NowPlayingViewModel.Artist) ||
+                e.PropertyName == nameof(NowPlayingViewModel.Track))
+                UpdateNowPlayingHeaderText();
+        };
+    }
+
+    // ── Now-playing header ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Updates NowPlayingHeaderText from the current NowPlaying state.
+    /// Shows "Artist - Track" when playing; falls back to version/status line.
+    /// </summary>
+    private void UpdateNowPlayingHeaderText()
+    {
+        var artist = NowPlaying.Artist;
+        var track  = NowPlaying.Track;
+        var text   = string.IsNullOrWhiteSpace(artist)
+            ? "v14.0.0-rc.2 - ready"
+            : string.IsNullOrWhiteSpace(track)
+                ? artist
+                : $"{artist} - {track}";
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
+            NowPlayingHeaderText = text;
+        else
+            dispatcher.BeginInvoke(() => NowPlayingHeaderText = text);
     }
 
     // ── Update state ─────────────────────────────────────────────────────────

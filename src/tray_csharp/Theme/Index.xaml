@@ -18,5 +18,6 @@
         <ResourceDictionary Source="Icons.xaml"/>
         <ResourceDictionary Source="BrandIcons.xaml"/>
         <ResourceDictionary Source="AppDialogStyle.xaml"/>
+        <ResourceDictionary Source="ContextMenu.xaml"/>
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
