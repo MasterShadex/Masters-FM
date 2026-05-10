@@ -282,9 +282,12 @@ if (Test-Path $signScript) {
 # uploading the MSI to GitHub Releases to enable silent auto-install for friends.
 L "[2c/5] Generating version.json..."
 try {
-    $trayTxt  = Get-Content "$root\src\tray.ps1" -Raw
-    $appVer   = '10.0.0'
-    if ($trayTxt -match '\$script:APP_VERSION\s*=\s*"v([^"]+)"') { $appVer = $matches[1] }
+    # Read version from version.json (single source of truth -- never from tray.ps1)
+    $versionJsonPath = Join-Path $root 'version.json'
+    $appVer = '14.0.0-rc.3'
+    if (Test-Path $versionJsonPath) {
+        try { $appVer = (Get-Content $versionJsonPath -Raw | ConvertFrom-Json).version } catch {}
+    }
 
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     $msiBytes = [System.IO.File]::ReadAllBytes($msi)
@@ -301,7 +304,6 @@ try {
         autoInstall = $false
     } | ConvertTo-Json -Compress
 
-    $versionJsonPath = Join-Path $root 'version.json'
     [System.IO.File]::WriteAllText($versionJsonPath, $versionJson, [System.Text.Encoding]::UTF8)
     L "  version.json written: version=$appVer sha256=$hashHex"
     L "  NEXT: upload '$msiName' to GitHub Releases tag v$appVer, then run _push_update.ps1 to publish"
