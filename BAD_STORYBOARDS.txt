@@ -1,0 +1,22 @@
+Stage 7.7B-FIX STEP 1 -- Class D Storyboard Target Audit
+Generated: 2026-05-10
+
+SCOPE: All Storyboard.TargetName="X" across tray_csharp/**/*.xaml
+
+=== ONLY ONE TargetName REFERENCE IN THEME/DIALOG FILES ===
+
+1. Theme/AppDialogStyle.xaml:41
+   Storyboard.TargetName="AccentShimmer"
+   Defined at: same ControlTemplate, line 65 -- <Border x:Name="AccentShimmer" Opacity="0">
+   Scope: both are within the same ControlTemplate for Window. -- OK
+
+=== WelcomeWindow waveform animations ===
+   Created in code-behind (WelcomeWindow.xaml.cs OnLoaded).
+   Programmatic animation, no XAML TargetName references to audit.
+
+=== PlatformsWindow PulsingDot animation ===
+   PlatformsWindow.xaml:333 -- Ellipse x:Name="PulsingDot"
+   EventTrigger on Loaded uses DoubleAnimation with no TargetName (animates Opacity
+   on the Ellipse itself). -- OK
+
+=== ACTION REQUIRED: None ===

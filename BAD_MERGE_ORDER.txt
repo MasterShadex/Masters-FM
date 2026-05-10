@@ -1,0 +1,37 @@
+Stage 7.7B-FIX STEP 1 -- Class E MergedDictionaries Order Audit
+Generated: 2026-05-10
+
+=== App.xaml merge chain ===
+1. ui:ThemesDictionary Theme="Dark"    -- WPF-UI Fluent Dark (defines WPF-UI tokens)
+2. ui:ControlsDictionary               -- WPF-UI control templates
+3. ResourceDictionary Theme/Index.xaml -- our design system
+
+=== Theme/Index.xaml merge order ===
+1. Colors.xaml          -- SolidColorBrush, DropShadowEffect resources
+2. Typography.xaml      -- TextBlock styles (FontFamily/Size/Weight only)
+3. Animations.xaml      -- Duration resources (AccentBarDuration, StandardDuration, etc.)
+4. Buttons.xaml         -- Button styles (reference Colors, no Animations needed)
+5. Inputs.xaml          -- TextBox/ComboBox/CheckBox/RadioButton styles
+6. Cards.xaml           -- Border card styles (reference Colors)
+7. Icons.xaml           -- PathGeometry icon resources
+8. BrandIcons.xaml      -- PathGeometry brand icon resources
+9. AppDialogStyle.xaml  -- Window chrome style (references Colors + Animations + Icons)
+
+=== Dependency analysis ===
+- Typography uses: Segoe UI string -- no resource deps -- OK
+- Animations uses: no resource deps -- OK
+- Buttons uses: BrandPurple*, Surface*, Text*, ButtonHoverShadow, CardRestingShadow
+  -- all defined in Colors.xaml (loaded first) -- OK
+- Inputs uses: Surface2, BorderSubtle, BrandPurpleBase, BrandPurpleGlow, TextPrimary,
+  InputFocusShadow, CardHoverShadow, TextSecondary
+  -- all in Colors.xaml -- OK
+- Cards uses: Surface1, Surface2, Surface3, BorderSubtle, TextSecondary,
+  BrandPurpleBase, CardRestingShadow, CardHoverShadow
+  -- all in Colors.xaml -- OK
+- AppDialogStyle uses: AccentBarDuration (Animations), AccentBarGradient, Surface1,
+  TextPrimary, TextSecondary, DialogShadow (Colors), SubHeadingTextStyle (Typography),
+  IconButtonStyle (Buttons), IconClose, IconMinimize (Icons)
+  -- all loaded before AppDialogStyle -- OK
+
+=== ACTION REQUIRED: None ===
+Order is correct. No dependency violations found.

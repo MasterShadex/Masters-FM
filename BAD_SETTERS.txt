@@ -1,0 +1,45 @@
+Stage 7.7B-FIX STEP 1 -- Class B Bad Setter.Property Audit
+Generated: 2026-05-10
+
+SCOPE: All <Setter Property="..."> in Theme/*.xaml + Dialogs/*.xaml + App.xaml
+
+=== ALREADY FIXED (pre-audit commits) ===
+
+1. Theme/Typography.xaml -- DisplayTextStyle -- TextOptions.TextFormattingMode
+   TargetType: TextBlock
+   Why bad: Attached property in Setter.Property. DependencyPropertyConverter
+   returned null at BAML load time. ArgumentNullException in WelcomeWindow..ctor().
+   Fix: Removed Setter. (commit 43e0796)
+
+2. Theme/AppDialogStyle.xaml -- AppDialogStyle -- WindowStartupLocation
+   TargetType: Window
+   Why bad: CLR-only property (no Window.WindowStartupLocationProperty DP).
+   Fix: Removed Setter; added WindowStartupLocation="CenterScreen" as direct
+   attribute on WelcomeWindow, AudioDeviceWindow, PlatformsWindow, SetupWizardWindow.
+   (commit 727e309)
+
+=== REMAINING ITEMS (Theme files, all confirmed valid DPs) ===
+
+All 31 unique Setter.Property values in Theme/*.xaml are confirmed
+DependencyProperties on their respective TargetTypes:
+AllowsTransparency (Window), Background, BorderBrush, BorderThickness, CaretBrush,
+CornerRadius (Border), Cursor, Effect (UIElement), FontFamily, FontSize, FontWeight,
+Foreground, Height, HorizontalAlignment, ItemContainerStyle (ItemsControl),
+LineHeight (TextBlock), LineStackingStrategy (TextBlock), MinWidth, Opacity,
+Padding, ResizeMode (Window DP), SelectionBrush (TextBoxBase), ShowInTaskbar (Window DP),
+Template (Control), VerticalAlignment, Width, WindowStyle (Window DP).
+All confirmed valid.
+
+=== DIALOG-LOCAL (not in Theme, not startup crash risk) ===
+
+Dialogs/AudioDeviceWindow.xaml:141 -- DeviceListBoxStyle -- TargetType=ListBox
+   Property="ScrollViewer.HorizontalScrollBarVisibility"
+   Assessment: VALID -- Standard WPF attached property Setter pattern.
+   ScrollViewer.HorizontalScrollBarVisibilityProperty IS a registered DP.
+   Dialog-local (not loaded at startup). Low risk.
+
+=== HorizontalContentAlignment, Margin, Visibility (dialog-local) ===
+   All confirmed DPs on their respective TargetTypes. No issue.
+
+=== ACTION REQUIRED: None for Class B ===
+No remaining bad Setter.Property values in Theme files.

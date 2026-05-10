@@ -1,0 +1,17 @@
+Stage 7.7B-FIX STEP 1 -- Class C BasedOn Chain Audit
+Generated: 2026-05-10
+
+SCOPE: All BasedOn="{StaticResource X}" across tray_csharp/**/*.xaml
+
+=== ALL CHAINS VERIFIED CORRECT ===
+
+1. Cards.xaml -- CardHoverStyle TargetType=Border BasedOn CardStyle (TargetType=Border) -- OK
+2. PlatformsWindow.xaml:235 -- Border BasedOn CardStyle (Border) -- OK
+3. PlatformsWindow.xaml:258 -- Border BasedOn CardStyle (Border) -- OK
+4. AudioDeviceWindow.xaml:278 -- TabItem BasedOn AudioTabItemStyle (TabItem) -- OK
+5. SetupWizardWindow.xaml:55-56 -- Border BasedOn StepBarStyle (Border) -- OK
+6. SetupWizardWindow.xaml:139 -- Border BasedOn StepBarStyle (Border) -- OK
+7. SetupWizardWindow.xaml:160 -- Border BasedOn StepBarStyle (Border) -- OK
+8. SetupWizardWindow.xaml:397 -- Button BasedOn TertiaryButtonStyle (Button) -- OK
+
+=== ACTION REQUIRED: None ===
