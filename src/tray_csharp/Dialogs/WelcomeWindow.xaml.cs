@@ -35,6 +35,15 @@ public partial class WelcomeWindow : Window
 
     public WelcomeWindow()
     {
+        // Set a valid local Foreground before InitializeComponent() so the
+        // style transition (implicit -> AppDialogStyle) never sees UnsetValue.
+        // ThemesDictionary Dark may install an implicit Window style that uses
+        // unresolved DynamicResource tokens for Foreground; a local value set
+        // here has higher WPF property precedence than any style setter, making
+        // the old-style invalidation safe. AppDialogStyle's Setter for Foreground
+        // (TextPrimary) then takes effect normally via the new style.
+        SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
+
         InitializeComponent();
         Loaded += OnLoaded;
     }

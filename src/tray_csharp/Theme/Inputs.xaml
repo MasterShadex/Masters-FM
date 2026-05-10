@@ -1,8 +1,15 @@
 <!-- Stage 7.7B: Input control styles.
      TextBox, ComboBox, CheckBox, RadioButton.
      Focus ring achieved via Border + InputFocusShadow effect trigger.
-     Depends on: Colors.xaml (Surface2, BorderSubtle, BorderFocus, Text*,
-                              InputFocusShadow). -->
+     Depends on: Colors.xaml (Surface1, Surface2, BorderSubtle, BorderFocus,
+                              BrandPurple*, Text*, InputFocusShadow,
+                              CardHoverShadow).
+     Stage 7.7B-FIX Class K: All cross-file resource references changed
+     from {StaticResource} to {DynamicResource}. WPF DeferredResourceReference
+     in Style Setters and ControlTemplate content resolves against the owning
+     ResourceDictionary scope only (not Application.Resources). DynamicResource
+     defers lookup to element-binding time when the full Application.Resources
+     chain is accessible. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
@@ -10,15 +17,15 @@
          Background: Surface2. Border: 1px BorderSubtle. Padding: 10 14.
          Focus: BorderFocus + InputFocusShadow. -->
     <Style x:Key="AppTextBoxStyle" TargetType="TextBox">
-        <Setter Property="Background"        Value="{StaticResource Surface2}"/>
-        <Setter Property="Foreground"        Value="{StaticResource TextPrimary}"/>
-        <Setter Property="CaretBrush"        Value="{StaticResource BrandPurpleBase}"/>
-        <Setter Property="BorderBrush"       Value="{StaticResource BorderSubtle}"/>
+        <Setter Property="Background"        Value="{DynamicResource Surface2}"/>
+        <Setter Property="Foreground"        Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="CaretBrush"        Value="{DynamicResource BrandPurpleBase}"/>
+        <Setter Property="BorderBrush"       Value="{DynamicResource BorderSubtle}"/>
         <Setter Property="BorderThickness"   Value="1"/>
         <Setter Property="Padding"           Value="14,10"/>
         <Setter Property="FontFamily"        Value="Segoe UI"/>
         <Setter Property="FontSize"          Value="14"/>
-        <Setter Property="SelectionBrush"    Value="{StaticResource BrandPurpleGlow}"/>
+        <Setter Property="SelectionBrush"    Value="{DynamicResource BrandPurpleGlow}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
@@ -34,17 +41,17 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Root" Property="BorderBrush"
-                                    Value="{StaticResource BorderFocus}"/>
+                                    Value="{DynamicResource BorderFocus}"/>
                             <Setter TargetName="Root" Property="Effect"
-                                    Value="{StaticResource InputFocusShadow}"/>
+                                    Value="{DynamicResource InputFocusShadow}"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Root" Property="BorderBrush"
-                                    Value="{StaticResource BrandPurpleGlow}"/>
+                                    Value="{DynamicResource BrandPurpleGlow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground"
-                                    Value="{StaticResource TextTertiary}"/>
+                                    Value="{DynamicResource TextTertiary}"/>
                             <Setter Property="Opacity" Value="0.5"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -56,9 +63,9 @@
     <!-- === ComboBox ===
          Same shell as TextBox; dropdown uses Surface1 background + deep shadow. -->
     <Style x:Key="AppComboBoxStyle" TargetType="ComboBox">
-        <Setter Property="Background"      Value="{StaticResource Surface2}"/>
-        <Setter Property="Foreground"      Value="{StaticResource TextPrimary}"/>
-        <Setter Property="BorderBrush"     Value="{StaticResource BorderSubtle}"/>
+        <Setter Property="Background"      Value="{DynamicResource Surface2}"/>
+        <Setter Property="Foreground"      Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource BorderSubtle}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="14,10"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
@@ -84,7 +91,7 @@
                                 <!-- Chevron indicator -->
                                 <Path Grid.Column="1"
                                       Data="M3 5 L9 11 L15 5"
-                                      Stroke="{StaticResource TextSecondary}"
+                                      Stroke="{DynamicResource TextSecondary}"
                                       StrokeThickness="1.5"
                                       StrokeLineJoin="Round"
                                       Width="12" Height="8"
@@ -98,12 +105,12 @@
                                Placement="Bottom"
                                PlacementTarget="{Binding ElementName=Root}"
                                AllowsTransparency="True">
-                            <Border Background="{StaticResource Surface1}"
-                                    BorderBrush="{StaticResource BorderSubtle}"
+                            <Border Background="{DynamicResource Surface1}"
+                                    BorderBrush="{DynamicResource BorderSubtle}"
                                     BorderThickness="1"
                                     CornerRadius="8"
                                     Padding="4"
-                                    Effect="{StaticResource CardHoverShadow}">
+                                    Effect="{DynamicResource CardHoverShadow}">
                                 <ScrollViewer MaxHeight="200">
                                     <ItemsPresenter/>
                                 </ScrollViewer>
@@ -113,9 +120,9 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
                             <Setter TargetName="Root" Property="BorderBrush"
-                                    Value="{StaticResource BorderFocus}"/>
+                                    Value="{DynamicResource BorderFocus}"/>
                             <Setter TargetName="Root" Property="Effect"
-                                    Value="{StaticResource InputFocusShadow}"/>
+                                    Value="{DynamicResource InputFocusShadow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>
@@ -128,7 +135,7 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ComboBoxItem">
-                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
                     <Setter Property="FontFamily" Value="Segoe UI"/>
                     <Setter Property="FontSize"   Value="14"/>
                     <Setter Property="Padding"    Value="12,8"/>
@@ -144,11 +151,11 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Row" Property="Background"
-                                                Value="{StaticResource Surface2}"/>
+                                                Value="{DynamicResource Surface2}"/>
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter TargetName="Row" Property="Background"
-                                                Value="{StaticResource Surface2}"/>
+                                                Value="{DynamicResource Surface2}"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -162,7 +169,7 @@
     <!-- === CheckBox ===
          18x18, 4px radius. Resting: border only. Checked: BrandPurpleBase fill + check. -->
     <Style x:Key="AppCheckBoxStyle" TargetType="CheckBox">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="FontSize"   Value="14"/>
         <Setter Property="Cursor"     Value="Hand"/>
@@ -174,7 +181,7 @@
                                 Width="18" Height="18"
                                 CornerRadius="4"
                                 Background="Transparent"
-                                BorderBrush="{StaticResource BorderSubtle}"
+                                BorderBrush="{DynamicResource BorderSubtle}"
                                 BorderThickness="1.5">
                             <Path x:Name="Check"
                                   Data="M3 9 L7 13 L15 5"
@@ -194,19 +201,19 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Box" Property="Background"
-                                    Value="{StaticResource BrandPurpleBase}"/>
+                                    Value="{DynamicResource BrandPurpleBase}"/>
                             <Setter TargetName="Box" Property="BorderBrush"
-                                    Value="{StaticResource BrandPurpleBase}"/>
+                                    Value="{DynamicResource BrandPurpleBase}"/>
                             <Setter TargetName="Check" Property="Visibility"
                                     Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Box" Property="BorderBrush"
-                                    Value="{StaticResource BrandPurpleGlow}"/>
+                                    Value="{DynamicResource BrandPurpleGlow}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Box" Property="Effect"
-                                    Value="{StaticResource InputFocusShadow}"/>
+                                    Value="{DynamicResource InputFocusShadow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>
@@ -221,7 +228,7 @@
     <!-- === RadioButton ===
          Circle (18x18). Selected: BrandPurpleBase ring + inner dot. -->
     <Style x:Key="AppRadioButtonStyle" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="FontSize"   Value="14"/>
         <Setter Property="Cursor"     Value="Hand"/>
@@ -232,12 +239,12 @@
                         <Grid Width="18" Height="18">
                             <Ellipse x:Name="Ring"
                                      Width="18" Height="18"
-                                     Stroke="{StaticResource BorderSubtle}"
+                                     Stroke="{DynamicResource BorderSubtle}"
                                      StrokeThickness="1.5"
                                      Fill="Transparent"/>
                             <Ellipse x:Name="Dot"
                                      Width="8" Height="8"
-                                     Fill="{StaticResource BrandPurpleBase}"
+                                     Fill="{DynamicResource BrandPurpleBase}"
                                      Visibility="Collapsed"/>
                         </Grid>
                         <ContentPresenter Margin="8,0,0,0"
@@ -247,13 +254,13 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Ring" Property="Stroke"
-                                    Value="{StaticResource BrandPurpleBase}"/>
+                                    Value="{DynamicResource BrandPurpleBase}"/>
                             <Setter TargetName="Dot" Property="Visibility"
                                     Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Ring" Property="Stroke"
-                                    Value="{StaticResource BrandPurpleGlow}"/>
+                                    Value="{DynamicResource BrandPurpleGlow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>

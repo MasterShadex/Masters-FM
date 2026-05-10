@@ -13,6 +13,9 @@ public partial class SetupWizardWindow : Window
 {
     public SetupWizardWindow()
     {
+        // Guard against '{DependencyProperty.UnsetValue}' for Foreground during
+        // AppDialogStyle application -- see WelcomeWindow.xaml.cs for explanation.
+        SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
     }

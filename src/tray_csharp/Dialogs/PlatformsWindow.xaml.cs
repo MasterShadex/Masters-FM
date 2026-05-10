@@ -21,6 +21,9 @@ public partial class PlatformsWindow : Window
     public PlatformsWindow(NowPlayingViewModel nowPlaying)
     {
         NowPlaying = nowPlaying;
+        // Guard against '{DependencyProperty.UnsetValue}' for Foreground during
+        // AppDialogStyle application -- see WelcomeWindow.xaml.cs for explanation.
+        SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
         InitializeComponent();
     }
 

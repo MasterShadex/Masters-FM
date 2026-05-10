@@ -14,10 +14,14 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- WPF-UI Fluent Dark theme. Source dictionary path per
-                     lepoco/wpfui standard install pattern. -->
+                <!-- WPF-UI Fluent Dark theme tokens (accent colors, SystemAccentColor* family).
+                     ControlsDictionary omitted: WPF-UI 4.x requires ApplicationThemeManager.Apply()
+                     for implicit control styles to resolve their DynamicResource tokens; without
+                     that call the implicit Window/Button/TextBox styles use UnsetValue for Foreground,
+                     causing XamlParseException during style transition on any dialog that applies
+                     AppDialogStyle. Our dialogs use explicit AppDialogStyle + design-token styles;
+                     the WPF-UI implicit styles are not needed. -->
                 <ui:ThemesDictionary Theme="Dark" />
-                <ui:ControlsDictionary />
                 <!-- Stage 7.7B design system. Loaded after WPF-UI so our
                      tokens shadow any WPF-UI defaults we choose to override.
                      Index.xaml merges Colors, Typography, Animations, Buttons,
@@ -36,6 +40,21 @@
             <Color x:Key="SystemAccentColorPrimary">#FF9333EA</Color>
             <Color x:Key="SystemAccentColorSecondary">#FFC084FC</Color>
             <Color x:Key="SystemAccentColorTertiary">#FF6D28D9</Color>
+
+            <!-- Stage 7.7B-FIX: Override implicit Window style to prevent
+                 '{DependencyProperty.UnsetValue}' for Foreground during
+                 AppDialogStyle application. ThemesDictionary Dark installs
+                 implicit styles that reference DynamicResource tokens requiring
+                 ApplicationThemeManager.Apply() to be populated; without that
+                 call those tokens resolve to UnsetValue. During the style
+                 transition (implicit -> AppDialogStyle), WPF calls
+                 GetEffectiveValue on Foreground and throws if it is UnsetValue.
+                 This override replaces any WPF-UI implicit Window style with one
+                 that always sets Foreground to a populated StaticResource so
+                 AppDialogStyle transitions are always safe. -->
+            <Style TargetType="{x:Type Window}">
+                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            </Style>
 
             <!-- Stage 7.7: BoolToVisibilityConverter for dialog visibility bindings.
                  Built-in WPF BooleanToVisibilityConverter; aliased as BoolToVis

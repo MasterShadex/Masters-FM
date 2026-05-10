@@ -21,6 +21,10 @@ public partial class AudioDeviceWindow : Window
 
     public AudioDeviceWindow()
     {
+        // Guard against '{DependencyProperty.UnsetValue}' for Foreground during
+        // AppDialogStyle application -- see WelcomeWindow.xaml.cs for explanation.
+        SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
+
         InitializeComponent();
         // Subscribe to SelectedDevice changes so we can show the toast.
         DataContextChanged += OnDataContextChanged;

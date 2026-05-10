@@ -25,49 +25,38 @@
         <Setter Property="Background"            Value="Transparent"/>
         <Setter Property="ResizeMode"            Value="NoResize"/>
         <Setter Property="ShowInTaskbar"         Value="True"/>
-        <Setter Property="Foreground"            Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground"            Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily"            Value="Segoe UI"/>
         <Setter Property="FontSize"              Value="14"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Window">
-                    <ControlTemplate.Resources>
-                        <!-- AccentBarDuration must be defined here because {StaticResource}
-                             inside ControlTemplate.Resources cannot traverse sibling merged
-                             dictionaries (Animations.xaml). WPF StaticResource scoping:
-                             lookup is local-dict-first, then logical tree; it does NOT
-                             search the parent ResourceDictionary's MergedDictionaries.
-                             Value matches the Animations.xaml definition (8 seconds). -->
-                        <Duration x:Key="AccentBarDuration">0:0:8</Duration>
-
-                        <!-- AccentBarShimmer: opacity pulse on the white highlight overlay.
-                             AutoReverse gives a smooth in-out sweep without a jump cut.
-                             Reduced-motion: dialogs that need it stop this storyboard in
-                             OnApplyTemplate when app-level reduced-motion is active. -->
-                        <Storyboard x:Key="AccentBarShimmer"
-                                    RepeatBehavior="Forever"
-                                    AutoReverse="True">
-                            <DoubleAnimation Storyboard.TargetName="AccentShimmer"
-                                             Storyboard.TargetProperty="Opacity"
-                                             From="0.0" To="0.55"
-                                             Duration="{StaticResource AccentBarDuration}"/>
-                        </Storyboard>
-                    </ControlTemplate.Resources>
+                    <!-- ControlTemplate.Resources intentionally empty.
+                         AccentBarDuration and AccentBarShimmer were moved out of here;
+                         the Storyboard is now inlined in the EventTrigger below (see
+                         ControlTemplate.Triggers). Reason: a Storyboard stored in
+                         ControlTemplate.Resources is frozen/shared across template
+                         instances; the frozen Storyboard cannot resolve
+                         Storyboard.TargetName across multiple dialogs and throws
+                         InvalidOperationException 'AccentShimmer name cannot be found
+                         in the name scope of ControlTemplate'. Inlining the Storyboard
+                         directly in BeginStoryboard keeps it per-instance, allowing
+                         correct name-scope resolution for every dialog window. -->
 
                     <!-- Shadow bleed margin: 12px on all sides so the drop
                          shadow is not clipped by the window bounds. -->
                     <Grid Margin="12">
                         <!-- Outer layer provides the drop shadow. -->
-                        <Border Effect="{StaticResource DialogShadow}"
+                        <Border Effect="{DynamicResource DialogShadow}"
                                 CornerRadius="12"
-                                Background="{StaticResource Surface1}">
+                                Background="{DynamicResource Surface1}">
                             <DockPanel LastChildFill="True">
 
                                 <!-- === 3px accent bar (top) === -->
                                 <Grid DockPanel.Dock="Top" Height="3">
                                     <!-- Brand gradient fill. -->
                                     <Border x:Name="AccentBar"
-                                            Background="{StaticResource AccentBarGradient}"/>
+                                            Background="{DynamicResource AccentBarGradient}"/>
                                     <!-- Shimmer overlay: white highlight, animated opacity. -->
                                     <Border x:Name="AccentShimmer"
                                             Opacity="0">
@@ -101,8 +90,8 @@
                                     <!-- Dialog title: not hit-testable so drag still works. -->
                                     <TextBlock Grid.Column="0"
                                                Text="{TemplateBinding Title}"
-                                               Style="{StaticResource SubHeadingTextStyle}"
-                                               Foreground="{StaticResource TextPrimary}"
+                                               Style="{DynamicResource SubHeadingTextStyle}"
+                                               Foreground="{DynamicResource TextPrimary}"
                                                VerticalAlignment="Center"
                                                Margin="16,0,8,0"
                                                IsHitTestVisible="False"/>
@@ -111,11 +100,11 @@
                                          need it set Visibility=Visible in OnApplyTemplate. -->
                                     <Button x:Name="PART_MinimizeButton"
                                             Grid.Column="1"
-                                            Style="{StaticResource IconButtonStyle}"
+                                            Style="{DynamicResource IconButtonStyle}"
                                             Visibility="Collapsed"
                                             Margin="0,6,4,6">
-                                        <Path Data="{StaticResource IconMinimize}"
-                                              Fill="{StaticResource TextSecondary}"
+                                        <Path Data="{DynamicResource IconMinimize}"
+                                              Fill="{DynamicResource TextSecondary}"
                                               Width="12" Height="2"
                                               Stretch="Fill"/>
                                     </Button>
@@ -123,10 +112,10 @@
                                     <!-- PART_CloseButton: wired by OnApplyTemplate to Close(). -->
                                     <Button x:Name="PART_CloseButton"
                                             Grid.Column="2"
-                                            Style="{StaticResource IconButtonStyle}"
+                                            Style="{DynamicResource IconButtonStyle}"
                                             Margin="0,6,8,6">
-                                        <Path Data="{StaticResource IconClose}"
-                                              Fill="{StaticResource TextSecondary}"
+                                        <Path Data="{DynamicResource IconClose}"
+                                              Fill="{DynamicResource TextSecondary}"
                                               Width="10" Height="10"
                                               Stretch="Uniform"/>
                                     </Button>
@@ -145,14 +134,16 @@
                         </Border>
                     </Grid>
 
-                    <!-- Start shimmer on load. Duration is fixed at template apply
-                         time; dialogs needing reduced-motion must stop this storyboard
-                         programmatically in OnApplyTemplate. -->
-                    <ControlTemplate.Triggers>
-                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                            <BeginStoryboard Storyboard="{StaticResource AccentBarShimmer}"/>
-                        </EventTrigger>
-                    </ControlTemplate.Triggers>
+                    <!-- Stage 7.7B-FIX: AccentBar shimmer animation deferred to code-behind.
+                         WPF ControlTemplate.Triggers EventTrigger + Storyboard.TargetName
+                         cannot reliably resolve named template elements (AccentShimmer) at
+                         trigger-fire time when the template is shared across multiple
+                         Window instances; the name scope lookup throws
+                         InvalidOperationException. Animation is started in OnApplyTemplate
+                         (per-dialog code-behind) once the template is applied and the named
+                         parts are accessible via GetTemplateChild. -->
+                    <ControlTemplate.Triggers/>
+
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
