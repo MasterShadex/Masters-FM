@@ -19,6 +19,7 @@
          Background: brand-purple-base. Hover: deep + glow shadow.
          Press: deep + depress 1px. Padding: 24x10. Min-width: 120. -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"  Value="{DynamicResource BrandPurpleBase}"/>
         <Setter Property="Foreground"  Value="#FFFFFF"/>
         <Setter Property="FontFamily"  Value="Segoe UI"/>
@@ -69,6 +70,7 @@
     <!-- === Secondary (Ghost) Button ===
          Transparent bg + subtle border. Hover: Surface2 bg. Press: Surface3. -->
     <Style x:Key="SecondaryButtonStyle" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"      Value="Transparent"/>
         <Setter Property="Foreground"      Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
@@ -117,6 +119,7 @@
     <!-- === Tertiary (Text-only) Button ===
          No bg, no border. Hover: TextPrimary color + subtle underline. -->
     <Style x:Key="TertiaryButtonStyle" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"      Value="Transparent"/>
         <Setter Property="Foreground"      Value="{DynamicResource TextSecondary}"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
@@ -160,6 +163,7 @@
          32x32 square. Transparent resting. Surface2 hover. Surface3 pressed.
          6px border-radius. Used for close (X) and minimize (-) buttons. -->
     <Style x:Key="IconButtonStyle" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"      Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Width"           Value="32"/>

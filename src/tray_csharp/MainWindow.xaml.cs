@@ -10,6 +10,7 @@
 
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using MastersFM.Tray.Services;
@@ -103,6 +104,17 @@ public partial class MainWindow : Window
         }
 
         _logger.Log("MainWindow.Loaded: TaskbarIcon initialized; tray visible; ContextMenu DataContext wired", "Tray");
+    }
+
+    // -------------------------------------------------------------------------
+    // Keyboard: Escape -- no-op for hidden tray host (OnClosing guard blocks close)
+    // -------------------------------------------------------------------------
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+            Close();
+        base.OnKeyDown(e);
     }
 
     protected override void OnClosing(CancelEventArgs e)

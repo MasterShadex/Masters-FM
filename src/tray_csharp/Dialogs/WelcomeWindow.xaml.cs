@@ -168,4 +168,15 @@ public partial class WelcomeWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed)
             DragMove();
     }
+
+    // -------------------------------------------------------------------------
+    // Keyboard: Escape closes (Skip Setup semantics)
+    // -------------------------------------------------------------------------
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+            Close();
+        base.OnKeyDown(e);
+    }
 }

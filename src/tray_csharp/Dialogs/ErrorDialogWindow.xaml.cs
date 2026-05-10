@@ -56,4 +56,15 @@ public partial class ErrorDialogWindow : Window
     {
         Close();
     }
+
+    // -------------------------------------------------------------------------
+    // Keyboard: Escape closes
+    // -------------------------------------------------------------------------
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+            Close();
+        base.OnKeyDown(e);
+    }
 }

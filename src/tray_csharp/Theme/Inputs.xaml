@@ -13,10 +13,32 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- === Focus Visual Style ===
+         2px dashed ring (BorderFocus color, 8px radius) for keyboard focus.
+         Renders in WPF adorner layer above the control.
+         Applied via FocusVisualStyle setter on all button and input styles. -->
+    <Style x:Key="AppFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-2"
+                               StrokeThickness="2"
+                               StrokeDashArray="2 2"
+                               RadiusX="8"
+                               RadiusY="8"
+                               Stroke="{DynamicResource BorderFocus}"
+                               Fill="Transparent"
+                               SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- === TextBox ===
          Background: Surface2. Border: 1px BorderSubtle. Padding: 10 14.
          Focus: BorderFocus + InputFocusShadow. -->
     <Style x:Key="AppTextBoxStyle" TargetType="TextBox">
+        <Setter Property="FocusVisualStyle"  Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"        Value="{DynamicResource Surface2}"/>
         <Setter Property="Foreground"        Value="{DynamicResource TextPrimary}"/>
         <Setter Property="CaretBrush"        Value="{DynamicResource BrandPurpleBase}"/>
@@ -52,7 +74,7 @@
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground"
                                     Value="{DynamicResource TextTertiary}"/>
-                            <Setter Property="Opacity" Value="0.5"/>
+                            <Setter Property="Opacity" Value="0.4"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -63,6 +85,7 @@
     <!-- === ComboBox ===
          Same shell as TextBox; dropdown uses Surface1 background + deep shadow. -->
     <Style x:Key="AppComboBoxStyle" TargetType="ComboBox">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Background"      Value="{DynamicResource Surface2}"/>
         <Setter Property="Foreground"      Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush"     Value="{DynamicResource BorderSubtle}"/>
@@ -125,7 +148,7 @@
                                     Value="{DynamicResource InputFocusShadow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.5"/>
+                            <Setter Property="Opacity" Value="0.4"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -169,6 +192,7 @@
     <!-- === CheckBox ===
          18x18, 4px radius. Resting: border only. Checked: BrandPurpleBase fill + check. -->
     <Style x:Key="AppCheckBoxStyle" TargetType="CheckBox">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="FontSize"   Value="14"/>
@@ -216,7 +240,7 @@
                                     Value="{DynamicResource InputFocusShadow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.5"/>
+                            <Setter Property="Opacity" Value="0.4"/>
                             <Setter Property="Cursor" Value="Arrow"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -228,6 +252,7 @@
     <!-- === RadioButton ===
          Circle (18x18). Selected: BrandPurpleBase ring + inner dot. -->
     <Style x:Key="AppRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource AppFocusVisualStyle}"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="FontSize"   Value="14"/>
@@ -263,7 +288,7 @@
                                     Value="{DynamicResource BrandPurpleGlow}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.5"/>
+                            <Setter Property="Opacity" Value="0.4"/>
                             <Setter Property="Cursor" Value="Arrow"/>
                         </Trigger>
                     </ControlTemplate.Triggers>

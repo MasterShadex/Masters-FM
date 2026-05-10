@@ -76,7 +76,7 @@
 
         <!-- === Progress section: Checking / Downloading / Installing === -->
         <!-- Indeterminate bar: Checking and Installing states -->
-        <ProgressBar Height="6"
+        <ProgressBar Height="4"
                      Minimum="0"
                      Maximum="100"
                      IsIndeterminate="True"
@@ -113,14 +113,14 @@
                     </Style.Triggers>
                 </Style>
             </StackPanel.Style>
-            <ProgressBar Height="6"
+            <ProgressBar Height="4"
                          Minimum="0"
                          Maximum="100"
                          Value="{Binding ProgressPercent}"
                          IsIndeterminate="False"
                          Foreground="{StaticResource BrandPurpleBase}"
                          Background="{StaticResource Surface2}"
-                         Margin="0,0,0,6"/>
+                         Margin="0,0,0,8"/>
             <TextBlock Style="{StaticResource CaptionTextStyle}"
                        Foreground="{StaticResource TextSecondary}"
                        TextAlignment="Center">

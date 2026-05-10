@@ -109,4 +109,15 @@ public partial class AudioDeviceWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed)
             DragMove();
     }
+
+    // -------------------------------------------------------------------------
+    // Keyboard: Escape closes
+    // -------------------------------------------------------------------------
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+            Close();
+        base.OnKeyDown(e);
+    }
 }

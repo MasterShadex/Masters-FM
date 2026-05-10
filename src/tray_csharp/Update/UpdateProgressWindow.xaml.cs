@@ -78,4 +78,15 @@ public partial class UpdateProgressWindow : Window
     {
         Close();
     }
+
+    // -------------------------------------------------------------------------
+    // Keyboard: Escape closes (respects OnClosing guard during Downloading/Installing)
+    // -------------------------------------------------------------------------
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+            Close();
+        base.OnKeyDown(e);
+    }
 }
