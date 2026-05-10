@@ -9,10 +9,13 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.2 (local branch ahead; INTERRUPT #3 + Stage 7.8B + Stage 7.8C complete; rc.3 pending Brief 3)
-**Last updated:** 2026-05-09 (AutoStart default-ON (c302682) + Stage 7.8D OBS intent-vs-reality state machine PASS; 9/9 E2E tests; 9 new commits)
+**Current version:** v14.0.0-rc.2 (local branch ahead; Stage 7.7B-FIX WPF design-system rebuild complete locally; rc.3 pending)
+**Last updated:** 2026-05-10 (Stage 7.7B-FIX complete: Class K DynamicResource fix, ErrorDialog + UpdateProgress rebuild, styled ContextMenu; 12/12 smoke checks PASS; commits a91e246 + 5421581)
 
 ## IN-FLIGHT WORK
+
+**Stage 7.7B-FIX -- WPF design-system visual rebuild -- LOCAL COMPLETE 2026-05-10**
+- All 8 STEPs done; 12/12 smoke test checks PASS; next: rc.3 ship-prep (version bump, 6h soak, tag, push)
 
 **Stage 7.8D -- OBS intent-vs-reality state machine -- LOCAL COMPLETE 2026-05-09**
 - Bug fixed: obs.enabled never cleared by toggle; 5s App.xaml.cs auto-add re-added source on every restart
@@ -161,6 +164,8 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 - Autonomous overnight runs: no pausing, update memory at checkpoints, fail loudly if blocked
 - Process priority lowering acceptable if it fixes real bugs without regressing audio quality
 - **Always rebuild after every version bump and place bundle on Desktop** — user zips and sends to friends
+- **Always rebuild after every code/XAML change** — run dotnet build before committing, fix errors before moving on
+- **Never git push** unless the user explicitly says to push
 
 ---
 
@@ -1110,3 +1115,55 @@ Replace `$Session.GetHashCode()` with `$Session.SourceAppUserModelId` as cache k
 4. **Don't delete old changelog entries.** Compact only if >500 lines, ask first.
 5. **Be honest.** If something failed, say so plainly.
 6. **No filler.**
+
+---
+
+### 2026-05-10 -- Stage 7.7B-FIX: WPF design-system visual rebuild
+
+**Commits:** prior session (a91e246, STEPs 0-4 + initial audit/fix) + 5421581 (STEP 5 context menu)
+**Outcome:** PASS (12/12 S7 checks pass; 0W/0E Debug + Release; SHA256 4/4 MATCH)
+
+#### What was fixed (Class K -- DynamicResource for cross-file refs inside ControlTemplate)
+- WPF DeferredResourceReference in ControlTemplate content resolves against the owning ResourceDictionary
+  scope only (not Application.Resources). All {StaticResource} cross-file refs inside Style Setters and
+  ControlTemplate content changed to {DynamicResource} across Buttons.xaml, Inputs.xaml, Cards.xaml,
+  AppDialogStyle.xaml. Same rule applied to new ContextMenu.xaml.
+- MC3000 XML comment constraint: double-hyphen (--) inside <!-- --> is illegal XAML; replaced with
+  parenthesised alternatives in Buttons.xaml and Inputs.xaml comments.
+- Cards.xaml BasedOn={StaticResource CardStyle} preserved as StaticResource (same-file, correct).
+- AppDialogStyle.xaml: AccentBar shimmer Storyboard moved to per-dialog code-behind OnApplyTemplate
+  to avoid name-scope InvalidOperationException across shared-template Window instances.
+
+#### New files / major rewrites
+- Theme/ContextMenu.xaml (new): AppContextMenuStyle (CornerRadius=12, CardHoverShadow, Surface1),
+  AppMenuItemStyle (36px, 3-col icon/label/check grid, IsHighlighted + IsChecked triggers),
+  AppMenuSeparatorStyle (1px BorderSubtle, 8px margin). All class-K compliant.
+- Theme/Index.xaml: ContextMenu.xaml merged after AppDialogStyle.xaml.
+- MainWindow.xaml: ContextMenu gets AppContextMenuStyle; now-playing art row replaced with wordmark
+  header (Master's FM bold BrandPurpleBase + NowPlayingHeaderText subtitle); 11 functional items
+  get AppMenuItemStyle; separators get AppMenuSeparatorStyle; 6 items get icon Path (Platform,
+  Audio, Customize, OBS, PatchNotes, Updates, Quit).
+- Dialogs/ErrorDialogWindow.xaml + .cs: full visual rebuild using AppDialogStyle (WelcomeWindow
+  pattern); SetValue(ForegroundProperty) guard; PART_TitleBar + PART_CloseButton wired in OnApplyTemplate.
+- Update/UpdateProgressWindow.xaml: state-driven via DataTriggers on CurrentState enum; IndeterminateBar
+  for Checking/Installing; DeterminateBar for Downloading; Authenticode badge in Ready state; buttons
+  (CheckNow/Download/Install/Cancel/Close) per state.
+
+#### ViewModel change
+- TrayMenuViewModel.cs: NowPlayingHeaderText [ObservableProperty] (default v14.0.0-rc.2 - ready);
+  UpdateNowPlayingHeaderText() subscribes to NowPlaying.PropertyChanged (Artist/Track); marshals to
+  UI dispatcher; shows Artist - Track when playing.
+
+#### Key gotchas for future sessions
+- WPF single-instance mutex is GlobalMastersFM_SingleInstance (App.xaml.cs); dev Release build
+  exits code 0 if installed production MastersFM_Tray.exe holds the mutex. Kill prod first to test dev build.
+- WPF obj intermediate dir is src/obj/MastersFM_Tray_v14/ (NOT tray_csharp/obj/) per
+  src/Directory.Build.props BaseIntermediateOutputPath redirect.
+- ContextMenu CornerRadius=12 requires Popup AllowsTransparency=True (WPF default for ContextMenu);
+  Win11 22H2+ code-behind overrides Background=Transparent and applies Acrylic; Surface1 stays as
+  Win10 fallback.
+
+#### CURRENT STATE after this session
+- Local branch is ahead of git remote by at least STEP 5 commit (5421581)
+- Stage 7.7B-FIX fully local-complete; not yet wrapped into rc.3 ship-prep
+- Next planned: rc.3 prep (version.json bump, 6h soak, tag, push, tester announcement per prior deferred plan)
