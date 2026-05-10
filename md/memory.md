@@ -9,13 +9,19 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.2 (local branch ahead; Stage 7.7B-FIX WPF design-system rebuild complete locally; rc.3 pending)
-**Last updated:** 2026-05-10 (Stage 7.7B-FIX complete: Class K DynamicResource fix, ErrorDialog + UpdateProgress rebuild, styled ContextMenu; 12/12 smoke checks PASS; commits a91e246 + 5421581)
+**Current version:** v14.0.0-rc.2 (local branch ahead; Stage 7.7B FINAL WPF design-system polish complete locally; rc.3 pending)
+**Last updated:** 2026-05-10 (Stage 7.7B FINAL complete: focus rings, Escape-to-close, 40% disabled opacity, spacing polish; 30/35 E2E smoke PASS; commits 53ad544 + 4c72b87 + 91e2497 + c6242e1)
 
 ## IN-FLIGHT WORK
 
-**Stage 7.7B-FIX -- WPF design-system visual rebuild -- LOCAL COMPLETE 2026-05-10**
-- All 8 STEPs done; 12/12 smoke test checks PASS; next: rc.3 ship-prep (version bump, 6h soak, tag, push)
+**Stage 7.7B FINAL -- cross-cutting polish + final smoke + report -- LOCAL COMPLETE 2026-05-10**
+- AppFocusVisualStyle (2px dashed BorderFocus ring, R8) on all 4 button + 4 input styles
+- Escape-to-close on all 7 dialog code-behinds (WelcomeWindow, SetupWizard, AudioDevice, Platforms, Error, UpdateProgress, MainWindow)
+- Disabled opacity corrected 50% -> 40% on all 4 input styles
+- Spacing fixes: WelcomeWindow overline/heading/bullet margins; UpdateProgress ProgressBar height 6->4px, section margin 6->8px
+- E2E smoke: 30/35 PASS, 5 PENDING_OPERATOR (items 15, 27, 29, 30, 31), 0 FAIL
+- Commits: 53ad544 (STEPs 1-3 polish), 4c72b87 (STEP 5 smoke), 91e2497 (STEP 6 before/after), c6242e1 (STEP 7 SHA256)
+- Next: STEP 9 final report, then rc.3 ship-prep (version.json bump, 6h soak, tag, push)
 
 **Stage 7.8D -- OBS intent-vs-reality state machine -- LOCAL COMPLETE 2026-05-09**
 - Bug fixed: obs.enabled never cleared by toggle; 5s App.xaml.cs auto-add re-added source on every restart
@@ -1090,10 +1096,42 @@ Replace `$Session.GetHashCode()` with `$Session.SourceAppUserModelId` as cache k
 - Files changed: `overlay.html`, `tray.ps1` (version + PATCH_HISTORY)
 - **Note:** Verified in preview by copying overlay.html to `C:\Users\Master\AppData\Local\MastersFM\` — server.exe serves from install dir, not source. Normal rebuild path will copy it properly.
 
-### 2026-04-30 10:00 — Full onboarding from all .md files
+### 2026-05-10 -- Stage 7.7B FINAL: cross-cutting polish + final smoke + report
+
+**Commits:** 53ad544 (STEPs 1-3 polish), 4c72b87 (STEP 5 E2E smoke), 91e2497 (STEP 6 before/after), c6242e1 (STEP 7 SHA256 + build scripts)
+**Outcome:** PASS (30/35 E2E smoke PASS, 5 PENDING_OPERATOR, 0 FAIL)
+
+#### What landed
+- `AppFocusVisualStyle` in `Theme/Inputs.xaml`: 2px dashed `BorderFocus` rect, R8, renders in adorner layer on Tab-key navigation; applied to PrimaryButtonStyle, SecondaryButtonStyle, TertiaryButtonStyle, IconButtonStyle, AppTextBoxStyle, AppComboBoxStyle, AppCheckBoxStyle, AppRadioButtonStyle
+- Disabled-state opacity corrected: 0.5 -> 0.4 on all 4 input styles (AppTextBoxStyle, AppComboBoxStyle, AppCheckBoxStyle, AppRadioButtonStyle)
+- Escape-to-close added to all 7 dialog code-behinds: WelcomeWindow, SetupWizardWindow, AudioDeviceWindow, PlatformsWindow, ErrorDialogWindow, UpdateProgressWindow, MainWindow (tray host -- no-op via OnClosing guard)
+- WelcomeWindow spacing audit: overline margin 6->8px, heading margin 14->16px, bullet icon-to-text gap 10->12px (all three bullets)
+- UpdateProgressWindow spacing audit: ProgressBar Height 6->4px; Download section Margin bottom 6->8px
+- ReducedMotion verified: system has ClientAreaAnimation=False permanently; ReducedMotion=true confirmed in log at every startup; all animation durations zeroed
+- E2E smoke matrix: `V14_S7_7B_FINAL_E2E_SMOKE.md` -- 30/35 PASS, items 15/27/29/30/31 PENDING_OPERATOR (multi-monitor, OBS toggle-OFF cycle, UUID test, pending-restart clear, MSI-OBS-closed uninstall)
+- Before/after doc: `V14_S7_7B_FINAL_BEFORE_AFTER.md` -- 7 surfaces described; BEFORE screenshots in `_BACKUPS_2026-05-09_23-36_S7_7B_PRE/screenshots_pre/`; AFTER screenshots PENDING_OPERATOR
+- Screenshot capture helper: `build_tools/_take_screenshots.ps1`
+- Stage final report: `V14_S7_7B_FINAL_REPORT.md` (STEP 9)
+
+#### Protected files -- unchanged
+- tray.ps1, tray_native.cs, launcher.cs, server.js -- NOT touched
+- customize.html, overlay.html -- NOT touched
+- version.json -- NOT bumped (rc.3 ship-prep deferred)
+
+#### Known follow-ups (documented as future)
+- AudioDeviceWindow: hardcoded #FFFFFF on Default pill + toast text (Brief 4)
+- PlatformsWindow: `#4C1D95` deep-purple gradient has no token; ActivePillStyle #FFFFFF foreground (Brief 4)
+- ErrorDialogWindow: MonoTextStyle for error detail TextBox inline (Brief 4)
+- AFTER screenshots: operator must open each dialog and run `build_tools/_take_screenshots.ps1 -Name <name>`
+- E2E items 15/27/29/30/31: require dedicated operator test cycles
+
+#### Next
+- rc.3 ship-prep: version.json bump, 6h soak, tag, push, tester announcement
+
+### 2026-04-30 10:00 -- Full onboarding from all .md files
 - Read all 45 project .md files (excluding node_modules, backups)
 - Confirmed source root is `G:\Project Folder\Master FM\` (HANDOFF.md F: path is stale)
-- Version history reconstructed from V9_FINAL_REPORT through V96_FINAL_REPORT: v9.0.0→v9.6.0
+- Version history reconstructed from V9_FINAL_REPORT through V96_FINAL_REPORT: v9.0.0->v9.6.0
 - Key deferred items catalogued in open_issues.md
 - Hard constraints + gotchas in hard_constraints.md
 - Architecture + file sizes + endpoints in project_overview.md + codebase_details.md
