@@ -138,13 +138,13 @@
                             <Border.Style>
                                 <Style TargetType="Border" BasedOn="{StaticResource StepBarStyle}">
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding CurrentStep,
+                                        <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                                      RelativeSource={RelativeSource AncestorType=Window}}"
                                                      Value="Audio">
                                             <Setter Property="Background"
                                                     Value="{StaticResource BrandPurpleBase}"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding CurrentStep,
+                                        <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                                      RelativeSource={RelativeSource AncestorType=Window}}"
                                                      Value="Platforms">
                                             <Setter Property="Background"
@@ -159,7 +159,7 @@
                             <Border.Style>
                                 <Style TargetType="Border" BasedOn="{StaticResource StepBarStyle}">
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding CurrentStep,
+                                        <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                                      RelativeSource={RelativeSource AncestorType=Window}}"
                                                      Value="Platforms">
                                             <Setter Property="Background"
@@ -186,7 +186,7 @@
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep,
+                                <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                              RelativeSource={RelativeSource AncestorType=Window}}"
                                              Value="Welcome">
                                     <Setter Property="Visibility" Value="Visible"/>
@@ -239,7 +239,7 @@
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep,
+                                <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                              RelativeSource={RelativeSource AncestorType=Window}}"
                                              Value="Audio">
                                     <Setter Property="Visibility" Value="Visible"/>
@@ -306,7 +306,7 @@
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CurrentStep,
+                                <DataTrigger Binding="{Binding DataContext.CurrentStep,
                                              RelativeSource={RelativeSource AncestorType=Window}}"
                                              Value="Platforms">
                                     <Setter Property="Visibility" Value="Visible"/>
