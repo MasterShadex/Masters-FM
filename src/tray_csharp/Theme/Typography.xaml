@@ -9,10 +9,9 @@
 
     <!-- Display: 28px SemiBold. Used for Welcome hero, dialog titles. -->
     <Style x:Key="DisplayTextStyle" TargetType="TextBlock">
-        <Setter Property="FontFamily"    Value="Segoe UI"/>
-        <Setter Property="FontSize"      Value="28"/>
-        <Setter Property="FontWeight"    Value="SemiBold"/>
-        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize"   Value="28"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
     <!-- Heading: 18px SemiBold. Used for section headers. -->
