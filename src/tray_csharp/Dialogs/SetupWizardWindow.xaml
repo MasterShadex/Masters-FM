@@ -11,6 +11,7 @@
         xmlns:vm="clr-namespace:MastersFM.Tray.ViewModels"
         Title="Master's FM setup"
         Width="720" Height="560"
+        WindowStartupLocation="CenterScreen"
         Style="{StaticResource AppDialogStyle}">
 
     <Window.Resources>

@@ -10,6 +10,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Master's FM"
         Width="720" Height="480"
+        WindowStartupLocation="CenterScreen"
         Style="{StaticResource AppDialogStyle}">
 
     <!-- Two-column content (fills ContentPresenter inside AppDialogStyle chrome) -->

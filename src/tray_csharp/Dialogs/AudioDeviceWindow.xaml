@@ -9,6 +9,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Audio Source"
         Width="640" Height="520"
+        WindowStartupLocation="CenterScreen"
         Style="{StaticResource AppDialogStyle}">
 
     <Window.Resources>
