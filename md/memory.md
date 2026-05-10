@@ -9,10 +9,25 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.2 (local branch ahead; Stage 7.7B FINAL WPF design-system polish complete locally; rc.3 pending)
-**Last updated:** 2026-05-10 (Stage 7.7B FINAL complete: focus rings, Escape-to-close, 40% disabled opacity, spacing polish; 30/35 E2E smoke PASS; commits 53ad544 + 4c72b87 + 91e2497 + c6242e1)
+**Current version:** v14.0.0-rc.3 (ship-prep in progress; soak running; STEPs 0-7 + STEP 3 gate PASS complete; awaiting 6h soak for STEPs 8-9)
+**Last updated:** 2026-05-10 20:20 (rc.3 ship-prep STEPs 0-7 complete; soak IN PROGRESS; awaiting soak completion for STEP 8 git push + STEP 9 GitHub Release)
 
 ## IN-FLIGHT WORK
+
+**RC.3 SHIP-PREP -- IN PROGRESS 2026-05-10**
+- STEP 0: backup checkpoint PASS (751 files, 67.6 MB zip)
+- STEP 1: remote state PASS (v14.0.0-rc.2 NOT on remote, v12.0.1 only release, 66+ commits ahead)
+- STEP 2: clean install for verification PASS (WMI uninstall, _full_rebuild.ps1 rc.1, tray PID 6244)
+- STEP 3: 12-item functional gate PASS (items 1-9 operator hands-on; item 10 SKIP per brief; items 11-12 log-verified)
+- STEP 4: version bump rc.2->rc.3 DONE (version.json, _full_rebuild.ps1 patched, .csproj, App.xaml.cs, TrayMenuViewModel.cs; DLL ProductVersion=14.0.0-rc.3+2464b7c confirmed)
+- STEP 5: 6h soak IN PROGRESS (started 20:16, SoundCloud active, soak_monitor running as bg task b6l2ekaf4)
+- STEP 6: release notes + tester announcement written and committed
+- STEP 7: protected file SHA256 PASS (all 4 unchanged), MSI verified (Valid, SHA256=F41A7C37, 11.31 MB)
+- STEP 8: git tag + push -- PENDING (after soak PASS)
+- STEP 9: GitHub Release DRAFT -- PENDING (after STEP 8, operator publishes)
+**Soak baseline memory:** Tray ws=247.6MB priv=204.2MB, Server ~113MB (above 100MB threshold -- watch during soak), Spectrum 42MB
+**Important:** After soak completes, check soak CSV, write V14_RC3_SOAK.md, then proceed with STEP 8 (git tag + push) and STEP 9 (gh release create).
+**git push target:** origin main + tag v14.0.0-rc.3
 
 **Stage 7.7B FINAL -- cross-cutting polish + final smoke + report -- LOCAL COMPLETE 2026-05-10**
 - AppFocusVisualStyle (2px dashed BorderFocus ring, R8) on all 4 button + 4 input styles
