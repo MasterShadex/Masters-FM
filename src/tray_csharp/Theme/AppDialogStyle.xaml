@@ -11,9 +11,10 @@
      Depends on: Colors.xaml (AccentBarGradient, Surface1, TextPrimary,
                               TextSecondary, DialogShadow),
                  Typography.xaml (SubHeadingTextStyle),
-                 Animations.xaml (AccentBarDuration),
                  Buttons.xaml (IconButtonStyle),
-                 Icons.xaml (IconClose, IconMinimize). -->
+                 Icons.xaml (IconClose, IconMinimize).
+     Note: AccentBarDuration is defined locally in ControlTemplate.Resources
+     (not from Animations.xaml) due to WPF StaticResource scoping rules. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
@@ -31,10 +32,18 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Window">
                     <ControlTemplate.Resources>
+                        <!-- AccentBarDuration must be defined here because {StaticResource}
+                             inside ControlTemplate.Resources cannot traverse sibling merged
+                             dictionaries (Animations.xaml). WPF StaticResource scoping:
+                             lookup is local-dict-first, then logical tree; it does NOT
+                             search the parent ResourceDictionary's MergedDictionaries.
+                             Value matches the Animations.xaml definition (8 seconds). -->
+                        <Duration x:Key="AccentBarDuration">0:0:8</Duration>
+
                         <!-- AccentBarShimmer: opacity pulse on the white highlight overlay.
-                             AccentBarDuration = 8s at design time; overridden to 0s by
-                             App.xaml.cs when IsReducedMotion is true. AutoReverse gives
-                             a smooth in-out sweep without a jump cut. -->
+                             AutoReverse gives a smooth in-out sweep without a jump cut.
+                             Reduced-motion: dialogs that need it stop this storyboard in
+                             OnApplyTemplate when app-level reduced-motion is active. -->
                         <Storyboard x:Key="AccentBarShimmer"
                                     RepeatBehavior="Forever"
                                     AutoReverse="True">
@@ -136,9 +145,9 @@
                         </Border>
                     </Grid>
 
-                    <!-- Start shimmer on load. If AccentBarDuration was overridden
-                         to 0s by reduced-motion detection, this fires instantly and
-                         AutoReverse keeps Opacity at 0 after the zero-length animation. -->
+                    <!-- Start shimmer on load. Duration is fixed at template apply
+                         time; dialogs needing reduced-motion must stop this storyboard
+                         programmatically in OnApplyTemplate. -->
                     <ControlTemplate.Triggers>
                         <EventTrigger RoutedEvent="FrameworkElement.Loaded">
                             <BeginStoryboard Storyboard="{StaticResource AccentBarShimmer}"/>
