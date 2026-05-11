@@ -300,8 +300,8 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="0">
-                    <ListBox ItemsSource="{Binding OutputDevices}"
-                             SelectedItem="{Binding SelectedWasapiDevice, Mode=OneWay}"
+                    <ListBox x:Name="WasapiListBox"
+                             ItemsSource="{Binding OutputDevices}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
                              Loaded="OnWasapiListBoxLoaded"
@@ -316,8 +316,8 @@
                                           FallbackValue=Visible}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <ListBox ItemsSource="{Binding MmeDevices}"
-                             SelectedItem="{Binding SelectedMmeDevice, Mode=OneWay}"
+                    <ListBox x:Name="MmeListBox"
+                             ItemsSource="{Binding MmeDevices}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
                              Loaded="OnMmeListBoxLoaded"

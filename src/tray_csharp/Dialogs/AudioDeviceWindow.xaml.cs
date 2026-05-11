@@ -1,12 +1,19 @@
 // Stage 7.7B STEP 4: AudioDeviceWindow code-behind.
-// Stage 7.12 Batch A rev13:
-//   - Both WASAPI and MME ListBoxes use SelectedItem Mode=OneWay so WPF
-//     never pushes selection state back to the ViewModel.
-//   - User clicks are forwarded via the shared OnDeviceSelectionChanged
-//     handler; programmatic binding updates (from SelectedDevice changing)
-//     are filtered by the device==vm.SelectedDevice guard.
-//   - Toast fires from OnDeviceSelectionChanged (user clicks) and OnResetClick.
+// Stage 7.12 Batch A rev16:
+//   Selection state is managed ENTIRELY from code-behind — no SelectedItem
+//   bindings exist on either ListBox.  This bypasses every WPF binding edge
+//   case (TwoWay push-back, OneWay reconnect timing, IsSynchronizedWith-
+//   CurrentItem auto-select, ContentPresenter detach behaviour).
+//
+//   Synchronization triggers, each of which sets BOTH ListBoxes' SelectedItem
+//   directly from the ViewModel's single SelectedDevice (filtered by Backend):
+//     - DataContext attaches (initial load)
+//     - PropertyChanged("SelectedDevice") fires (Reset, RefreshAsync restore)
+//     - A ListBox raises Loaded (tab re-enters the visual tree)
+//     - User clicks an item (OnDeviceSelectionChanged forwards to vm and
+//       explicitly clears the *other* ListBox)
 
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,19 +26,18 @@ namespace MastersFM.Tray.Dialogs;
 public partial class AudioDeviceWindow : Window
 {
     private DispatcherTimer? _toastTimer;
+    // True while we set SelectedItem on a ListBox programmatically; the
+    // resulting SelectionChanged event must be ignored so it isn't treated
+    // as a user click and routed back into the ViewModel.
+    private bool _syncing;
 
     public AudioDeviceWindow()
     {
-        // Guard against '{DependencyProperty.UnsetValue}' for Foreground during
-        // AppDialogStyle application -- see WelcomeWindow.xaml.cs for explanation.
         SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
 
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
     }
-
-    // -------------------------------------------------------------------------
-    // Template parts (AppDialogStyle PART_ wiring)
-    // -------------------------------------------------------------------------
 
     public override void OnApplyTemplate()
     {
@@ -45,50 +51,81 @@ public partial class AudioDeviceWindow : Window
     }
 
     // -------------------------------------------------------------------------
-    // Shared SelectionChanged handler for WASAPI and MME ListBoxes.
-    // Mode=OneWay means WPF only pushes SelectedDevice → ListBox, never back.
-    // This handler fires for BOTH binding-driven changes and user clicks;
-    // the guard "device == vm.SelectedDevice" discards binding-driven ones
-    // so we only call SelectDevice() on genuine user clicks.
+    // ViewModel subscription
     // -------------------------------------------------------------------------
 
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is AudioDeviceViewModel oldVm)
+            oldVm.PropertyChanged -= OnVmPropertyChanged;
+        if (e.NewValue is AudioDeviceViewModel newVm)
+        {
+            newVm.PropertyChanged += OnVmPropertyChanged;
+            SyncListBoxes(newVm);
+        }
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AudioDeviceViewModel.SelectedDevice)) return;
+        if (sender is AudioDeviceViewModel vm)
+            SyncListBoxes(vm);
+    }
+
+    // Set both ListBoxes' SelectedItem from the single ViewModel selection.
+    // The ListBox whose collection contains the active device gets it; the
+    // other gets null (an explicit null deselects everything cleanly).
+    private void SyncListBoxes(AudioDeviceViewModel vm)
+    {
+        var device = vm.SelectedDevice;
+        _syncing = true;
+        try
+        {
+            if (WasapiListBox != null)
+                WasapiListBox.SelectedItem = device?.Backend == "WASAPI" ? device : null;
+            if (MmeListBox != null)
+                MmeListBox.SelectedItem = device?.Backend == "MME" ? device : null;
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
     // -------------------------------------------------------------------------
-    // Loaded handlers: fire every time a tab re-enters the visual tree.
-    // The ContentPresenter removes/re-adds content on each tab switch, and
-    // WPF does not guarantee the OneWay binding re-evaluates on reconnect.
-    // We force the correct SelectedItem here so stale state is never shown.
+    // Loaded handlers: fire each time a tab re-enters the visual tree.
     // -------------------------------------------------------------------------
 
     private void OnWasapiListBoxLoaded(object sender, RoutedEventArgs e)
     {
-        if (DataContext is AudioDeviceViewModel vm && sender is ListBox lb)
-            lb.SelectedItem = vm.SelectedWasapiDevice;   // null when MME is active
+        if (DataContext is AudioDeviceViewModel vm) SyncListBoxes(vm);
     }
 
     private void OnMmeListBoxLoaded(object sender, RoutedEventArgs e)
     {
-        if (DataContext is AudioDeviceViewModel vm && sender is ListBox lb)
-            lb.SelectedItem = vm.SelectedMmeDevice;      // null when WASAPI is active
+        if (DataContext is AudioDeviceViewModel vm) SyncListBoxes(vm);
     }
+
+    // -------------------------------------------------------------------------
+    // User clicks an item
+    // -------------------------------------------------------------------------
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.AddedItems.Count == 0) return;
+        if (_syncing) return;                       // programmatic update, not a click
+        if (e.AddedItems.Count == 0) return;        // deselection
         if (e.AddedItems[0] is not AudioDeviceInfo device) return;
         var vm = DataContext as AudioDeviceViewModel;
         if (vm == null || vm.IsLoading) return;
-
-        // If device already matches the ViewModel's selection, this change was
-        // triggered by the OneWay binding updating the ListBox — not a user click.
-        if (device == vm.SelectedDevice) return;
+        if (device == vm.SelectedDevice) return;    // already the active device
 
         vm.SelectDevice(device);
+        // SyncListBoxes (via PropertyChanged) clears the other tab.
         ShowToast();
     }
 
     // -------------------------------------------------------------------------
-    // Reset: reverts to system default via CancelCommand.
-    // Always shows the toast so the user sees confirmation.
+    // Reset
     // -------------------------------------------------------------------------
 
     private void OnResetClick(object sender, RoutedEventArgs e)
@@ -101,7 +138,7 @@ public partial class AudioDeviceWindow : Window
     }
 
     // -------------------------------------------------------------------------
-    // Auto-persist toast: fades in the ToastBanner, auto-dismisses after 3 s
+    // Toast
     // -------------------------------------------------------------------------
 
     private void ShowToast()
@@ -124,7 +161,7 @@ public partial class AudioDeviceWindow : Window
     }
 
     // -------------------------------------------------------------------------
-    // Legacy handlers preserved for compatibility
+    // Chrome
     // -------------------------------------------------------------------------
 
     private void OnTitleBarDrag(object sender, MouseButtonEventArgs e)
@@ -132,10 +169,6 @@ public partial class AudioDeviceWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed)
             DragMove();
     }
-
-    // -------------------------------------------------------------------------
-    // Keyboard: Escape closes
-    // -------------------------------------------------------------------------
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
