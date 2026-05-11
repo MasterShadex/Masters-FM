@@ -60,7 +60,8 @@ public partial class AudioDeviceWindow : Window
 
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AudioDeviceViewModel.SelectedDevice))
+        if (e.PropertyName == nameof(AudioDeviceViewModel.SelectedWasapiDevice) ||
+            e.PropertyName == nameof(AudioDeviceViewModel.SelectedMmeDevice))
         {
             // Suppress toast during initial device enumeration (IsLoading = true)
             // so the window doesn't announce "Audio source updated." on open.

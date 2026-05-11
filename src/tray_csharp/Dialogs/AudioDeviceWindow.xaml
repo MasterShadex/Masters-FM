@@ -301,7 +301,7 @@
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="0">
                     <ListBox ItemsSource="{Binding OutputDevices}"
-                             SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                             SelectedItem="{Binding SelectedWasapiDevice, Mode=TwoWay}"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>
@@ -314,7 +314,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                     <ListBox ItemsSource="{Binding MmeDevices}"
-                             SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                             SelectedItem="{Binding SelectedMmeDevice, Mode=TwoWay}"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>
