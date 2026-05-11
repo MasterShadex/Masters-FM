@@ -41,13 +41,35 @@ public class ServerState
 
     // ── Current Track ─────────────────────────────────────────────────────────
     // Lock-protected JsonNode; DeepClone on read/write prevents aliasing.
+    // _currentTrackJson caches the serialized form so broadcast-only callers
+    // don't pay a DeepClone + ToJsonString() on every 1-second heartbeat.
+    // The cache is always kept in sync with _currentTrack under the same lock.
     private readonly object _trackLock = new();
     private JsonNode? _currentTrack;
+    private string _currentTrackJson = "null";
 
     public JsonNode? CurrentTrack
     {
         get { lock (_trackLock) return _currentTrack?.DeepClone(); }
-        set { lock (_trackLock) _currentTrack = value?.DeepClone(); }
+        set
+        {
+            lock (_trackLock)
+            {
+                _currentTrack = value?.DeepClone();
+                _currentTrackJson = _currentTrack?.ToJsonString() ?? "null";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the current track as a pre-serialized JSON string.
+    /// Use instead of <c>CurrentTrack?.ToJsonString()</c> in broadcast-only paths
+    /// to avoid an unnecessary DeepClone + re-serialization on every heartbeat.
+    /// The string is updated atomically whenever CurrentTrack is set.
+    /// </summary>
+    public string CurrentTrackJson
+    {
+        get { lock (_trackLock) return _currentTrackJson; }
     }
 
     // ── Config file paths ─────────────────────────────────────────────────────

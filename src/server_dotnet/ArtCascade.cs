@@ -69,10 +69,16 @@ internal sealed class ArtCascade
         var key    = $"{artist}|||{track}".ToLowerInvariant();
 
         // Cache hit (ID-20: LRU cache not present in server.js)
-        if (_cache.TryGet(key, out var cached) && !string.IsNullOrEmpty(cached))
+        // Cache stores both resolved URLs (non-empty) and "not found" (empty string).
+        // A cached empty string short-circuits the cascade immediately, preventing the
+        // B11 retry loop from running 11 HTTP sources on every heartbeat.
+        if (_cache.TryGet(key, out var cached))
         {
-            _logger.LogDebug("ArtCascade cache hit for {Key}", key);
-            return cached;
+            if (string.IsNullOrEmpty(cached))
+                _logger.LogDebug("ArtCascade cache: known no-art for {Key}", key);
+            else
+                _logger.LogDebug("ArtCascade cache hit for {Key}", key);
+            return cached; // "" or resolved URL -- both are valid cached answers
         }
 
         foreach (var src in _sources)
@@ -100,6 +106,7 @@ internal sealed class ArtCascade
         }
 
         _logger.LogInformation("ArtCascade: no art found for {Artist} - {Track}", artist, track);
+        _cache.Set(key, string.Empty); // Cache "not found" -- short-circuits future calls for this track
         return string.Empty;
     }
 }

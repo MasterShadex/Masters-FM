@@ -396,15 +396,16 @@ internal static class WebhookHandler
                 state.WebhookLock.Release();
             }
             // Broadcast with art (mirrors server.js setTrack line 898: sseBroadcast after art)
-            var jsonWithArt = state.CurrentTrack?.ToJsonString() ?? "null";
-            state.Broadcast(jsonWithArt);
+            // Use CurrentTrackJson (cached serialization) -- avoids re-cloning the large JSON node.
+            state.Broadcast(state.CurrentTrackJson);
             // Discord post-cascade push: sends final art URL to Discord
             discordRpcService.PushDiscord(state.CurrentTrack);
         }
 
         // --- sseBroadcast() (server.js line 1065 -- always fires) ---
-        var broadcastJson = state.CurrentTrack?.ToJsonString() ?? "null";
-        state.Broadcast(broadcastJson);
+        // Use CurrentTrackJson (cached serialization) -- avoids DeepClone + ToJsonString()
+        // on every 1-second heartbeat (a ~95 KB allocation for a 47 KB track payload).
+        state.Broadcast(state.CurrentTrackJson);
         // Discord always-fires push: covers heartbeat, pause, resume, seek
         discordRpcService.PushDiscord(state.CurrentTrack);
 
@@ -449,14 +450,21 @@ internal static class WebhookHandler
                     state.ArtResolving = false;
                     state.WebhookLock.Release();
                 }
-                state.Broadcast(state.CurrentTrack?.ToJsonString() ?? "null");
+                state.Broadcast(state.CurrentTrackJson);
                 // Discord B11 push: final art URL now known
                 discordRpcService.PushDiscord(state.CurrentTrack);
             }
             else
             {
+                // Art retry found nothing. Mark ArtResolved=true so the B11 guard stops
+                // re-triggering this retry every heartbeat. Without this circuit-breaker the
+                // server accumulates parallel cascade tasks (11 HTTP sources × 1s heartbeat
+                // cadence) causing unbounded memory growth.
+                // ArtResolved resets to false on the next distinct track, so a fresh cascade
+                // will run for each new title. The ArtCascade LRU also caches "not-found"
+                // so a re-trigger before the track changes exits immediately from cache.
                 await state.WebhookLock.WaitAsync(CancellationToken.None);
-                try { state.ArtResolving = false; }
+                try { state.ArtResolving = false; state.ArtResolved = true; }
                 finally { state.WebhookLock.Release(); }
             }
         }
