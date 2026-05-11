@@ -7,14 +7,22 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 ## CURRENT STATE
 
-**Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
+**Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.3 (ship-prep in progress; soak v6 IN PROGRESS since 08:30 2026-05-11, ends ~14:30)
-**Last updated:** 2026-05-11 08:30 (soak v6 running with 350 MB threshold; server at 63 MB with Workstation GC)
+**Current version:** v14.0.0-rc.3 (rc.3 GitHub release DRAFT -- NOT published; 10-issue diagnosis complete; publication on hold)
+**Last updated:** 2026-05-11 (Stage 7.11 diagnosis complete; rc.3 publication blocked on Batch A/B fixes)
 
 ## IN-FLIGHT WORK
 
-**RC.3 SHIP-PREP -- IN PROGRESS 2026-05-11**
+**RC.3 PUBLICATION HOLD -- ACTIVE 2026-05-11**
+- rc.3 GitHub release remains DRAFT (not published); tag v14.0.0-rc.3 on remote stays in place
+- 10 issues found in real-world testing; all diagnosed in V14_S7_11_DIAG_*.md
+- Next step: Batch A (5 P0 trivial/small fixes, each with per-fix operator verify gate)
+- After Batch A: Batch B (OBS toggle fix -- critical), then Batch C (layout, KS/ASIO, Discord)
+- Then soak restart, then rc.3/rc.4 publication decision
+- See V14_S7_11_DIAG_SUMMARY.md for full prioritization table
+
+**RC.3 SHIP-PREP -- COMPLETED (prior session)**
 - STEP 0: backup checkpoint PASS (751 files, 67.6 MB zip)
 - STEP 1: remote state PASS (v14.0.0-rc.2 NOT on remote, v12.0.1 only release, 66+ commits ahead)
 - STEP 2: clean install for verification PASS (WMI uninstall, _full_rebuild.ps1 rc.1, tray PID 6244)
@@ -201,6 +209,41 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-11 -- Stage 7.11: diagnosis of 10 operator-reported rc.3 issues
+
+**Commits:** `491d9af` (STEP 0 checkpoint + V14_RC3_HOLDING.md) `9d32209` (DIAG_01) `4605e8f` (DIAG_02) `bbe950e` (DIAG_06) `efe0dab` (DIAG_07) `309927d` (DIAG_08) `80f29db` (DIAG_03) `133c436` (DIAG_04) `fca00c2` (DIAG_05) `85e96d1` (DIAG_09) `e79e5fc` (DIAG_10) `c83763e` (DIAG_SUMMARY)
+**Outcome:** Read-only diagnosis complete. ZERO source code changes. ZERO version bumps. All 4 protected files UNCHANGED (SHA256 verified: tray.ps1 `19011F0B`, tray_native.cs `6B9804A1`, launcher.cs `291ED4C9`, server.js `C15ED931`).
+
+#### What this stage did
+- Operator conducted real-world rc.3 testing and identified 10 issues
+- Read-only source analysis + live log evidence per issue
+- Per-issue diagnosis files: V14_S7_11_DIAG_01 through DIAG_10 in repo root
+- Master summary + prioritization: V14_S7_11_DIAG_SUMMARY.md
+
+#### Key findings per issue
+1. **Left-click wrong monitor (DIAG_01):** `PlacementMode.Mouse` uses stale WPF input position on hidden zero-size host window. Right-click uses native Win32 `GetCursorPos()` via H.NotifyIcon (correct). Fix: replace `PlacementMode.Mouse` with cursor-position + `Screen.FromPoint` in `OpenContextMenu` delegate. **Small fix.**
+2. **Tray menu missing icons (DIAG_02):** 4 menu items (Discord, Start on login, View log, Restart) have no `<MenuItem.Icon>` block. 4 new PathGeometry resources needed in Icons.xaml. **Small fix.**
+3. **Alignment/layout bugs (DIAG_03):** (B) CONFIRMED: `ToastBanner Opacity=0` always reserves 45px layout row; fix is `Visibility=Collapsed` default. (C) CONFIRMED: footer no min-gap between status text and Reset button. (A) PARTIALLY INCONCLUSIVE: tab label truncation ("WAS"/"M") cause not found in source; needs live width measurement. **Trivial + small.**
+4. **KS/ASIO missing (DIAG_04):** KS tab IS visible in XAML (no Visibility binding) but static placeholder only; truncation from issue 3 makes it appear absent. ASIO tab ALWAYS HIDDEN because `HasAsio` = always false (`AsioDevices` never populated). Fix ASIO: remove `HasAsio` gating (change to `Visibility="Visible"`). **Trivial fix.**
+5. **Customize Overlay unchanged (DIAG_05):** Confirmed out-of-scope per all Stage 7.x briefs. v12 browser UI retained intentionally. Already documented in rc.3 known issues. Operator decision needed: rebuild for rc.4 or defer to v14.1.0. **P2 scope decision.**
+6. **Patch Notes opens Setup Wizard (DIAG_06):** `OpenPatchNotesCommand` calls `_dialogService.ShowWelcomeAsync()` instead of a real patch notes target. **Trivial fix (1 line).**
+7. **View Log opens folder (DIAG_07):** `OpenLog()` calls `Process.Start("explorer.exe", logDir)` -- opens directory, not file. Fix: use `/select,"path\file"` flag. **Trivial fix (2 lines).**
+8. **Check for Updates wrong monitor (DIAG_08):** `ShowUpdateProgressAsync` in DialogService calls `_updateWindow.Show()` without `PositionDialogOnCursorMonitor` -- the ONLY dialog missing it. **Small fix (1 line).**
+9. **OBS toggle doesn't stick (DIAG_09):** CONFIRMED via live log. OBS (running) auto-saves scene file every ~60s, overwriting tray's file-edit. Reconcile detects `ours=False`, re-adds with new UUID, OBS overwrites again -- infinite loop. After OBS restart, last OBS save wins (no browser source). Fix: reconcile must NOT re-add while OBS is running; only add when `obs=NOT running`. UUID churn also causes `obs.tray_added_uuid` to be wrong. **Medium fix (state machine change).**
+10. **Discord RPC broken (DIAG_10):** Tray `DiscordToggleService` writes config flag but does NOT call `/reload-config`. Server's `DiscordRpcService.ReloadConfigAsync` only fires at startup + via `/reload-config` POST. No timer-based config polling confirmed in source. Config change from tray toggle may not reach server. Also: depends on Discord being running. **Small fix (add /reload-config call from tray toggle).**
+
+#### No code changes
+ZERO source modifications. Documentation only (12 .md files committed).
+
+#### Next steps
+- **Batch A (P0 trivial/small, ~1 brief):** Issues 1, 2, 4(ASIO), 6, 7, 8 -- each with per-fix operator verify gate
+- **Batch B (P0 critical, ~1 brief):** Issue 9 (OBS toggle state machine) -- MUST fix before publish
+- **Batch C (P1 medium, ~1-2 briefs):** Issue 3 (layout sweep), Issue 10 (Discord), Issue 4(KS) if desired
+- **Batch D (P2 scope decision):** Issue 5 (Customize Overlay rebuild) -- operator decides
+- Then ship-prep restart + soak + rc.3 or rc.4 publication decision
+
+---
 
 ### 2026-05-09 -- AutoStart default-ON on first v14 run
 
