@@ -323,10 +323,11 @@
                 </StackPanel>
             </TabItem>
 
-            <!-- ASIO tab: static informational content -->
+            <!-- ASIO tab: static informational content.
+                 Stage 7.12 Issue 4: always visible (HasAsio was always false since
+                 no ASIO enumeration exists; tab shows informational message). -->
             <TabItem Header="ASIO"
-                     Visibility="{Binding HasAsio, Converter={StaticResource BoolToVis},
-                                          FallbackValue=Visible}">
+                     Visibility="Visible">
                 <StackPanel VerticalAlignment="Center"
                             HorizontalAlignment="Center"
                             Margin="48">
