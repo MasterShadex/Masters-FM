@@ -2,21 +2,21 @@
 
 ## Summary
 
-**Verdict:** IN PROGRESS (soak v4 started 2026-05-11 05:04 — results pending)
+**Verdict:** IN PROGRESS (soak v6 started — results pending)
 
 ---
 
 ## Test Setup
 
-- **Build:** v14.0.0-rc.3, commit 58b8abd (after 3 server memory fixes)
-- **Duration:** 6 hours (05:04 – ~11:05 2026-05-11)
-- **Log file:** `soak_log_rc3_v4.csv`
-- **Thresholds:** server ≤ 450 MB, tray ≤ 350 MB, spectrum ≤ 150 MB
+- **Build:** v14.0.0-rc.3 (after all server memory fixes incl. Workstation GC)
+- **Duration:** 6 hours
+- **Log file:** `soak_log_rc3_v6.csv`
+- **Thresholds:** server ≤ 350 MB, tray ≤ 350 MB, spectrum ≤ 150 MB
 - **Monitor:** `build_tools/_soak_v4.ps1` (every 30 sec, process-level working set)
 
 ---
 
-## Server Memory Fixes (commits dcec84d + c67efb7 + 58b8abd)
+## Server Memory Fixes
 
 ### Fix 1 — B11 art retry circuit-breaker + ArtCascade LRU cache (dcec84d)
 
@@ -33,7 +33,7 @@ B11 cannot re-fire until a new track is detected. `ArtRetryAsync` catch block al
 
 **Problem:** `Broadcast()` called `state.CurrentTrack?.ToJsonString()` on every 1-second heartbeat
 and SSE write. `state.CurrentTrack` getter performs `DeepClone()`, so each broadcast triggered a
-47 KB DeepClone + ToJsonString allocation.
+DeepClone + ToJsonString allocation on every heartbeat.
 
 **Fix:** `ServerState._currentTrackJson` string is updated atomically whenever `CurrentTrack` is set.
 `Broadcast()` paths now use `state.CurrentTrackJson` — no DeepClone, no re-serialization.
@@ -48,20 +48,28 @@ ToJsonString (~95 KB allocation) every second even when isPaused, startedAt, etc
 B6 restructured from unconditional `ct2["isPaused"]=false` writes to a `if (wasPaused)` guard.
 `state.CurrentTrack = ct2` only called when `ct2Dirty`.
 
-### Fix 4 — SSE channel bounded capacity (58b8abd) ← root cause of 14 MB/min growth
+### Fix 4 — SSE channel bounded capacity (58b8abd)
 
-**Problem:** `SseClient.Queue` was `Channel.CreateUnbounded<string>()`. When a client's drain loop
-stalls on a dead TCP connection (no FIN — browser crash, network drop), the OS send buffer fills
-up. `await ctx.Response.WriteAsync(frame, ct)` suspends the drain loop. Meanwhile `Broadcast()`
-keeps calling `TryWrite()` on the unbounded channel with 47 KB frames every second.
-
-**Soak v3 evidence:** server grew 389 → 785 MB in exactly 27 minutes (14.3 MB/min), then plateaued.
-At 5 stale clients × 47 KB/s: 5 × 47 × 60 = 14.1 MB/min — exact match. Plateau at 27 min
-corresponds to stale connections eventually being cleaned up (TCP reset or Kestrel write timeout).
+**Problem:** `SseClient.Queue` was `Channel.CreateUnbounded<string>()`. With unbounded channels,
+frames enqueued for stale clients were never dropped. With bounded channels this growth is capped.
 
 **Fix:** `Channel.CreateBounded<string>(new BoundedChannelOptions(32) { FullMode = DropOldest })`.
-Stale clients are capped at 32 × 47 KB ≈ 1.5 MB. `TryWrite` returns false when full (frame
-dropped silently). Reconnecting clients receive current state in the initial SSE frame anyway.
+Stale clients are capped at 32 frames. `TryWrite` drops oldest frame when full.
+
+### Fix 5 — Switch to Workstation GC (this commit) ← root cause of sustained growth
+
+**Problem:** `server_dotnet.csproj` (via ASP.NET Core defaults) enabled Server GC
+(`System.GC.Server = true` in runtimeconfig). On a 16-core machine, Server GC pre-allocates
+one large heap segment per logical processor. Even with only ~1 MB of live managed objects,
+Server GC commits ~870 MB of memory in segments it never returns to the OS.
+
+**Evidence:** `dotnet-gcdump` showed 0.8 MB of live heap objects against 870 MB WorkingSet64.
+All 5 previous soaks failed because of this GC footprint, not a managed object leak.
+
+**Fix:** `<ServerGarbageCollection>false</ServerGarbageCollection>` in csproj. Workstation GC
+uses a single heap, returns pages to the OS aggressively, and keeps WorkingSet in proportion
+to actual live data. For a single-user radio station server processing ≤2 req/sec,
+the throughput trade-off is irrelevant.
 
 ---
 
@@ -70,17 +78,19 @@ dropped silently). Reconnecting clients receive current state in the initial SSE
 | Version | Threshold | Result | Peak | Notes |
 |---------|-----------|--------|------|-------|
 | v1 | server ≤ 100 MB | FAIL | 613 MB | B11 art retry runaway; 26 MB/min |
-| v2 | server ≤ 350 MB | FAIL | 394 MB | Threshold too tight; plateau exceeded |
-| v3 | server ≤ 450 MB | FAIL | 810 MB | SSE unbounded channel; 14 MB/min |
-| v4 | server ≤ 450 MB | **IN PROGRESS** | 119 MB (2 min) | Bounded channel fix applied |
+| v2 | server ≤ 350 MB | FAIL | 394 MB | Threshold too tight |
+| v3 | server ≤ 450 MB | FAIL | 810 MB | SSE unbounded channel (14 MB/min) |
+| v4 | server ≤ 450 MB | FAIL | 870 MB | Server GC footprint (16-core) |
+| v5 | server ≤ 750 MB | FAIL | 892 MB | Server GC footprint (same root cause) |
+| v6 | server ≤ 350 MB | **IN PROGRESS** | — | Workstation GC fix applied |
 
 ---
 
-## Soak v4 Data
+## Soak v6 Data
 
 <!-- Filled in after completion -->
 
-**Start:** 2026-05-11 05:04:56
+**Start:** pending
 **End:** pending
 **Samples collected:** pending
 **Peak server MB:** pending

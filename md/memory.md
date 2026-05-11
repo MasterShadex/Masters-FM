@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.3 (ship-prep in progress; soak v4 IN PROGRESS since 05:04 2026-05-11, ends ~11:05)
-**Last updated:** 2026-05-11 05:10 (soak v4 started — SSE channel leak fixed; server at 108-119 MB, all green)
+**Current version:** v14.0.0-rc.3 (ship-prep in progress; soak v6 IN PROGRESS since 08:30 2026-05-11, ends ~14:30)
+**Last updated:** 2026-05-11 08:30 (soak v6 running with 350 MB threshold; server at 63 MB with Workstation GC)
 
 ## IN-FLIGHT WORK
 
@@ -20,27 +20,24 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 - STEP 2: clean install for verification PASS (WMI uninstall, _full_rebuild.ps1 rc.1, tray PID 6244)
 - STEP 3: 12-item functional gate PASS (items 1-9 operator hands-on; item 10 SKIP per brief; items 11-12 log-verified)
 - STEP 4: version bump rc.2->rc.3 DONE (version.json, _full_rebuild.ps1 patched, .csproj, App.xaml.cs, TrayMenuViewModel.cs; DLL ProductVersion=14.0.0-rc.3+2464b7c confirmed)
-- STEP 5: 6h soak v4 IN PROGRESS (started 05:04 2026-05-11, CSV=soak_log_rc3_v4.csv, ends ~11:05)
-  - Soak v1 FAILED: server OOM (B11 art retry runaway loop; 26MB/min → 613MB)
-  - Soak v2 aborted: threshold 350MB too tight; server plateaus at ~380-394MB
-  - Soak v3 FAILED: server grew 389→785MB in 27min (14 MB/min) despite fixes 1-3
-    - ROOT CAUSE FOUND: SseClient used Channel.CreateUnbounded<string>. When a client's
-      drain loop stalls on a dead TCP connection (no FIN), Broadcast() enqueues 47 KB
-      frames/sec unboundedly. 5 stale clients = 14 MB/min (exact match).
-  - Fix 4 (58b8abd): Channel.CreateBounded(32, DropOldest). Stale clients capped ≤1.5 MB.
-    Also: ArtRetryAsync catch block now sets ArtResolved=true (defensive hardening).
-  - Soak v4 start (05:04): server=108 MB → 119 MB after 30s; all thresholds green.
-    server≤450MB, tray≤350MB, spectrum≤150MB
-  - Fix history: dcec84d (B11+DeepClone), c67efb7 (dirty-flag), 58b8abd (SSE channel)
-  - Installed server.exe SHA256: C61432F4AB3FF0AA9ADD2C4C0A048FA3CE2802CE285C5956808885569EA5EB19
-  - NOTE: MSI rebuild needed after soak PASS (STEP 7 re-do) — use _full_rebuild.ps1
+- STEP 5: 6h soak v6 IN PROGRESS (started 08:30 2026-05-11, CSV=soak_log_rc3_v6.csv, ends ~14:30)
+  - ROOT CAUSE FOUND (2026-05-11 08:03): Server GC (System.GC.Server=true) + 16 CPU cores.
+    dotnet-gcdump showed 0.8 MB live heap vs 870 MB WorkingSet64.
+    Server GC pre-allocates one heap segment per logical processor; 16 cores × ~64 MB = ~1 GB.
+  - Fix 5: <ServerGarbageCollection>false</ServerGarbageCollection> in csproj. Workstation GC
+    uses single heap, returns pages to OS aggressively. Expected WS: <200 MB.
+  - Soak history: v1 FAIL (B11 OOM), v2 FAIL (threshold), v3 FAIL (SSE channel), 
+    v4 FAIL (Server GC + 450MB threshold), v5 FAIL (Server GC, 892MB peak)
+  - Soak v6 (08:30): threshold server≤350MB, server at 63MB at sample 1
+  - MSI SHA256 (v6 rebuild): 4e173693919f40c9ddabf257f186e6d830febbb30ae4b0e166220637555b6ddc
+  - Fix history: dcec84d (B11+DeepClone), c67efb7 (dirty-flag), 58b8abd (SSE channel), <this commit> (Workstation GC)
 - STEP 6: release notes + tester announcement written and committed
-- STEP 7: protected file SHA256 PASS (all 4 unchanged), MSI v2 SHA256=804c169e78aab78913170fd6eaadc114e5f35f91a552537a2c88bdfddbb60c4b
+- STEP 7: re-do PENDING (will re-verify after soak v6 PASS with new MSI SHA256)
 - STEP 8: git tag + push -- PENDING (after soak PASS)
 - STEP 9: GitHub Release DRAFT -- PENDING (after STEP 8, operator publishes)
 **Important:** After soak PASS: check CSV, write V14_RC3_SOAK.md, verify protected file SHA256 still clean, then STEP 8 git tag + push + STEP 9 gh release create.
 **git push target:** origin main + tag v14.0.0-rc.3
-**Commits since rc.2:** dcec84d (B11+CurrentTrackJson fixes), c67efb7 (dirty-flag fix), 58b8abd (SSE channel leak)
+**Commits since rc.2:** dcec84d (B11+CurrentTrackJson fixes), c67efb7 (dirty-flag fix), 58b8abd (SSE channel leak), <this> (Workstation GC)
 
 **Stage 7.7B FINAL -- cross-cutting polish + final smoke + report -- LOCAL COMPLETE 2026-05-10**
 - AppFocusVisualStyle (2px dashed BorderFocus ring, R8) on all 4 button + 4 input styles
