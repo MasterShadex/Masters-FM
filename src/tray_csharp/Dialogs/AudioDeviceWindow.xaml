@@ -79,10 +79,13 @@
                                 <!-- Content area -->
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            <!-- Tab strip (ItemsPresenter renders the TabItems) -->
+                            <!-- Tab strip (ItemsPresenter renders the TabItems).
+                                 Margin="24,0,0,0" aligns tab labels with the
+                                 header Border Padding="24,0" above. -->
                             <StackPanel Grid.Row="0"
                                         Orientation="Horizontal"
-                                        IsItemsHost="False">
+                                        IsItemsHost="False"
+                                        Margin="24,0,0,0">
                                 <TabPanel IsItemsHost="True"
                                           Background="Transparent"/>
                             </StackPanel>
