@@ -2,17 +2,18 @@
 // Uses Windows.Devices.Enumeration WinRT API for device enumeration
 // (NO new NuGet per ABSOLUTE RULE 4 - NAudio not allowed).
 //
-// Stage 7.12 Batch A rev13:
-//   - Single SelectedDevice [ObservableProperty]; both WASAPI and MME
-//     ListBoxes bind to it with Mode=OneWay. User clicks are forwarded
-//     via SelectionChanged event handlers (code-behind) → SelectDevice().
-//     OneWay means the ListBox NEVER pushes back, eliminating all binding
-//     reconnection / cross-clearing timing issues.
-//   - WPF ListBox shows nothing when SelectedDevice is not in its
-//     ItemsSource, so only the matching tab highlights naturally.
-//   - Auto-persist: SelectDevice() → OnSelectedDeviceChanged → ApplyDevice().
-//   - Reset (Cancel): sets SelectedDevice to IsDefault device, explicit
-//     ApplyDevice() call since _suppressApply suppresses the partial method.
+// Stage 7.12 Batch A rev14:
+//   - Single _selectedDevice backing field.
+//   - SelectedWasapiDevice / SelectedMmeDevice are computed read-only
+//     properties that return null when the device belongs to the other
+//     backend. Both ListBoxes bind Mode=OneWay to their respective property,
+//     so WPF always receives an explicit null (not a foreign-collection
+//     object) when clearing the other tab — this guarantees a proper
+//     deselect instead of WPF leaving the previous item highlighted.
+//   - SelectedDevice (raw backing field, no filter) is exposed for the
+//     code-behind SelectionChanged guard.
+//   - User clicks forwarded via SelectDevice(); programmatic changes via
+//     SetSelectedDeviceSilent().
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -39,11 +40,24 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> asioDevices = new();
 
-    // Single selection across all tabs.  Both WASAPI and MME ListBoxes bind
-    // to this with Mode=OneWay; each ListBox shows a highlight only when
-    // SelectedDevice is an item in its own collection.
-    [ObservableProperty]
-    private AudioDeviceInfo? selectedDevice;
+    // -----------------------------------------------------------------------
+    // Selection: single backing field, two computed read-only properties.
+    // Each ListBox binds Mode=OneWay to its own property so it always gets
+    // null (not a foreign object) when the other tab is active.
+    // -----------------------------------------------------------------------
+
+    private AudioDeviceInfo? _selectedDevice;
+
+    // Raw accessor used by the code-behind SelectionChanged guard.
+    public AudioDeviceInfo? SelectedDevice => _selectedDevice;
+
+    // WASAPI ListBox binds to this. Returns null when an MME device is active.
+    public AudioDeviceInfo? SelectedWasapiDevice =>
+        _selectedDevice?.Backend == "WASAPI" ? _selectedDevice : null;
+
+    // MME ListBox binds to this. Returns null when a WASAPI device is active.
+    public AudioDeviceInfo? SelectedMmeDevice =>
+        _selectedDevice?.Backend == "MME" ? _selectedDevice : null;
 
     [ObservableProperty]
     private bool stereoMixEnabled;
@@ -69,24 +83,42 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     public Dialogs.AudioDeviceResult? PendingResult { get; private set; }
 
-    // Suppresses ApplyDevice() during RefreshAsync restore and Reset.
-    private bool _suppressApply;
-
     public AudioDeviceViewModel(ILogger logger, IConfigService config)
     {
         _logger = logger;
         _config = config;
     }
 
-    // Auto-persist when the user selects a device (not during programmatic changes).
-    partial void OnSelectedDeviceChanged(AudioDeviceInfo? oldValue, AudioDeviceInfo? newValue)
+    // -----------------------------------------------------------------------
+    // Selection mutators
+    // -----------------------------------------------------------------------
+
+    // Called by code-behind when the user clicks a device row.
+    // Notifies all three selection properties and persists to config.
+    public void SelectDevice(AudioDeviceInfo device)
     {
-        if (!_suppressApply && newValue != null)
-            ApplyDevice(newValue);
+        if (device == _selectedDevice) return;
+        _selectedDevice = device;
+        NotifySelectionChanged();
+        ApplyDevice(device);
     }
 
-    // Called by code-behind SelectionChanged handlers (user clicks only).
-    public void SelectDevice(AudioDeviceInfo device) => SelectedDevice = device;
+    // Programmatic change: updates visuals but does NOT persist to config.
+    // Used by RefreshAsync (restore on open) and Cancel (Reset).
+    private void SetSelectedDeviceSilent(AudioDeviceInfo? device)
+    {
+        _selectedDevice = device;
+        NotifySelectionChanged();
+    }
+
+    private void NotifySelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedDevice));
+        OnPropertyChanged(nameof(SelectedWasapiDevice));
+        OnPropertyChanged(nameof(SelectedMmeDevice));
+    }
+
+    // -----------------------------------------------------------------------
 
     public async Task RefreshAsync()
     {
@@ -160,7 +192,6 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
             try
             {
                 var savedId = _config.GetValue<string>("audio.outputDeviceId");
-                _suppressApply = true;
 
                 AudioDeviceInfo? toSelect = null;
                 if (!string.IsNullOrEmpty(savedId))
@@ -172,15 +203,11 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 }
                 toSelect ??= OutputDevices.FirstOrDefault(d => d.IsDefault);
 
-                SelectedDevice = toSelect;
+                SetSelectedDeviceSilent(toSelect);
             }
             catch (Exception ex)
             {
                 _logger.LogWarn("config read for audio selection: " + ex.Message, Component);
-            }
-            finally
-            {
-                _suppressApply = false;
             }
 
             StatusText = $"{OutputDevices.Count} WASAPI output, {InputDevices.Count} input, {MmeDevices.Count} MME device(s).";
@@ -214,7 +241,6 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         }
     }
 
-    // Persist a device selection to config and update PendingResult.
     private void ApplyDevice(AudioDeviceInfo device)
     {
         try
@@ -243,9 +269,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         var active = OutputDevices.FirstOrDefault(d => d.IsDefault)
                      ?? (AudioDeviceInfo?)MmeDevices.FirstOrDefault(d => d.IsDefault);
 
-        _suppressApply = true;
-        SelectedDevice = active;
-        _suppressApply = false;
+        SetSelectedDeviceSilent(active);
 
         if (active != null)
             ApplyDevice(active);

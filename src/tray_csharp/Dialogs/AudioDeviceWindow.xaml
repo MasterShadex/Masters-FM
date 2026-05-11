@@ -301,7 +301,7 @@
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="0">
                     <ListBox ItemsSource="{Binding OutputDevices}"
-                             SelectedItem="{Binding SelectedDevice, Mode=OneWay}"
+                             SelectedItem="{Binding SelectedWasapiDevice, Mode=OneWay}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
                              Style="{StaticResource DeviceListBoxStyle}"
@@ -316,7 +316,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                     <ListBox ItemsSource="{Binding MmeDevices}"
-                             SelectedItem="{Binding SelectedDevice, Mode=OneWay}"
+                             SelectedItem="{Binding SelectedMmeDevice, Mode=OneWay}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
                              Style="{StaticResource DeviceListBoxStyle}"
