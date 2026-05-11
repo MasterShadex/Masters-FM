@@ -30,13 +30,14 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
                         <Grid Height="44" VerticalAlignment="Stretch">
-                            <!-- Tab label: HorizontalAlignment=Left so text
-                                 does not stretch across the full MinWidth. -->
+                            <!-- Tab label: HorizontalAlignment=Center so short
+                                 labels (MME, KS, ASIO) sit centred within their
+                                 MinWidth slot rather than clipping to the left. -->
                             <TextBlock x:Name="Label"
                                        Text="{TemplateBinding Header}"
                                        Style="{StaticResource SubHeadingTextStyle}"
                                        Foreground="{StaticResource TextTertiary}"
-                                       HorizontalAlignment="Left"
+                                       HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
                             <!-- Selected indicator (2px bottom border) -->
                             <Border x:Name="Indicator"
