@@ -225,6 +225,7 @@ internal static class WebhookHandler
                 // --- SAME TRACK: unified pause / resume / seek / drift handling ---
                 // Work on a clone so we can set it back atomically via CurrentTrack setter.
                 var ct2 = prev!.DeepClone(); // local mutable copy
+                bool ct2Dirty = false;       // set true when ct2 is actually mutated
 
                 // B5: Pause handling (server.js lines 961-974)
                 bool wasPaused = ct2["isPaused"]?.GetValue<bool>() == true;
@@ -236,6 +237,7 @@ internal static class WebhookHandler
                         ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
                         ct2["pausedAt"]  = JsonValue.Create(nowMs);
                         ct2["isPaused"]  = JsonValue.Create(true);
+                        ct2Dirty = true;
                         logger.LogInformation(
                             "Paused: {Artist} - {Track} @ {PosS}s (re-synced to source)",
                             artist, track, Math.Round(positionMs / 1000.0));
@@ -247,13 +249,16 @@ internal static class WebhookHandler
                     // B6: Resume handling (server.js lines 976-986)
                     if (wasPaused)
                     {
+                        // Resuming: re-sync position and clear pause fields
                         ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                        ct2["isPaused"]  = JsonValue.Create(false);
+                        ct2["pausedAt"]  = JsonValue.Create(0L);
+                        ct2Dirty = true;
                         logger.LogInformation(
                             "Resumed: {Artist} - {Track} @ {PosS}s (re-synced to source)",
                             artist, track, Math.Round(positionMs / 1000.0));
                     }
-                    ct2["isPaused"] = JsonValue.Create(false);
-                    ct2["pausedAt"] = JsonValue.Create(0L);
+                    // else: already playing -- isPaused already false, pausedAt already 0
                 }
 
                 // B8: Duration update on heartbeat (server.js lines 991-998)
@@ -269,6 +274,7 @@ internal static class WebhookHandler
                                 "Duration updated from webhook: {OldS}s -> {NewS}s",
                                 Math.Round(prevDur / 1000.0), Math.Round(durationMs / 1000.0));
                         ct2["duration"] = JsonValue.Create(durationMs);
+                        ct2Dirty = true;
                     }
                 }
 
@@ -279,6 +285,7 @@ internal static class WebhookHandler
                     long expectedPos = nowMs - ((long?)ct2["startedAt"]?.GetValue<long>() ?? nowMs);
                     long drift7 = Math.Abs(expectedPos - positionMs);
                     ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                    ct2Dirty = true;
                     logger.LogInformation(
                         "Seek ({DriftS}s jump) -- startedAt resynced to pos={PosS}s",
                         Math.Round(drift7 / 1000.0), Math.Round(positionMs / 1000.0));
@@ -297,6 +304,7 @@ internal static class WebhookHandler
                         if (drift9 > 5000)
                         {
                             ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                            ct2Dirty = true;
                             logger.LogInformation(
                                 "First-heartbeat correction [{Source}]: {DriftS}s drift -> resynced to {PosS}s",
                                 source, Math.Round(drift9 / 1000.0), Math.Round(positionMs / 1000.0));
@@ -313,6 +321,7 @@ internal static class WebhookHandler
                     if (signedDrift > 4000)
                     {
                         ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                        ct2Dirty = true;
                         logger.LogInformation(
                             "Sync fwd [{Source}]: overlay {DriftS}s behind -> resynced to {PosS}s",
                             source, Math.Round(signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
@@ -320,18 +329,21 @@ internal static class WebhookHandler
                     else if (signedDrift < -30000)
                     {
                         ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                        ct2Dirty = true;
                         logger.LogInformation(
                             "Sync bwd [{Source}]: overlay {DriftS}s ahead (extreme) -> resynced to {PosS}s",
                             source, Math.Round(-signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
                     }
                 }
 
-                // Write back the mutated clone
-                state.CurrentTrack = ct2;
+                // Write back only when ct2 was actually mutated --
+                // skips DeepClone + ToJsonString on every same-track heartbeat where nothing changed
+                if (ct2Dirty) state.CurrentTrack = ct2;
 
                 // B11: Art retry (server.js lines 1052-1063)
                 // Guard: !artResolved && !artResolving && isValidArt(data.trackArt) && !currentTrack.trackArt
-                var curArt = (string?)state.CurrentTrack?["trackArt"];
+                // Read art from ct2 (already a clone) to avoid an extra DeepClone via the getter
+                var curArt = (string?)ct2["trackArt"];
                 if (!state.ArtResolved && !state.ArtResolving
                     && IsValidArt(webhookArt)
                     && string.IsNullOrEmpty(curArt))
