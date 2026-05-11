@@ -61,7 +61,13 @@ public partial class AudioDeviceWindow : Window
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AudioDeviceViewModel.SelectedDevice))
-            ShowToast();
+        {
+            // Suppress toast during initial device enumeration (IsLoading = true)
+            // so the window doesn't announce "Audio source updated." on open.
+            var vm = sender as AudioDeviceViewModel;
+            if (vm?.IsLoading != true)
+                ShowToast();
+        }
     }
 
     // -------------------------------------------------------------------------

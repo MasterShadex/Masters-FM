@@ -59,10 +59,24 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     public Dialogs.AudioDeviceResult? PendingResult { get; private set; }
 
+    // Original-on-open device for Reset (Cancel) support; suppress flag
+    // prevents Apply() firing during the initial RefreshAsync restore.
+    private bool _suppressApply;
+    private AudioDeviceInfo? _originalDevice;
+
     public AudioDeviceViewModel(ILogger logger, IConfigService config)
     {
         _logger = logger;
         _config = config;
+    }
+
+    // Auto-persist whenever the user picks a device.
+    // Guarded by _suppressApply so the initial restore in RefreshAsync
+    // does not write to config or trigger a spurious toast.
+    partial void OnSelectedDeviceChanged(AudioDeviceInfo? oldValue, AudioDeviceInfo? newValue)
+    {
+        if (!_suppressApply && newValue != null)
+            Apply();
     }
 
     public async Task RefreshAsync()
@@ -139,6 +153,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 var savedId = _config.GetValue<string>("audio.outputDeviceId");
                 if (!string.IsNullOrEmpty(savedId))
                 {
+                    _suppressApply = true;
                     foreach (var d in OutputDevices)
                     {
                         if (string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase))
@@ -159,11 +174,17 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                             }
                         }
                     }
+                    _suppressApply = false;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogWarn("config read for audio selection: " + ex.Message, Component);
+            }
+            finally
+            {
+                // Snapshot the restored (or null) device so Reset can revert to it.
+                _originalDevice = SelectedDevice;
             }
 
             StatusText = $"{OutputDevices.Count} WASAPI output, {InputDevices.Count} input, {MmeDevices.Count} MME device(s).";
@@ -224,6 +245,15 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [RelayCommand]
     private void Cancel()
     {
+        // Revert to original-on-open device. Suppress Apply() so we don't
+        // re-persist during the revert; the toast will still fire via
+        // OnVmPropertyChanged in the code-behind.
+        _suppressApply = true;
+        SelectedDevice = _originalDevice;
+        _suppressApply = false;
+        // Re-persist the original selection (puts config back to what it was).
+        if (_originalDevice != null)
+            Apply();
         PendingResult = null;
     }
 }
