@@ -40,6 +40,20 @@ Release date: 2026-05-10
 - Code-signed binaries throughout
 - IObsService extended with file-edit-only OBS integration
 
+## Memory footprint
+
+Master's FM v14 at steady state typically uses:
+- **Server (`server.exe`):** ~80-130 MB
+- **Tray (`MastersFM_Tray.exe`):** ~180-300 MB
+- **Spectrum analyzer (`audio_spectrum.exe`):** ~45-65 MB
+
+Total: ~300-500 MB across all processes. Most of this is the WPF tray (which is
+larger than the v12 tray due to the design system rebuild and WPF's baseline cost).
+The server is significantly lighter than v12's Node.js server in steady state.
+
+Memory will spike briefly during JIT warmup on first launch and during album-art
+fetches; the figures above are post-warmup steady-state.
+
 ## Known issues
 
 - ASIO devices in Audio Source dialog show informational message; ASIO is not enumerable via Windows APIs (configure ASIO devices directly in your DAW)
