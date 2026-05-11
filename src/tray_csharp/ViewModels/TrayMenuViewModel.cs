@@ -451,15 +451,24 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private void OpenLog()
     {
         _logger.Log("TrayMenu: View log", "Tray");
-        var logDir = Path.Combine(
+        var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MastersFM");
+            "MastersFM", "overlay.log");
         try
         {
-            if (Directory.Exists(logDir))
-                Process.Start("explorer.exe", logDir);
+            // Stage 7.12 Issue 7: open the log file directly (default .log handler,
+            // typically Notepad) rather than opening the containing folder.
+            if (File.Exists(logPath))
+                Process.Start(new ProcessStartInfo(logPath) { UseShellExecute = true });
+            else
+            {
+                // Log file does not exist yet -- fall back to opening the folder.
+                var logDir = Path.GetDirectoryName(logPath)!;
+                if (Directory.Exists(logDir))
+                    Process.Start("explorer.exe", logDir);
+            }
         }
-        catch (Exception ex) { _logger.LogErr("OpenLog explorer", ex, "Tray"); }
+        catch (Exception ex) { _logger.LogErr("OpenLog", ex, "Tray"); }
     }
 
     [RelayCommand]
