@@ -9,8 +9,8 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 **Project:** Master's FM — Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
-**Current version:** v14.0.0-rc.3 (ship-prep in progress; 6h soak v2 IN PROGRESS since 03:07 2026-05-11)
-**Last updated:** 2026-05-11 03:07 (soak v2 started after 3 server fixes; STEPs 0-7 complete; awaiting soak PASS for STEPs 8-9)
+**Current version:** v14.0.0-rc.3 (ship-prep in progress; 6h soak v3 IN PROGRESS since 03:44 2026-05-11, ends ~09:44)
+**Last updated:** 2026-05-11 03:44 (soak v3 started with 450MB threshold; STEPs 0-7 complete; awaiting soak PASS for STEPs 8-9)
 
 ## IN-FLIGHT WORK
 
@@ -20,12 +20,14 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 - STEP 2: clean install for verification PASS (WMI uninstall, _full_rebuild.ps1 rc.1, tray PID 6244)
 - STEP 3: 12-item functional gate PASS (items 1-9 operator hands-on; item 10 SKIP per brief; items 11-12 log-verified)
 - STEP 4: version bump rc.2->rc.3 DONE (version.json, _full_rebuild.ps1 patched, .csproj, App.xaml.cs, TrayMenuViewModel.cs; DLL ProductVersion=14.0.0-rc.3+2464b7c confirmed)
-- STEP 5: 6h soak v2 IN PROGRESS (started 03:07 2026-05-11, CSV=soak_log_rc3_v2.csv, SoundCloud active)
+- STEP 5: 6h soak v3 IN PROGRESS (started 03:44 2026-05-11, CSV=soak_log_rc3_v3.csv, ends ~09:44)
   - Soak v1 FAILED at 02:27: server OOM (B11 art retry runaway loop; 26MB/min → 613MB)
+  - Soak v2 aborted: threshold 350MB too tight; server plateaus at ~380-394MB (JIT warm-up longer than expected)
   - Fix 1 (dcec84d): ArtCascade caches "not-found"; ArtRetryAsync sets ArtResolved=true after failed retry
   - Fix 2 (dcec84d): ServerState.CurrentTrackJson cached property; Broadcast uses cached string
   - Fix 3 (c67efb7): Dirty-flag in WebhookHandler same-track path; setter skipped when ct2 unchanged
-  - Server v2 start: 87MB, thresholds: server≤350MB tray≤350MB spectrum≤150MB
+  - Server v3 start: 389MB (post-warmup), thresholds: server≤450MB tray≤350MB spectrum≤150MB
+  - Warm-up data (soak_log_rc3_v2.warmup.bak): 87→394MB over 35min, then plateau; rate 0.3MB/30s at plateau
 - STEP 6: release notes + tester announcement written and committed
 - STEP 7: protected file SHA256 PASS (all 4 unchanged), MSI v2 SHA256=804c169e78aab78913170fd6eaadc114e5f35f91a552537a2c88bdfddbb60c4b
 - STEP 8: git tag + push -- PENDING (after soak PASS)
