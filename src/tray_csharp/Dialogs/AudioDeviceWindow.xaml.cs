@@ -77,7 +77,13 @@ public partial class AudioDeviceWindow : Window
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is AudioDeviceViewModel vm)
+        {
             vm.CancelCommand.Execute(null);
+            // Always show the toast after Reset so the user sees confirmation
+            // even when SelectedDevice was already the original (SetProperty
+            // returns false in that case → no PropertyChanged → no auto-toast).
+            ShowToast();
+        }
     }
 
     // -------------------------------------------------------------------------
