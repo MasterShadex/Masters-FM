@@ -443,7 +443,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private async Task OpenPatchNotesAsync()
     {
         _logger.Log("TrayMenu: Patch notes", "Tray");
-        try { await _dialogService.ShowWelcomeAsync(); }
+        try { await _dialogService.ShowWelcomeAsync(showAboutTab: true); }
         catch (Exception ex) { _logger.LogErr("ShowWelcomeAsync", ex, "Tray"); }
     }
 

@@ -67,7 +67,8 @@
             </Grid.RowDefinitions>
 
             <!-- Scrollable content area (in case window is smaller than expected) -->
-            <ScrollViewer Grid.Row="0"
+            <ScrollViewer x:Name="WelcomeContentScroller"
+                          Grid.Row="0"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           Padding="40,32,40,0">
@@ -162,7 +163,8 @@
             </ScrollViewer>
 
             <!-- Action buttons (pinned to bottom of right column) -->
-            <Border Grid.Row="1"
+            <Border x:Name="WelcomeActionButtons"
+                    Grid.Row="1"
                     Padding="40,16,40,24">
                 <StackPanel Orientation="Horizontal"
                             HorizontalAlignment="Right">
@@ -175,6 +177,98 @@
                             Click="OnGetStarted"/>
                 </StackPanel>
             </Border>
+
+            <!-- Stage 7.12: Patch Notes panel: shown instead of welcome copy when ShowAboutTab=true.
+                 Code-behind (OnLoaded) collapses WelcomeContentScroller + WelcomeActionButtons
+                 and shows this panel when WelcomeViewModel.ShowAboutTab is true.
+                 Bound to WelcomeViewModel.PatchNotes (ObservableCollection loaded from
+                 embedded patch_notes.json, 292 versions). -->
+            <Grid x:Name="PatchNotesPanel"
+                  Grid.Row="0"
+                  Grid.RowSpan="2"
+                  Visibility="Collapsed"
+                  Margin="40,32,40,24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header area -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                    <TextBlock Text="PATCH NOTES"
+                               Style="{StaticResource TinyTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock Text="Master's FM"
+                               Style="{StaticResource DisplayTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"/>
+                </StackPanel>
+
+                <!-- Version list -->
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding PatchNotes}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingStackPanel.IsVirtualizing="True">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Focusable" Value="False"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <!-- Version + date header -->
+                                <StackPanel Grid.Row="0"
+                                            Orientation="Horizontal"
+                                            Margin="0,0,0,4">
+                                    <TextBlock Text="{Binding Version}"
+                                               Style="{StaticResource SubHeadingTextStyle}"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding Date}"
+                                               Style="{StaticResource TinyTextStyle}"
+                                               Foreground="{StaticResource TextTertiary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <!-- Individual notes -->
+                                <ItemsControl Grid.Row="1"
+                                              ItemsSource="{Binding Notes}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="52"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Tag}"
+                                                           Style="{StaticResource TinyTextStyle}"
+                                                           Foreground="{StaticResource BrandPurpleBase}"
+                                                           FontWeight="SemiBold"/>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Text}"
+                                                           Style="{StaticResource BodyTextStyle}"
+                                                           Foreground="{StaticResource TextSecondary}"
+                                                           TextWrapping="Wrap"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

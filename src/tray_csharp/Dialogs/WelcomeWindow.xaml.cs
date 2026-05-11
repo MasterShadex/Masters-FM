@@ -81,6 +81,15 @@ public partial class WelcomeWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         BuildWaveform();
+
+        // Stage 7.12 Issue 6: if opened as patch-notes view, hide the
+        // first-run welcome content and show the patch notes panel instead.
+        if (DataContext is ViewModels.WelcomeViewModel vm && vm.ShowAboutTab)
+        {
+            WelcomeContentScroller.Visibility = Visibility.Collapsed;
+            WelcomeActionButtons.Visibility   = Visibility.Collapsed;
+            PatchNotesPanel.Visibility        = Visibility.Visible;
+        }
     }
 
     private void BuildWaveform()
