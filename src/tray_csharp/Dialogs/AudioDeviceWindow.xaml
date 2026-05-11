@@ -304,6 +304,7 @@
                              SelectedItem="{Binding SelectedWasapiDevice, Mode=OneWay}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
+                             Loaded="OnWasapiListBoxLoaded"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>
@@ -319,6 +320,7 @@
                              SelectedItem="{Binding SelectedMmeDevice, Mode=OneWay}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
+                             Loaded="OnMmeListBoxLoaded"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>

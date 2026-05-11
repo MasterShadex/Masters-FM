@@ -52,6 +52,25 @@ public partial class AudioDeviceWindow : Window
     // so we only call SelectDevice() on genuine user clicks.
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // Loaded handlers: fire every time a tab re-enters the visual tree.
+    // The ContentPresenter removes/re-adds content on each tab switch, and
+    // WPF does not guarantee the OneWay binding re-evaluates on reconnect.
+    // We force the correct SelectedItem here so stale state is never shown.
+    // -------------------------------------------------------------------------
+
+    private void OnWasapiListBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is AudioDeviceViewModel vm && sender is ListBox lb)
+            lb.SelectedItem = vm.SelectedWasapiDevice;   // null when MME is active
+    }
+
+    private void OnMmeListBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is AudioDeviceViewModel vm && sender is ListBox lb)
+            lb.SelectedItem = vm.SelectedMmeDevice;      // null when WASAPI is active
+    }
+
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.AddedItems.Count == 0) return;
