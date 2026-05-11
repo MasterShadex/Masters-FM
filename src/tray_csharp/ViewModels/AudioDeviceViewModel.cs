@@ -2,13 +2,13 @@
 // Uses Windows.Devices.Enumeration WinRT API for device enumeration
 // (NO new NuGet per ABSOLUTE RULE 4 - NAudio not allowed).
 //
-// Stage 7.12 Batch A rev9:
-//   - SelectedWasapiDevice + SelectedMmeDevice replace the shared SelectedDevice
-//     so each tab holds its own independent selection.
-//   - Auto-persist: clicking any device in either tab immediately saves it to
-//     config via ApplyDevice().
-//   - Reset (Cancel): both tabs revert to their respective IsDefault device;
-//     the WASAPI default is written to config as the active source.
+// Stage 7.12 Batch A rev11:
+//   - Single _selectedDevice backing field; SelectedWasapiDevice and
+//     SelectedMmeDevice are computed getters that filter by backend.
+//     Each ListBox naturally shows nothing when the active device belongs
+//     to the other backend — no cross-clearing, no timing dependency.
+//   - Auto-persist: SetSelectedDevice() calls ApplyDevice() on user clicks.
+//   - Reset: sets _selectedDevice to WASAPI default (MME default as fallback).
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -35,13 +35,24 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> asioDevices = new();
 
-    // Per-tab independent selections. Each tab binds to its own property so
-    // selecting a WASAPI device doesn't deselect the MME tab and vice-versa.
-    [ObservableProperty]
-    private AudioDeviceInfo? selectedWasapiDevice;
+    // Single backing store for the active selection.
+    // Getters filter by backend so WPF ListBoxes on each tab naturally
+    // show a selection only when a device from THEIR backend is active.
+    // Setting either property calls SetSelectedDevice() which notifies both,
+    // so switching from WASAPI→MME clears the WASAPI tab and vice-versa.
+    private AudioDeviceInfo? _selectedDevice;
 
-    [ObservableProperty]
-    private AudioDeviceInfo? selectedMmeDevice;
+    public AudioDeviceInfo? SelectedWasapiDevice
+    {
+        get => _selectedDevice is { Backend: "WASAPI" } ? _selectedDevice : null;
+        set => SetSelectedDevice(value);
+    }
+
+    public AudioDeviceInfo? SelectedMmeDevice
+    {
+        get => _selectedDevice is { Backend: "MME" } ? _selectedDevice : null;
+        set => SetSelectedDevice(value);
+    }
 
     [ObservableProperty]
     private bool stereoMixEnabled;
@@ -67,8 +78,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     public Dialogs.AudioDeviceResult? PendingResult { get; private set; }
 
-    // Suppresses ApplyDevice() during initial RefreshAsync restore and Reset
-    // so we don't write to config or trigger the toast for programmatic changes.
+    // Suppresses ApplyDevice() during RefreshAsync restore and Reset.
     private bool _suppressApply;
 
     public AudioDeviceViewModel(ILogger logger, IConfigService config)
@@ -77,30 +87,24 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         _config = config;
     }
 
-    // Auto-persist on user selection (WASAPI tab).
-    // Also clears the MME tab so only one device is ever highlighted across all tabs.
-    partial void OnSelectedWasapiDeviceChanged(AudioDeviceInfo? oldValue, AudioDeviceInfo? newValue)
+    // Core selection mutator. Notifies BOTH tab properties so WPF updates
+    // the correct tab and clears the other automatically (via the getter filter).
+    private void SetSelectedDevice(AudioDeviceInfo? value)
     {
-        if (!_suppressApply && newValue != null)
+        if (_suppressApply)
         {
-            _suppressApply = true;
-            SelectedMmeDevice = null;
-            _suppressApply = false;
-            ApplyDevice(newValue);
+            if (_selectedDevice == value) return;
+            _selectedDevice = value;
+            OnPropertyChanged(nameof(SelectedWasapiDevice));
+            OnPropertyChanged(nameof(SelectedMmeDevice));
+            return;
         }
-    }
-
-    // Auto-persist on user selection (MME tab).
-    // Also clears the WASAPI tab so only one device is ever highlighted across all tabs.
-    partial void OnSelectedMmeDeviceChanged(AudioDeviceInfo? oldValue, AudioDeviceInfo? newValue)
-    {
-        if (!_suppressApply && newValue != null)
-        {
-            _suppressApply = true;
-            SelectedWasapiDevice = null;
-            _suppressApply = false;
-            ApplyDevice(newValue);
-        }
+        // Ignore null push-backs from WPF ListBox and no-op re-selections.
+        if (value == null || value == _selectedDevice) return;
+        _selectedDevice = value;
+        OnPropertyChanged(nameof(SelectedWasapiDevice));
+        OnPropertyChanged(nameof(SelectedMmeDevice));
+        ApplyDevice(value);
     }
 
     public async Task RefreshAsync()
@@ -170,43 +174,26 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
             HasMme = MmeDevices.Count > 0;
             HasAsio = AsioDevices.Count > 0;
 
-            // Restore previously-selected device from config.
-            // Only ONE device is ever highlighted across all tabs.
-            // Priority: saved device on its tab → WASAPI default → MME default.
+            // Restore previously-selected device from config (one selection, all tabs).
+            // Priority: saved device → WASAPI default → MME default.
             try
             {
                 var savedId = _config.GetValue<string>("audio.outputDeviceId");
                 _suppressApply = true;
 
-                SelectedWasapiDevice = null;
-                SelectedMmeDevice    = null;
-
+                AudioDeviceInfo? toSelect = null;
                 if (!string.IsNullOrEmpty(savedId))
                 {
-                    // Check WASAPI first.
-                    var wasapiMatch = OutputDevices.FirstOrDefault(d =>
+                    toSelect = OutputDevices.FirstOrDefault(d =>
                         string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
-                    if (wasapiMatch != null)
-                    {
-                        SelectedWasapiDevice = wasapiMatch;
-                    }
-                    else
-                    {
-                        // Check MME.
-                        var mmeMatch = MmeDevices.FirstOrDefault(d =>
-                            string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
-                        if (mmeMatch != null)
-                            SelectedMmeDevice = mmeMatch;
-                        else
-                            // Saved device disappeared; fall back to WASAPI default.
-                            SelectedWasapiDevice = OutputDevices.FirstOrDefault(d => d.IsDefault);
-                    }
+                    toSelect ??= MmeDevices.FirstOrDefault(d =>
+                        string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
                 }
-                else
-                {
-                    // No saved device yet; highlight WASAPI default.
-                    SelectedWasapiDevice = OutputDevices.FirstOrDefault(d => d.IsDefault);
-                }
+                toSelect ??= OutputDevices.FirstOrDefault(d => d.IsDefault);
+
+                _selectedDevice = toSelect;
+                OnPropertyChanged(nameof(SelectedWasapiDevice));
+                OnPropertyChanged(nameof(SelectedMmeDevice));
             }
             catch (Exception ex)
             {
@@ -271,33 +258,19 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         };
     }
 
-    // Reset: select the default device (WASAPI default preferred; MME default as fallback).
-    // Only ONE tab shows a selection after reset.
+    // Reset: select the system default (WASAPI preferred; MME fallback).
     [RelayCommand]
     private void Cancel()
     {
-        var wasapiDefault = OutputDevices.FirstOrDefault(d => d.IsDefault);
-        var mmeDefault    = MmeDevices.FirstOrDefault(d => d.IsDefault);
+        var active = OutputDevices.FirstOrDefault(d => d.IsDefault)
+                     ?? (AudioDeviceInfo?)MmeDevices.FirstOrDefault(d => d.IsDefault);
 
         _suppressApply = true;
-        if (wasapiDefault != null)
-        {
-            SelectedWasapiDevice = wasapiDefault;
-            SelectedMmeDevice    = null;
-        }
-        else if (mmeDefault != null)
-        {
-            SelectedMmeDevice    = mmeDefault;
-            SelectedWasapiDevice = null;
-        }
-        else
-        {
-            SelectedWasapiDevice = null;
-            SelectedMmeDevice    = null;
-        }
+        _selectedDevice = active;
+        OnPropertyChanged(nameof(SelectedWasapiDevice));
+        OnPropertyChanged(nameof(SelectedMmeDevice));
         _suppressApply = false;
 
-        var active = wasapiDefault ?? mmeDefault;
         if (active != null)
             ApplyDevice(active);
 

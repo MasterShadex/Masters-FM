@@ -63,11 +63,18 @@ public partial class AudioDeviceWindow : Window
         if (e.PropertyName == nameof(AudioDeviceViewModel.SelectedWasapiDevice) ||
             e.PropertyName == nameof(AudioDeviceViewModel.SelectedMmeDevice))
         {
-            // Suppress toast during initial device enumeration (IsLoading = true)
-            // so the window doesn't announce "Audio source updated." on open.
+            // Both properties fire on every selection change (single backing field).
+            // Only show the toast for the property that carries the non-null value.
+            // Also suppress during initial enumeration (IsLoading = true).
             var vm = sender as AudioDeviceViewModel;
             if (vm?.IsLoading != true)
-                ShowToast();
+            {
+                var value = e.PropertyName == nameof(AudioDeviceViewModel.SelectedWasapiDevice)
+                    ? vm?.SelectedWasapiDevice
+                    : vm?.SelectedMmeDevice;
+                if (value != null)
+                    ShowToast();
+            }
         }
     }
 
