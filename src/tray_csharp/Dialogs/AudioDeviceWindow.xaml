@@ -136,11 +136,16 @@
                                 <Setter TargetName="RowBg" Property="Background"
                                         Value="{StaticResource Surface2}"/>
                             </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
+                            <!-- Selection highlight is driven by the data item's
+                                 IsActive flag (set by the ViewModel), NOT by the
+                                 ListBox's IsSelected. This bypasses WPF's Selector
+                                 machinery entirely so cross-tab state can't get
+                                 stuck visually. -->
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
                                 <Setter TargetName="RowBg" Property="Background"
                                         Value="{StaticResource Surface2}"/>
                                 <Setter TargetName="SelectAccent" Property="Opacity" Value="1"/>
-                            </Trigger>
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>

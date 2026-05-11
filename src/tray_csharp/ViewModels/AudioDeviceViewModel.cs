@@ -113,6 +113,14 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     private void NotifySelectionChanged()
     {
+        // Update each device's IsActive flag so the data-driven DataTrigger
+        // in the ListBoxItem template can show the highlight on the single
+        // active item across both tabs.
+        foreach (var d in OutputDevices)
+            d.IsActive = ReferenceEquals(d, _selectedDevice);
+        foreach (var d in MmeDevices)
+            d.IsActive = ReferenceEquals(d, _selectedDevice);
+
         OnPropertyChanged(nameof(SelectedDevice));
         OnPropertyChanged(nameof(SelectedWasapiDevice));
         OnPropertyChanged(nameof(SelectedMmeDevice));
@@ -278,7 +286,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     }
 }
 
-public sealed class AudioDeviceInfo
+public sealed class AudioDeviceInfo : System.ComponentModel.INotifyPropertyChanged
 {
     public required string DeviceId { get; init; }
     public required string Name { get; init; }
@@ -289,4 +297,23 @@ public sealed class AudioDeviceInfo
 
     public string Detail => Backend + (IsDefault ? " (default)" : "") +
                              (IsEnabled ? "" : " (disabled)");
+
+    // Data-driven selection visual. The ViewModel sets IsActive=true on the
+    // currently selected device (and false on all others) whenever selection
+    // changes. The ListBoxItem template binds its highlight to this property,
+    // so the visual is completely independent of WPF's Selector machinery.
+    private bool _isActive;
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value) return;
+            _isActive = value;
+            PropertyChanged?.Invoke(this,
+                new System.ComponentModel.PropertyChangedEventArgs(nameof(IsActive)));
+        }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
