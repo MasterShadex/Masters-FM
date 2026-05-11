@@ -24,8 +24,8 @@
             <Setter Property="Cursor"      Value="Hand"/>
             <!-- Stage 7.12 Issue 3-A: MinWidth prevents TabPanel from shrinking
                  tabs below the width needed to display the label fully.
-                 80px accommodates "WASAPI" at 15px SemiBold with room to spare. -->
-            <Setter Property="MinWidth"    Value="80"/>
+                 96px accommodates "WASAPI" at Segoe UI 15px SemiBold with room to spare. -->
+            <Setter Property="MinWidth"    Value="96"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
