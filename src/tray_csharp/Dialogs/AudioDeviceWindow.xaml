@@ -22,15 +22,21 @@
             <Setter Property="Padding"     Value="0"/>
             <Setter Property="Margin"      Value="0,0,24,0"/>
             <Setter Property="Cursor"      Value="Hand"/>
+            <!-- Stage 7.12 Issue 3-A: MinWidth prevents TabPanel from shrinking
+                 tabs below the width needed to display the label fully.
+                 80px accommodates "WASAPI" at 15px SemiBold with room to spare. -->
+            <Setter Property="MinWidth"    Value="80"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
                         <Grid Height="44" VerticalAlignment="Stretch">
-                            <!-- Tab label -->
+                            <!-- Tab label: HorizontalAlignment=Left so text
+                                 does not stretch across the full MinWidth. -->
                             <TextBlock x:Name="Label"
                                        Text="{TemplateBinding Header}"
                                        Style="{StaticResource SubHeadingTextStyle}"
                                        Foreground="{StaticResource TextTertiary}"
+                                       HorizontalAlignment="Left"
                                        VerticalAlignment="Center"/>
                             <!-- Selected indicator (2px bottom border) -->
                             <Border x:Name="Indicator"
