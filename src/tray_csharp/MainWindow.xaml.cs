@@ -54,15 +54,19 @@ public partial class MainWindow : Window
             Application.Current.Shutdown(0);
         };
 
-        // INTERRUPT #3 STEP 2: Issue 7 -- wire left-click -> ShowMenu delegate.
-        // Opens the ContextMenu at the current cursor position using WPF
-        // PlacementMode.Mouse (no P/Invoke required). ContextMenu.IsOpen
-        // must be set on the dispatcher thread -- OnLoaded already runs on it.
+        // Stage 7.12 Batch A STEP 5: wire left-click -> ShowMenu delegate.
+        // PlacementMode.Mouse is unreliable for a hidden background window —
+        // WPF may calculate the position relative to the wrong monitor.
+        // AbsolutePoint + Win32 cursor position opens the menu on whichever
+        // monitor the cursor (and tray icon) is on.
         _trayMenuViewModel.OpenContextMenu = () =>
         {
             if (NotifyIcon.ContextMenu is { } cm)
             {
-                cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse;
+                var pos = System.Windows.Forms.Cursor.Position;
+                cm.Placement = System.Windows.Controls.Primitives.PlacementMode.AbsolutePoint;
+                cm.HorizontalOffset = pos.X;
+                cm.VerticalOffset   = pos.Y;
                 cm.IsOpen = true;
             }
         };
