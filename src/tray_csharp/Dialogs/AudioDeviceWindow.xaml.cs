@@ -99,11 +99,16 @@ public partial class AudioDeviceWindow : Window
     private void OnWasapiListBoxLoaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is AudioDeviceViewModel vm) SyncListBoxes(vm);
+        // Force container rebuild so DataTriggers re-evaluate against the
+        // current IsActive flags. WPF caches the trigger's last visual state
+        // on detached containers and does not re-evaluate on re-attach.
+        if (sender is ListBox lb) lb.Items.Refresh();
     }
 
     private void OnMmeListBoxLoaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is AudioDeviceViewModel vm) SyncListBoxes(vm);
+        if (sender is ListBox lb) lb.Items.Refresh();
     }
 
     // -------------------------------------------------------------------------
