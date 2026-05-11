@@ -483,8 +483,10 @@ internal static class WebhookHandler
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Art retry error for {Artist} - {Track}", artist, track);
+            // Also set ArtResolved=true so B11 doesn't re-fire on every heartbeat
+            // after an unexpected exception (ArtCascade should never throw, but be safe).
             await state.WebhookLock.WaitAsync(CancellationToken.None);
-            try { state.ArtResolving = false; }
+            try { state.ArtResolving = false; state.ArtResolved = true; }
             finally { state.WebhookLock.Release(); }
         }
     }
