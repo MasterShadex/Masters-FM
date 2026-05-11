@@ -1,14 +1,15 @@
 // Stage 7.7B STEP 4: AudioDeviceWindow code-behind.
-// Visual rebuild only; device enumeration logic unchanged (S4.5).
-// OnApplyTemplate wires AppDialogStyle PART_ elements.
-// OnResetClick reverts SelectedDevice to original-on-open value.
-// ShowToast() displays the auto-persist "Audio source updated." banner
-// for 3 seconds then fades it out.
+// Stage 7.12 Batch A rev13:
+//   - Both WASAPI and MME ListBoxes use SelectedItem Mode=OneWay so WPF
+//     never pushes selection state back to the ViewModel.
+//   - User clicks are forwarded via the shared OnDeviceSelectionChanged
+//     handler; programmatic binding updates (from SelectedDevice changing)
+//     are filtered by the device==vm.SelectedDevice guard.
+//   - Toast fires from OnDeviceSelectionChanged (user clicks) and OnResetClick.
 
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using MastersFM.Tray.ViewModels;
@@ -26,8 +27,6 @@ public partial class AudioDeviceWindow : Window
         SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
 
         InitializeComponent();
-        // Subscribe to SelectedDevice changes so we can show the toast.
-        DataContextChanged += OnDataContextChanged;
     }
 
     // -------------------------------------------------------------------------
@@ -46,40 +45,31 @@ public partial class AudioDeviceWindow : Window
     }
 
     // -------------------------------------------------------------------------
-    // DataContext wiring: subscribe to SelectedDevice property for toast trigger
+    // Shared SelectionChanged handler for WASAPI and MME ListBoxes.
+    // Mode=OneWay means WPF only pushes SelectedDevice → ListBox, never back.
+    // This handler fires for BOTH binding-driven changes and user clicks;
+    // the guard "device == vm.SelectedDevice" discards binding-driven ones
+    // so we only call SelectDevice() on genuine user clicks.
     // -------------------------------------------------------------------------
 
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.OldValue is AudioDeviceViewModel oldVm)
-            oldVm.PropertyChanged -= OnVmPropertyChanged;
+        if (e.AddedItems.Count == 0) return;
+        if (e.AddedItems[0] is not AudioDeviceInfo device) return;
+        var vm = DataContext as AudioDeviceViewModel;
+        if (vm == null || vm.IsLoading) return;
 
-        if (e.NewValue is AudioDeviceViewModel newVm)
-            newVm.PropertyChanged += OnVmPropertyChanged;
-    }
+        // If device already matches the ViewModel's selection, this change was
+        // triggered by the OneWay binding updating the ListBox — not a user click.
+        if (device == vm.SelectedDevice) return;
 
-    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(AudioDeviceViewModel.SelectedWasapiDevice) ||
-            e.PropertyName == nameof(AudioDeviceViewModel.SelectedMmeDevice))
-        {
-            // Both properties fire on every selection change (single backing field).
-            // Only show the toast for the property that carries the non-null value.
-            // Also suppress during initial enumeration (IsLoading = true).
-            var vm = sender as AudioDeviceViewModel;
-            if (vm?.IsLoading != true)
-            {
-                var value = e.PropertyName == nameof(AudioDeviceViewModel.SelectedWasapiDevice)
-                    ? vm?.SelectedWasapiDevice
-                    : vm?.SelectedMmeDevice;
-                if (value != null)
-                    ShowToast();
-            }
-        }
+        vm.SelectDevice(device);
+        ShowToast();
     }
 
     // -------------------------------------------------------------------------
-    // Reset: reverts selection to original-on-open value via CancelCommand
+    // Reset: reverts to system default via CancelCommand.
+    // Always shows the toast so the user sees confirmation.
     // -------------------------------------------------------------------------
 
     private void OnResetClick(object sender, RoutedEventArgs e)
@@ -87,9 +77,6 @@ public partial class AudioDeviceWindow : Window
         if (DataContext is AudioDeviceViewModel vm)
         {
             vm.CancelCommand.Execute(null);
-            // Always show the toast after Reset so the user sees confirmation
-            // even when SelectedDevice was already the original (SetProperty
-            // returns false in that case → no PropertyChanged → no auto-toast).
             ShowToast();
         }
     }
@@ -102,14 +89,11 @@ public partial class AudioDeviceWindow : Window
     {
         if (ToastBanner == null) return;
 
-        // Cancel any running dismiss timer.
         _toastTimer?.Stop();
 
-        // Fade in (150 ms).
         var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(150)));
         ToastBanner.BeginAnimation(OpacityProperty, fadeIn);
 
-        // Dismiss after 3 s.
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _toastTimer.Tick += (_, _) =>
         {
