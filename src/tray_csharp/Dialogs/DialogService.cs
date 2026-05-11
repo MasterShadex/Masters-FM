@@ -143,6 +143,7 @@ public sealed class DialogService : IDialogService
                 _logger.Log("UpdateProgress closed", Component);
                 _updateWindow = null;
             };
+            PositionDialogOnCursorMonitor(_updateWindow);
             _updateWindow.Show();
         });
     }
