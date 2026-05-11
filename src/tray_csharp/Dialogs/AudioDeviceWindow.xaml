@@ -153,6 +153,10 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
             <Setter Property="ItemContainerStyle" Value="{StaticResource DeviceListItemStyle}"/>
+            <!-- Prevent WPF auto-selecting the first row when SelectedItem is set
+                 to null (e.g. Reset with no original device). Without this the
+                 CollectionView CurrentItem wiring immediately re-selects row 0. -->
+            <Setter Property="IsSynchronizedWithCurrentItem" Value="False"/>
         </Style>
 
         <!-- Device row template (Name + Detail + optional Default pill) -->

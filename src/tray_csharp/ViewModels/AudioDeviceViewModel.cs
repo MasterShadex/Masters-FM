@@ -245,14 +245,18 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [RelayCommand]
     private void Cancel()
     {
-        // Revert to original-on-open device.
-        // Use _suppressApply so OnSelectedDeviceChanged doesn't fire a second Apply().
+        // Nothing to revert to (dialog opened with no saved device). Leave the
+        // current selection as-is; the toast still fires from OnResetClick.
+        if (_originalDevice == null) return;
+
+        // Revert to the original-on-open device.
+        // _suppressApply prevents OnSelectedDeviceChanged firing a second Apply().
         _suppressApply = true;
         SelectedDevice = _originalDevice;
         _suppressApply = false;
-        // Always call Apply() explicitly – even when SetProperty returned false
-        // (same reference → no PropertyChanged raised) so config stays consistent.
-        // Apply() guards on SelectedDevice != null internally.
+
+        // Always persist explicitly – even if SetProperty returned false (same
+        // reference) so config is always consistent with the displayed selection.
         Apply();
         PendingResult = null;
     }
