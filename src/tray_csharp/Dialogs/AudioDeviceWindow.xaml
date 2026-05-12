@@ -107,13 +107,23 @@
             </Setter>
         </Style>
 
-        <!-- List item container: 56px row, Surface2 hover, 3px accent on select. -->
+        <!-- List item container: 56px row, Surface2 hover, 3px accent on select.
+             Canonical WPF MVVM selection pattern:
+               IsSelected is two-way bound to the data item's IsActive flag.
+               Selector re-syncs IsSelected onto freshly-generated containers on
+               every tab re-entry, so the highlight cannot get stuck stale.
+               (DataTrigger Binding={Binding IsActive} inside ControlTemplate.Triggers
+               does NOT survive ContentPresenter detach/reattach cycles — sources:
+               dotnet/wpf#2069, Krivyakov on tab virtualization, Dr.WPF.) -->
         <Style x:Key="DeviceListItemStyle" TargetType="ListBoxItem">
             <Setter Property="Background"     Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding"        Value="0"/>
             <Setter Property="Cursor"         Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <!-- Drive IsSelected from the data item. TwoWay is required:
+                 OneWay silently drops when Selector internally updates the DP. -->
+            <Setter Property="IsSelected" Value="{Binding IsActive, Mode=TwoWay}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -136,16 +146,15 @@
                                 <Setter TargetName="RowBg" Property="Background"
                                         Value="{StaticResource Surface2}"/>
                             </Trigger>
-                            <!-- Selection highlight is driven by the data item's
-                                 IsActive flag (set by the ViewModel), NOT by the
-                                 ListBox's IsSelected. This bypasses WPF's Selector
-                                 machinery entirely so cross-tab state can't get
-                                 stuck visually. -->
-                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                            <!-- IsSelected is a real Selector-managed DP; the
+                                 framework guarantees it is correct on every
+                                 newly-generated container, so this trigger
+                                 always reflects the live IsActive value. -->
+                            <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="RowBg" Property="Background"
                                         Value="{StaticResource Surface2}"/>
                                 <Setter TargetName="SelectAccent" Property="Opacity" Value="1"/>
-                            </DataTrigger>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -158,10 +167,13 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
             <Setter Property="ItemContainerStyle" Value="{StaticResource DeviceListItemStyle}"/>
-            <!-- Prevent WPF auto-selecting the first row when SelectedItem is set
-                 to null (e.g. Reset with no original device). Without this the
-                 CollectionView CurrentItem wiring immediately re-selects row 0. -->
+            <!-- Selection is driven by IsActive on the data items; the ListBox
+                 must not interfere by syncing to the CollectionView's current item. -->
             <Setter Property="IsSynchronizedWithCurrentItem" Value="False"/>
+            <!-- Disable virtualization. Lists are tiny (a handful of devices) and
+                 recycled containers can leak the previous item's IsSelected /
+                 trigger state. Standard mode keeps containers fresh. -->
+            <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="False"/>
         </Style>
 
         <!-- Device row template (Name + Detail + optional Default pill) -->
@@ -305,11 +317,9 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="0">
-                    <ListBox x:Name="WasapiListBox"
-                             ItemsSource="{Binding OutputDevices}"
+                    <ListBox ItemsSource="{Binding OutputDevices}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
-                             Loaded="OnWasapiListBoxLoaded"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>
@@ -321,11 +331,9 @@
                                           FallbackValue=Visible}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <ListBox x:Name="MmeListBox"
-                             ItemsSource="{Binding MmeDevices}"
+                    <ListBox ItemsSource="{Binding MmeDevices}"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="OnDeviceSelectionChanged"
-                             Loaded="OnMmeListBoxLoaded"
                              Style="{StaticResource DeviceListBoxStyle}"
                              ItemTemplate="{StaticResource DeviceRowTemplate}"/>
                 </ScrollViewer>
