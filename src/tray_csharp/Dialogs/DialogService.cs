@@ -148,28 +148,22 @@ public sealed class DialogService : IDialogService
         });
     }
 
-    // Stage 7.12 Batch A (post STEP 6): centre every modal dialog on the
-    // PRIMARY (main) monitor regardless of where the cursor is.  Operator
-    // preference: Customize Overlay already opens on the main monitor centred,
-    // and all in-process dialogs (Welcome / Patch notes, Audio Source, Platform
-    // Detection, Setup Wizard, Error, Update Progress) should match that.
+    // Stage 7.12 Batch A (post STEP 6 rev2): centre every modal dialog in the
+    // middle of the PRIMARY monitor's work area regardless of cursor position.
     //
-    // Screen.WorkingArea is in device pixels; WPF Window.Left/Top behave like
-    // device pixels in PerMonitorV2 awareness (which the app declares in csproj).
-    // For dialog Width/Height in WPF logical units, scale by the primary
-    // monitor's DPI so the centring math stays in the same unit system.
+    // SystemParameters.WorkArea returns the primary monitor work area already
+    // in DIPs (WPF logical pixels) — the same unit space as Window.Left/Top
+    // and dialog.Width/Height.  The previous Screen.WorkingArea approach
+    // mixed device-pixel screen metrics with logical-pixel window dimensions,
+    // which at any DPI > 100% pushed dialogs down and to the right.
     //
-    // Call BEFORE ShowDialog for windows with explicit Width/Height set in XAML.
+    // Call BEFORE ShowDialog for windows with explicit Width/Height in XAML.
     // For SizeToContent windows, subscribe ContentRendered so ActualHeight is known.
     private static void PositionDialogOnPrimaryMonitor(Window dialog)
     {
-        var screen = System.Windows.Forms.Screen.PrimaryScreen;
-        if (screen == null) return;
-        var wa = screen.WorkingArea;
-        // Use actual dimensions if layout has run (ContentRendered path); fall back
-        // to XAML Width/Height when called before ShowDialog.
-        var w = dialog.ActualWidth  > 0 ? dialog.ActualWidth  : dialog.Width;
-        var h = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
+        var wa = System.Windows.SystemParameters.WorkArea;     // DIPs, primary monitor
+        var w  = dialog.ActualWidth  > 0 ? dialog.ActualWidth  : dialog.Width;
+        var h  = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
         dialog.Left = wa.Left + (wa.Width  - w) / 2;
         dialog.Top  = wa.Top  + (wa.Height - h) / 2;
