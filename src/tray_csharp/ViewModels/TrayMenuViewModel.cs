@@ -114,12 +114,17 @@ public sealed partial class TrayMenuViewModel : ObservableObject
 
         SetObsToggleState(_obsToggleState, LabelForObsState(_obsToggleState));
 
-        // Stage 7.8D: reconcile timer — 5s initial + 60s recurring.
-        // Replaces Stage 7.8C 5s direct-add (App.xaml.cs) and 60s OBS-exit poll.
+        // Stage 7.12 Batch B DIAG-09: reconcile timer interval lowered from
+        // 60 s → 5 s.  The slow poll left a 0-60 s window between OBS closing
+        // and reopening where the JSON file still reflected OBS's last
+        // (clobbered) autosave instead of our overlay entry.  Combined with
+        // the event-driven Process.Exited watcher attached in
+        // EnsureObsExitWatcher (called from every reconcile), OBS exits now
+        // trigger a near-instant rewrite of the scene file.
         _obsReconcileTimer = new System.Threading.Timer(
             _ => _ = ReconcileAsync(),
             null,
-            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
         _discordService.StateChanged  += (_, enabled) => IsDiscordEnabled  = enabled;
         _autoStartService.StateChanged += (_, enabled) => IsAutoStartEnabled = enabled;
@@ -352,6 +357,11 @@ public sealed partial class TrayMenuViewModel : ObservableObject
 
             if (needAdd)    _ = Task.Run(AutoAddAsync);
             if (needRemove) _ = Task.Run(() => AutoRemoveAsync(trayUuid));
+
+            // DIAG-09: hook into the running OBS process so its exit triggers
+            // an immediate reconcile (no 5-second timer wait).  Called every
+            // reconcile so a freshly-started OBS process gets re-watched.
+            EnsureObsExitWatcher();
         }
         catch (Exception ex) { _logger.LogErr("[ObsState] ReconcileAsync", ex, "OBS"); }
         return Task.CompletedTask;
@@ -453,6 +463,73 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         if (procs.Length == 0) return null;
         try { return procs[0].StartTime.ToUniversalTime(); }
         catch { return null; }
+    }
+
+    // ── DIAG-09 Process.Exited watcher ────────────────────────────────────────
+    // When the user enables the overlay while OBS is running, we hold in
+    // PendingRestart waiting for OBS to close.  Polling every 5 s catches
+    // most exits, but the window between OBS closing and the user reopening
+    // it can be much shorter.  Subscribing to Process.Exited fires
+    // immediately, so the file is rewritten with our entry before OBS reads
+    // it again.
+
+    private Process? _watchedObsProcess;
+    private readonly object _watchedObsLock = new();
+
+    private void EnsureObsExitWatcher()
+    {
+        try
+        {
+            lock (_watchedObsLock)
+            {
+                // Already watching a live process — keep it.
+                if (_watchedObsProcess != null)
+                {
+                    try { if (!_watchedObsProcess.HasExited) return; }
+                    catch { /* fell out from under us */ }
+                    try { _watchedObsProcess.Dispose(); } catch { }
+                    _watchedObsProcess = null;
+                }
+
+                var obs = Process.GetProcessesByName("obs64").FirstOrDefault()
+                       ?? Process.GetProcessesByName("obs32").FirstOrDefault()
+                       ?? Process.GetProcessesByName("obs").FirstOrDefault();
+                if (obs == null) return;
+
+                try { obs.EnableRaisingEvents = true; }
+                catch
+                {
+                    // Some processes refuse — fall back to timer polling.
+                    try { obs.Dispose(); } catch { }
+                    return;
+                }
+                obs.Exited += OnObsExited;
+                _watchedObsProcess = obs;
+                _logger.Log($"[ObsState] watching OBS PID={obs.Id} for exit", "OBS");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogErr("[ObsState] EnsureObsExitWatcher", ex, "OBS");
+        }
+    }
+
+    private void OnObsExited(object? sender, EventArgs e)
+    {
+        try
+        {
+            _logger.Log("[ObsState] OBS process exited; firing immediate reconcile", "OBS");
+            lock (_watchedObsLock)
+            {
+                try { _watchedObsProcess?.Dispose(); } catch { }
+                _watchedObsProcess = null;
+            }
+            _ = Task.Run(() => ReconcileAsync());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogErr("[ObsState] OnObsExited", ex, "OBS");
+        }
     }
 
     // ── Other commands ────────────────────────────────────────────────────────
