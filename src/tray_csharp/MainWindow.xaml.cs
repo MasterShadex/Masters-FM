@@ -11,9 +11,11 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using MastersFM.Tray.Services;
 using MastersFM.Tray.ViewModels;
 using Wpf.Ui.Controls;
@@ -146,6 +148,61 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    // -------------------------------------------------------------------------
+    // Now-playing header marquee (Stage 7.12 Batch A)
+    // -------------------------------------------------------------------------
+    // When the track title is wider than the menu, scroll it horizontally
+    // (text shifts leftward; when the end has passed the left edge the
+    // animation loops, snapping back to the start at the LEFT — operator's
+    // explicit preference: "go from left to right and reset on the left
+    // again, not right to left backwards").
+
+    private void OnNowPlayingMarqueeLoaded(object sender, RoutedEventArgs e)
+        => UpdateNowPlayingMarquee();
+
+    private void OnNowPlayingMarqueeSizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateNowPlayingMarquee();
+
+    private void UpdateNowPlayingMarquee()
+    {
+        // Defer to after the next layout pass so ActualWidth values are valid.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                if (NowPlayingMarquee == null
+                    || NowPlayingMarqueeViewport == null
+                    || NowPlayingMarqueeTransform == null) return;
+
+                // Always clear any running animation before re-evaluating.
+                NowPlayingMarqueeTransform.BeginAnimation(TranslateTransform.XProperty, null);
+                NowPlayingMarqueeTransform.X = 0;
+
+                var textWidth     = NowPlayingMarquee.ActualWidth;
+                var viewportWidth = NowPlayingMarqueeViewport.ActualWidth;
+                if (textWidth <= viewportWidth || viewportWidth <= 0) return;
+
+                const double gap      = 40;   // pause-equivalent off the right edge
+                const double pxPerSec = 40;   // scrolling speed
+                var distance = textWidth - viewportWidth + gap;
+                var duration = TimeSpan.FromSeconds(distance / pxPerSec);
+
+                var anim = new DoubleAnimation
+                {
+                    From           = 0,
+                    To             = -distance,
+                    Duration       = duration,
+                    RepeatBehavior = RepeatBehavior.Forever
+                };
+                NowPlayingMarqueeTransform.BeginAnimation(TranslateTransform.XProperty, anim);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogErr("now-playing marquee setup", ex, "Tray");
+            }
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     // -------------------------------------------------------------------------
