@@ -42,22 +42,27 @@
                 <!-- === Header: wordmark + now-playing status ===
                      IsEnabled=False prevents keyboard selection and click.
                      Opacity trigger in AppMenuItemStyle renders at 45%; override
-                     to 1.0 so the header is always full-opacity. -->
+                     to 1.0 so the header is always full-opacity.
+                     Stage 7.12 Batch A: negative left margin pulls the
+                     header text out of the label column so it spans the full
+                     menu width — without the indent it visually anchors the
+                     top of the menu instead of looking like an icon-less item. -->
                 <MenuItem IsEnabled="False"
                           Style="{StaticResource AppMenuItemStyle}"
                           Opacity="1">
                     <MenuItem.Header>
-                        <StackPanel Margin="0,4">
+                        <StackPanel Margin="-24,4,-24,4">
                             <TextBlock Text="Master's FM"
                                        FontFamily="Segoe UI"
-                                       FontSize="13"
+                                       FontSize="14"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource BrandPurpleBase}"/>
                             <TextBlock Text="{Binding NowPlayingHeaderText}"
                                        FontFamily="Segoe UI"
                                        FontSize="11"
                                        Foreground="{StaticResource TextSecondary}"
-                                       TextTrimming="CharacterEllipsis"/>
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,2,0,0"/>
                         </StackPanel>
                     </MenuItem.Header>
                 </MenuItem>
