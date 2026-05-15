@@ -9,6 +9,7 @@
 //   - Block accidental window-close.
 
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -54,19 +55,23 @@ public partial class MainWindow : Window
             Application.Current.Shutdown(0);
         };
 
-        // Stage 7.12 Batch A STEP 5: wire left-click -> ShowMenu delegate.
-        // PlacementMode.Mouse is unreliable for a hidden background window —
-        // WPF may calculate the position relative to the wrong monitor.
-        // AbsolutePoint + Win32 cursor position opens the menu on whichever
-        // monitor the cursor (and tray icon) is on.
+        // Stage 7.12 Batch A STEP 5 (rev2): wire left-click -> ShowMenu delegate.
+        // Cursor.Position returns DEVICE pixels; ContextMenu.HorizontalOffset/
+        // VerticalOffset with AbsolutePoint expect WPF LOGICAL pixels. At any
+        // DPI > 100% (the common case), feeding device pixels straight in places
+        // the menu off-screen / misaligned. Query the cursor's monitor for its
+        // effective DPI and divide so the menu opens exactly at the cursor —
+        // matching how right-click already behaves (handled internally by
+        // H.NotifyIcon).
         _trayMenuViewModel.OpenContextMenu = () =>
         {
             if (NotifyIcon.ContextMenu is { } cm)
             {
                 var pos = System.Windows.Forms.Cursor.Position;
+                var (scaleX, scaleY) = GetDpiScaleAtPoint(pos.X, pos.Y);
                 cm.Placement = System.Windows.Controls.Primitives.PlacementMode.AbsolutePoint;
-                cm.HorizontalOffset = pos.X;
-                cm.VerticalOffset   = pos.Y;
+                cm.HorizontalOffset = pos.X / scaleX;
+                cm.VerticalOffset   = pos.Y / scaleY;
                 cm.IsOpen = true;
             }
         };
@@ -143,4 +148,40 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    // -------------------------------------------------------------------------
+    // Per-monitor DPI helper (Stage 7.12 Batch A STEP 5 rev2)
+    // -------------------------------------------------------------------------
+    // Returns the effective DPI scale factor (1.0 == 96 DPI / 100% scaling) of
+    // the monitor that contains the given device-pixel point. Used to convert
+    // Cursor.Position into WPF logical pixels for PlacementMode.AbsolutePoint.
+
+    private static (double scaleX, double scaleY) GetDpiScaleAtPoint(int deviceX, int deviceY)
+    {
+        try
+        {
+            var pt = new POINT { X = deviceX, Y = deviceY };
+            var hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            if (hmon == IntPtr.Zero) return (1.0, 1.0);
+            if (GetDpiForMonitor(hmon, MonitorDpiType.Effective, out var dx, out var dy) != 0)
+                return (1.0, 1.0);
+            return (dx / 96.0, dy / 96.0);
+        }
+        catch
+        {
+            return (1.0, 1.0);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+
+    private enum MonitorDpiType { Effective = 0, Angular = 1, Raw = 2 }
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("Shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hmonitor, MonitorDpiType dpiType, out uint dpiX, out uint dpiY);
 }
