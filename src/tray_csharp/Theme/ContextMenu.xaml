@@ -120,6 +120,32 @@
         </Setter>
     </Style>
 
+    <!-- === Header MenuItem variant ===
+         Same look as AppMenuItemStyle (Foreground, FontFamily, hover bg, etc.)
+         but the template uses an AUTO-height ContentPresenter instead of the
+         fixed 36-px Grid.  Lets the tray header show two lines (Master's FM
+         wordmark + now-playing track) without the second line being clipped
+         by the row height.  No icon/check columns — header content spans
+         the full width via its own negative margins. -->
+    <Style x:Key="AppMenuHeaderStyle" TargetType="MenuItem"
+           BasedOn="{StaticResource AppMenuItemStyle}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Root"
+                            Background="Transparent"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Header}"
+                                          ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,6"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- === Separator ===
          1px BorderSubtle horizontal rule; 8px top and bottom margin, 8px side inset.
          Replaces the OS-default separator with a design-system-matched divider. -->

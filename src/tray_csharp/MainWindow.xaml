@@ -48,22 +48,23 @@
                      menu width — without the indent it visually anchors the
                      top of the menu instead of looking like an icon-less item. -->
                 <MenuItem IsEnabled="False"
-                          Style="{StaticResource AppMenuItemStyle}"
+                          Style="{StaticResource AppMenuHeaderStyle}"
                           Opacity="1">
                     <MenuItem.Header>
-                        <StackPanel Margin="-24,4,-24,4">
+                        <StackPanel>
                             <TextBlock Text="Master's FM"
                                        FontFamily="Segoe UI"
                                        FontSize="14"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource BrandPurpleBase}"/>
                             <!-- Marquee viewport: clipped to menu width so a long
-                                 track title scrolls left-to-right and snaps back to
-                                 the left edge instead of bleeding into the next row. -->
+                                 track title scrolls leftward and snaps back to the
+                                 LEFT edge each loop. ClipToBounds clips horizontally
+                                 only — vertical sizing is automatic from the inner
+                                 TextBlock's natural line height. -->
                             <Grid x:Name="NowPlayingMarqueeViewport"
                                   ClipToBounds="True"
-                                  Height="16"
-                                  Margin="0,2,0,0">
+                                  Margin="0,3,0,0">
                                 <TextBlock x:Name="NowPlayingMarquee"
                                            Text="{Binding NowPlayingHeaderText}"
                                            FontFamily="Segoe UI"
