@@ -136,23 +136,51 @@ internal sealed class DiscordRpcService : BackgroundService
             _enabled     = newEnabled;
             _clientId    = newClientId;
 
-            bool changed = (prevEnabled != newEnabled) || (prevClientId != newClientId);
-            if (changed)
-            {
-                _logger.LogInformation(
-                    "Discord RPC reconfigured -- enabled={Enabled} client_id={ClientId}",
-                    newEnabled, newClientId == DefaultClientId ? "built-in" : "custom");
+            bool clientIdChanged = !string.Equals(prevClientId, newClientId, StringComparison.Ordinal);
+            bool enabledChanged  = prevEnabled != newEnabled;
 
+            if (clientIdChanged)
+            {
+                // Different App ID — old client can't represent it, full reinit.
+                _logger.LogInformation(
+                    "Discord RPC: client_id changed ({Old} -> {New}); reinitialising",
+                    prevClientId == DefaultClientId ? "built-in" : "custom",
+                    newClientId  == DefaultClientId ? "built-in" : "custom");
+                DisposeClient();
                 if (newEnabled)
                 {
-                    _lastSig = string.Empty;  // reset dedup so reconnect pushes current track
+                    _lastSig = string.Empty;
                     TryInitClient();
+                }
+            }
+            else if (enabledChanged)
+            {
+                // Stage 7.12 Batch B DIAG-10 rev2: only the enabled flag flipped.
+                // Don't churn the Lachee DiscordRpcClient on every toggle — a
+                // Dispose/Initialize cycle inside the same process leaves Discord
+                // in a state where the re-connected client is acknowledged by IPC
+                // but not surfaced in the user's profile activity.  Keep the
+                // pipe alive, just clear or restore the displayed presence.
+                if (newEnabled)
+                {
+                    _logger.LogInformation("Discord RPC: re-enabled (client kept alive)");
+                    _lastSig = string.Empty;   // force next PushDiscord through
+                    if (_client == null) TryInitClient();
+                    // Caller (PushDiscord on next track update) will set presence.
                 }
                 else
                 {
-                    DisposeClient();
+                    _logger.LogInformation("Discord RPC: disabled (clearing presence, client kept alive)");
+                    if (_connected)
+                    {
+                        try   { _client?.SetPresence(null); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: clear presence on disable failed"); }
+                    }
+                    _lastSig    = "__cleared__";
+                    _lastPushAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 }
             }
+            // (no change to either field — nothing to do)
         }
     }
 
