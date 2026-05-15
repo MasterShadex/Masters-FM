@@ -303,8 +303,26 @@ public sealed partial class TrayMenuViewModel : ObservableObject
                     newState = ObsToggleState.NotAdded;
                     newLabel = "OBS overlay";
                 }
+                else if (!string.IsNullOrEmpty(trayUuid) && obsRunning)
+                {
+                    // DIAG-09 fix: we previously added our source, but the
+                    // running OBS process auto-saves its in-memory scene back
+                    // to the JSON every ~30-60 s, clobbering our file edit.
+                    // Re-adding while OBS is running just lets OBS clobber us
+                    // again on its next autosave (and churns the UUID stored
+                    // in obs.tray_added_uuid).
+                    //
+                    // Stay in PendingRestart and DO NOT re-write the file —
+                    // the next scheduled reconcile after OBS closes will pick
+                    // up the "obs not running" branch below and write a stable
+                    // copy that survives the next OBS launch.
+                    newState = ObsToggleState.PendingRestart;
+                    newLabel = "OBS overlay (restart OBS to apply)";
+                }
                 else
                 {
+                    // Either first-run (no prior UUID) or OBS is closed so a
+                    // file edit will survive. Safe to add.
                     newState = ObsToggleState.NotAdded;
                     newLabel = "OBS overlay (adding…)";
                     needAdd  = true;
