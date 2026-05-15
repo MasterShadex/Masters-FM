@@ -84,9 +84,16 @@ public class Program
             options.AddServerHeader = false;
         });
 
-        // Console logging only -- no file logging yet (file logging added in a later sub-stage)
+        // Console logging + file logging so the server is debuggable when
+        // launched detached by MastersFM.exe (no console window is shown to
+        // capture stdout otherwise).  Stage 7.12 Batch B DIAG-10 debug.
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
+        builder.Logging.AddProvider(new SimpleFileLoggerProvider(
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MastersFM",
+                "server.log")));
 
         // ServerState singleton: holds currentTrack + SERVER_BOOT_ID + SSE client registry
         builder.Services.AddSingleton<ServerState>();

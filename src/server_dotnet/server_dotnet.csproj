@@ -63,6 +63,7 @@
 
     <Compile Include="DiscordRpcThrottle.cs" />
     <Compile Include="DiscordRpcService.cs" />
+    <Compile Include="SimpleFileLogger.cs" />
   </ItemGroup>
 
   <!--

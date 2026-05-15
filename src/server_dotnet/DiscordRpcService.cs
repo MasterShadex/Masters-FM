@@ -171,7 +171,11 @@ internal sealed class DiscordRpcService : BackgroundService
     public void PushDiscord(JsonNode? currentTrack)
     {
         bool enabled;
-        lock (_lock) enabled = _enabled;
+        bool connected;
+        lock (_lock) { enabled = _enabled; connected = _connected; }
+        _logger.LogInformation(
+            "Discord RPC: PushDiscord enter (enabled={Enabled} connected={Connected} hasTrack={HasTrack})",
+            enabled, connected, currentTrack != null);
         if (!enabled) return;
 
         // ── No track: clear activity ──────────────────────────────────────────
@@ -282,7 +286,15 @@ internal sealed class DiscordRpcService : BackgroundService
             if (!_connected) return;
             client = _client;
         }
-        try   { client?.SetPresence(presence); }
+        try
+        {
+            client?.SetPresence(presence);
+            _logger.LogInformation(
+                "Discord RPC: SetPresence sent (details='{Details}' state='{State}' largeImg='{Large}')",
+                presence?.Details ?? "(null)",
+                presence?.State   ?? "(null)",
+                presence?.Assets?.LargeImageKey ?? "(null)");
+        }
         catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: SetPresence error"); }
     }
 
