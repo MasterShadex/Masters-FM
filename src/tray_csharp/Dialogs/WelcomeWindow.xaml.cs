@@ -80,24 +80,19 @@ public partial class WelcomeWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Always build the waveform — operator likes the brand panel visible
+        // in patch-notes mode too.  ClipToBounds=True on the Border keeps any
+        // bar overflow inside its column.
+        BuildWaveform();
+
         // Stage 7.12 Issue 6: if opened as patch-notes view, hide the
-        // first-run welcome content and show the patch notes panel instead.
-        // Also collapse the left brand panel + zero its column so the
-        // patch-notes list gets the full window width.  We SKIP BuildWaveform
-        // entirely in this mode so the 32 animated bars never run (they'd
-        // otherwise tick along on a hidden Canvas wasting frames, and any
-        // bar wider than its 0-width column would bleed past the clip).
+        // first-run welcome copy + action buttons and show the patch notes
+        // panel instead.  Left brand column stays put.
         if (DataContext is ViewModels.WelcomeViewModel vm && vm.ShowAboutTab)
         {
             WelcomeContentScroller.Visibility = Visibility.Collapsed;
             WelcomeActionButtons.Visibility   = Visibility.Collapsed;
             PatchNotesPanel.Visibility        = Visibility.Visible;
-            LeftBrandPanel.Visibility         = Visibility.Collapsed;
-            LeftBrandColumn.Width             = new GridLength(0);
-        }
-        else
-        {
-            BuildWaveform();
         }
     }
 
