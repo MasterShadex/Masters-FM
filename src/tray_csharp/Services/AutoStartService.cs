@@ -43,10 +43,10 @@ public sealed class AutoStartService : IAutoStartService
     {
         try
         {
-            var exePath = Environment.ProcessPath ?? string.Empty;
+            var exePath = ResolveAutoStartTarget();
             if (string.IsNullOrEmpty(exePath))
             {
-                _logger.LogErr("Enable: Environment.ProcessPath is empty; cannot resolve target", null, Component);
+                _logger.LogErr("Enable: cannot resolve launcher target", null, Component);
                 return;
             }
 
@@ -133,5 +133,67 @@ public sealed class AutoStartService : IAutoStartService
     {
         if (IsEnabled) Disable();
         else Enable();
+    }
+
+    public void Reconcile()
+    {
+        try
+        {
+            if (!IsEnabled) return;          // nothing on disk to reconcile
+            var expected = ResolveAutoStartTarget();
+            if (string.IsNullOrEmpty(expected)) return;
+
+            var existing = ReadLnkTarget(_lnkPath);
+            if (string.Equals(existing, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Log($"reconcile: target current ({expected})", Component);
+                return;
+            }
+
+            _logger.Log($"reconcile: target drift; was '{existing ?? "(unreadable)"}', rewriting to '{expected}'", Component);
+            Enable();                        // recreates the .lnk with the correct target
+        }
+        catch (Exception ex)
+        {
+            _logger.LogErr("Reconcile", ex, Component);
+        }
+    }
+
+    // Prefer the launcher (MastersFM.exe) which spawns server + tray together.
+    // Falls back to the currently-running process for dev / unusual layouts.
+    private string ResolveAutoStartTarget()
+    {
+        var current    = Environment.ProcessPath ?? string.Empty;
+        var workingDir = Path.GetDirectoryName(current) ?? string.Empty;
+        var launcher   = Path.Combine(workingDir, "MastersFM.exe");
+        if (File.Exists(launcher) && !string.Equals(launcher, current, StringComparison.OrdinalIgnoreCase))
+            return launcher;
+        return current;
+    }
+
+    private string? ReadLnkTarget(string lnkPath)
+    {
+        if (!File.Exists(lnkPath)) return null;
+        var wshType = Type.GetTypeFromProgID("WScript.Shell");
+        if (wshType == null) return null;
+
+        dynamic? wsh = null;
+        dynamic? shortcut = null;
+        try
+        {
+            wsh = Activator.CreateInstance(wshType);
+            if (wsh == null) return null;
+            shortcut = wsh.CreateShortcut(lnkPath);
+            return (string?)shortcut.TargetPath;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (shortcut != null) { try { Marshal.FinalReleaseComObject(shortcut); } catch { } }
+            if (wsh != null)      { try { Marshal.FinalReleaseComObject(wsh);      } catch { } }
+        }
     }
 }

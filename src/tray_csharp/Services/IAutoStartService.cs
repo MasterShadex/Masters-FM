@@ -18,6 +18,14 @@ public interface IAutoStartService
     /// <summary>Convenience: flips current state.</summary>
     void Toggle();
 
+    /// <summary>
+    /// Stage 7.12 Batch A: when the .lnk already exists but points at a stale
+    /// target (e.g. an older build pointed it at the tray host instead of the
+    /// launcher), re-create it so login actually launches the full app.
+    /// No-op when no shortcut exists.
+    /// </summary>
+    void Reconcile();
+
     /// <summary>Fires after Enable/Disable. Tray menu in 7.6 will subscribe.</summary>
     event EventHandler<bool>? StateChanged;
 }

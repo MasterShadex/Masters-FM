@@ -241,19 +241,26 @@ public partial class App : Application
         _logger.Log($"initial state={_discordService.IsEnabled}", "Discord");
         _logger.Log($"initial state={_autoStartService.IsEnabled}", "AutoStart");
 
-        // Default autostart ON on first v14 run. Flag written once; after that,
-        // whatever state the .lnk is in is the user's explicit choice.
+        // Stage 7.12 Batch A: repair stale shortcut targets from earlier builds
+        // that pointed the .lnk at the tray host instead of MastersFM.exe.
+        _autoStartService.Reconcile();
+
+        // Default autostart ON for v14 rc3+. Uses a fresh flag key
+        // (autostart_defaulted_v14rc3) so it re-applies once for every user,
+        // including those whose earlier v14 default-on never produced a
+        // working shortcut.  Flag written once; subsequent runs honour the
+        // user's explicit choice.
         try
         {
-            var defaultedOnV14 = _configService?.GetValue<bool>("autostart_defaulted_on_v14", false) ?? false;
-            if (!defaultedOnV14)
+            var defaulted = _configService?.GetValue<bool>("autostart_defaulted_v14rc3", false) ?? false;
+            if (!defaulted)
             {
                 if (!_autoStartService.IsEnabled)
                 {
                     _autoStartService.Enable();
-                    _logger.Log("AutoStart defaulted ON (first v14 run)", "AutoStart");
+                    _logger.Log("AutoStart defaulted ON (v14 rc3 first run)", "AutoStart");
                 }
-                _configService?.SetValue("autostart_defaulted_on_v14", true);
+                _configService?.SetValue("autostart_defaulted_v14rc3", true);
             }
         }
         catch (Exception ex) { _logger.LogErr("AutoStart default-on", ex, "AutoStart"); }
