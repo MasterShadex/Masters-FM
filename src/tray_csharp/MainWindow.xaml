@@ -51,35 +51,63 @@
                           Style="{StaticResource AppMenuHeaderStyle}"
                           Opacity="1">
                     <MenuItem.Header>
-                        <StackPanel>
-                            <TextBlock Text="Master's FM"
-                                       FontFamily="Segoe UI"
-                                       FontSize="14"
-                                       FontWeight="Bold"
-                                       Foreground="{StaticResource BrandPurpleBase}"/>
-                            <!-- Marquee viewport: clipped to menu width so a long
-                                 track title scrolls leftward and snaps back to the
-                                 LEFT edge each loop. ClipToBounds clips horizontally
-                                 only — vertical sizing is automatic from the inner
-                                 TextBlock's natural line height. -->
-                            <Grid x:Name="NowPlayingMarqueeViewport"
-                                  ClipToBounds="True"
-                                  Margin="0,3,0,0">
-                                <TextBlock x:Name="NowPlayingMarquee"
-                                           Text="{Binding NowPlayingHeaderText}"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Album art (44x44 rounded square, collapses when
+                                 no track is currently playing). -->
+                            <Border Grid.Column="0"
+                                    Width="44" Height="44"
+                                    Margin="0,0,10,0"
+                                    CornerRadius="4"
+                                    ClipToBounds="True"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource Surface2}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NowPlaying.ArtImageSource}"
+                                                         Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Image Source="{Binding NowPlaying.ArtImageSource}"
+                                       Stretch="UniformToFill"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Master's FM"
                                            FontFamily="Segoe UI"
-                                           FontSize="11"
-                                           Foreground="{StaticResource TextSecondary}"
-                                           TextWrapping="NoWrap"
-                                           HorizontalAlignment="Left"
-                                           Loaded="OnNowPlayingMarqueeLoaded"
-                                           SizeChanged="OnNowPlayingMarqueeSizeChanged">
-                                    <TextBlock.RenderTransform>
-                                        <TranslateTransform x:Name="NowPlayingMarqueeTransform"/>
-                                    </TextBlock.RenderTransform>
-                                </TextBlock>
-                            </Grid>
-                        </StackPanel>
+                                           FontSize="14"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource BrandPurpleBase}"/>
+                                <!-- Marquee viewport: clipped to menu width so a long
+                                     track title scrolls leftward and snaps back to the
+                                     LEFT edge each loop. ClipToBounds clips horizontally
+                                     only — vertical sizing is automatic from the inner
+                                     TextBlock's natural line height. -->
+                                <Grid x:Name="NowPlayingMarqueeViewport"
+                                      ClipToBounds="True"
+                                      Margin="0,3,0,0">
+                                    <TextBlock x:Name="NowPlayingMarquee"
+                                               Text="{Binding NowPlayingHeaderText}"
+                                               FontFamily="Segoe UI"
+                                               FontSize="11"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               TextWrapping="NoWrap"
+                                               HorizontalAlignment="Left"
+                                               Loaded="OnNowPlayingMarqueeLoaded"
+                                               SizeChanged="OnNowPlayingMarqueeSizeChanged">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="NowPlayingMarqueeTransform"/>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
                     </MenuItem.Header>
                 </MenuItem>
 
