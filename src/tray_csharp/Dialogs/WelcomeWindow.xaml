@@ -28,9 +28,11 @@
              Surface0 background (deeper than the chrome Surface1) creates
              a subtle two-tone split that visually separates hero from copy.
              ============================================================ -->
-        <Border Grid.Column="0"
+        <Border x:Name="LeftBrandPanel"
+                Grid.Column="0"
                 Background="{StaticResource Surface0}"
-                CornerRadius="0,0,0,12">
+                CornerRadius="0,0,0,12"
+                ClipToBounds="True">
             <StackPanel VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Margin="24,0">
