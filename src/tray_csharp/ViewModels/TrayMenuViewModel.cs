@@ -500,13 +500,57 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private void RestartApp()
     {
         _logger.Log("TrayMenu: Restart Master's FM", "Tray");
-        var exe = Environment.ProcessPath;
+
+        // Stage 7.12 Batch A: the tray runs INSIDE the launcher's Job Object,
+        // and the launcher holds a Global\MastersFM_Launcher named mutex.
+        // Just respawning Environment.ProcessPath (the tray exe) creates a
+        // second tray without a server/audio_spectrum and leaves the user
+        // with a half-working app.
+        //
+        // Correct sequence:
+        //   1. Spawn a DETACHED cmd helper via UseShellExecute=true so it's
+        //      a child of Explorer.exe, not us — survives our Job Object's
+        //      cascade kill when we shut down.
+        //   2. Helper waits 3 s (giving the launcher time to detect our exit,
+        //      kill server + audio_spectrum, and release the launcher mutex).
+        //   3. Helper then starts MastersFM.exe — the launcher claims the
+        //      now-released mutex and respawns the whole process tree
+        //      (server.exe, audio_spectrum.exe, the tray) fresh.
+        //   4. We call InvokeCleanShutdown so the launcher notices we exited.
+        var trayExe    = Environment.ProcessPath ?? string.Empty;
+        var workingDir = Path.GetDirectoryName(trayExe) ?? string.Empty;
+        var launcher   = Path.Combine(workingDir, "MastersFM.exe");
+
+        if (string.IsNullOrEmpty(launcher) || !File.Exists(launcher))
+        {
+            _logger.LogErr($"RestartApp: launcher not found at '{launcher}'; falling back to tray-only respawn", null, "Tray");
+            try
+            {
+                if (File.Exists(trayExe))
+                    Process.Start(new ProcessStartInfo(trayExe) { UseShellExecute = true });
+            }
+            catch (Exception ex) { _logger.LogErr("RestartApp fallback spawn", ex, "Tray"); }
+            InvokeCleanShutdown();
+            return;
+        }
+
         try
         {
-            if (exe != null && File.Exists(exe))
-                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
+            var psi = new ProcessStartInfo
+            {
+                FileName        = "cmd.exe",
+                Arguments       = $"/c timeout /t 3 /nobreak >nul & start \"\" \"{launcher}\"",
+                UseShellExecute = true,
+                WindowStyle     = ProcessWindowStyle.Hidden
+            };
+            Process.Start(psi);
+            _logger.Log($"RestartApp: queued delayed relaunch (T+3s) -> {launcher}", "Tray");
         }
-        catch (Exception ex) { _logger.LogErr("RestartApp spawn", ex, "Tray"); }
+        catch (Exception ex)
+        {
+            _logger.LogErr("RestartApp helper spawn", ex, "Tray");
+        }
+
         InvokeCleanShutdown();
     }
 
