@@ -44,7 +44,7 @@ public sealed class DialogService : IDialogService
             vm.ShowAboutTab = showAboutTab;
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
-            PositionDialogOnCursorMonitor(window);
+            PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             _logger.Log("Welcome closed", Component);
         });
@@ -61,7 +61,7 @@ public sealed class DialogService : IDialogService
             window.Owner = Application.Current.MainWindow;
             // Trigger initial enumeration if not already loaded
             _ = vm.RefreshAsync();
-            PositionDialogOnCursorMonitor(window);
+            PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             var result = vm.PendingResult;
             _logger.Log("AudioDevice closed result=" + (result?.DisplayName ?? "(cancelled)"), Component);
@@ -79,7 +79,7 @@ public sealed class DialogService : IDialogService
             vm.RefreshFromConfig();
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
-            PositionDialogOnCursorMonitor(window);
+            PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             _logger.Log("Platforms closed", Component);
         });
@@ -95,7 +95,7 @@ public sealed class DialogService : IDialogService
             vm.Reset();
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
-            PositionDialogOnCursorMonitor(window);
+            PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             var completed = vm.Completed;
             _logger.Log("SetupWizard closed completed=" + completed, Component);
@@ -116,7 +116,7 @@ public sealed class DialogService : IDialogService
             // Stage 7.8B STEP 9: SizeToContent="Height" window — position after layout via ContentRendered
             // so ActualHeight is available for vertical centring.
             window.WindowStartupLocation = WindowStartupLocation.Manual;
-            window.ContentRendered += (_, _) => PositionDialogOnCursorMonitor(window);
+            window.ContentRendered += (_, _) => PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             _logger.Log("Error closed", Component);
         });
@@ -143,22 +143,29 @@ public sealed class DialogService : IDialogService
                 _logger.Log("UpdateProgress closed", Component);
                 _updateWindow = null;
             };
-            PositionDialogOnCursorMonitor(_updateWindow);
+            PositionDialogOnPrimaryMonitor(_updateWindow);
             _updateWindow.Show();
         });
     }
 
-    // Stage 7.8B STEP 9: centre a modal dialog on the monitor that contains the
-    // mouse cursor.  Screen.WorkingArea is in device pixels; WPF Left/Top are in
-    // logical pixels — accurate for uniform-DPI setups (operator's config).
-    // Mixed-DPI correction is deferred.
+    // Stage 7.12 Batch A (post STEP 6): centre every modal dialog on the
+    // PRIMARY (main) monitor regardless of where the cursor is.  Operator
+    // preference: Customize Overlay already opens on the main monitor centred,
+    // and all in-process dialogs (Welcome / Patch notes, Audio Source, Platform
+    // Detection, Setup Wizard, Error, Update Progress) should match that.
+    //
+    // Screen.WorkingArea is in device pixels; WPF Window.Left/Top behave like
+    // device pixels in PerMonitorV2 awareness (which the app declares in csproj).
+    // For dialog Width/Height in WPF logical units, scale by the primary
+    // monitor's DPI so the centring math stays in the same unit system.
+    //
     // Call BEFORE ShowDialog for windows with explicit Width/Height set in XAML.
     // For SizeToContent windows, subscribe ContentRendered so ActualHeight is known.
-    private static void PositionDialogOnCursorMonitor(Window dialog)
+    private static void PositionDialogOnPrimaryMonitor(Window dialog)
     {
-        var cursorPos = System.Windows.Forms.Cursor.Position;
-        var screen    = System.Windows.Forms.Screen.FromPoint(cursorPos);
-        var wa        = screen.WorkingArea;
+        var screen = System.Windows.Forms.Screen.PrimaryScreen;
+        if (screen == null) return;
+        var wa = screen.WorkingArea;
         // Use actual dimensions if layout has run (ContentRendered path); fall back
         // to XAML Width/Height when called before ShowDialog.
         var w = dialog.ActualWidth  > 0 ? dialog.ActualWidth  : dialog.Width;
