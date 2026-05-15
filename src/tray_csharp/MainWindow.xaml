@@ -105,14 +105,28 @@
                           Style="{StaticResource AppMenuItemStyle}"
                           IsCheckable="True"
                           IsChecked="{Binding IsDiscordEnabled, Mode=OneWay}"
-                          Command="{Binding ToggleDiscordCommand}"/>
+                          Command="{Binding ToggleDiscordCommand}">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconDiscord}"
+                              Fill="{StaticResource TextSecondary}"
+                              Width="14" Height="14"
+                              Stretch="Uniform"/>
+                    </MenuItem.Icon>
+                </MenuItem>
 
                 <!-- 6. Start on login [toggle] -->
                 <MenuItem Header="Start on login"
                           Style="{StaticResource AppMenuItemStyle}"
                           IsCheckable="True"
                           IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
-                          Command="{Binding ToggleAutoStartCommand}"/>
+                          Command="{Binding ToggleAutoStartCommand}">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconStartup}"
+                              Fill="{StaticResource TextSecondary}"
+                              Width="14" Height="14"
+                              Stretch="Uniform"/>
+                    </MenuItem.Icon>
+                </MenuItem>
 
                 <!-- 7. OBS overlay [toggle]; label + tooltip are state-driven -->
                 <MenuItem Header="{Binding ObsLabel}"
@@ -146,7 +160,14 @@
                 <!-- 9. View log -->
                 <MenuItem Header="View log"
                           Style="{StaticResource AppMenuItemStyle}"
-                          Command="{Binding OpenLogCommand}"/>
+                          Command="{Binding OpenLogCommand}">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconDocument}"
+                              Fill="{StaticResource TextSecondary}"
+                              Width="14" Height="14"
+                              Stretch="Uniform"/>
+                    </MenuItem.Icon>
+                </MenuItem>
 
                 <!-- 10. Check for updates; label is state-driven via UpdateLabel -->
                 <MenuItem Header="{Binding UpdateLabel}"
@@ -163,7 +184,14 @@
                 <!-- 11. Restart -->
                 <MenuItem Header="Restart Master's FM"
                           Style="{StaticResource AppMenuItemStyle}"
-                          Command="{Binding RestartAppCommand}"/>
+                          Command="{Binding RestartAppCommand}">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconRestart}"
+                              Fill="{StaticResource TextSecondary}"
+                              Width="14" Height="14"
+                              Stretch="Uniform"/>
+                    </MenuItem.Icon>
+                </MenuItem>
 
                 <!-- 12. Quit -->
                 <MenuItem Header="Quit Master's FM"

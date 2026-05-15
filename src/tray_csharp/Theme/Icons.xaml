@@ -87,4 +87,28 @@
     <PathGeometry x:Key="IconSparkle"
         Figures="M12 2 L13.2 10.8 L22 12 L13.2 13.2 L12 22 L10.8 13.2 L2 12 L10.8 10.8 Z"/>
 
+    <!-- Stage 7.12 Batch A STEP 6: 4 additional icons for previously icon-less menu items -->
+
+    <!-- Discord: chat bubble with bottom-left tail (chat app symbol) -->
+    <PathGeometry x:Key="IconDiscord"
+        Figures="M4 4 L20 4 A2 2 0 0 1 22 6 L22 15 A2 2 0 0 1 20 17 L12 17 L8 21 L8 17 L4 17 A2 2 0 0 1 2 15 L2 6 A2 2 0 0 1 4 4 Z"/>
+
+    <!-- Startup / Power: vertical stem + C-shaped arc (universal power-on symbol) -->
+    <PathGeometry x:Key="IconStartup"
+        Figures="M11 3 L13 3 L13 12 L11 12 Z M7.05 5.05 L8.46 6.46 A6 6 0 1 0 15.54 6.46 L16.95 5.05 A8 8 0 1 1 7.05 5.05 Z"/>
+
+    <!-- Document / Log: page with folded top-right corner and 3 horizontal text lines -->
+    <GeometryGroup x:Key="IconDocument" FillRule="EvenOdd">
+        <PathGeometry Figures="M6 2 L14 2 L19 7 L19 22 L6 22 Z"/>
+        <PathGeometry Figures="M14 2 L14 7 L19 7 Z"/>
+        <RectangleGeometry Rect="8,11,9,1.2"/>
+        <RectangleGeometry Rect="8,14,9,1.2"/>
+        <RectangleGeometry Rect="8,17,6,1.2"/>
+    </GeometryGroup>
+
+    <!-- Restart: clockwise circular arrow (mirror of IconReset) — distinct from
+         IconReset on "Check for updates" so the two items don't look identical. -->
+    <PathGeometry x:Key="IconRestart"
+        Figures="M20 12 A8 8 0 0 1 4.93 15.07 L6.5 14 A6 6 0 0 0 18 12 A6 6 0 0 0 9.17 6.17 L12 4 L7 4 L7 9 L9.83 6.17 A8 8 0 0 1 20 12 Z"/>
+
 </ResourceDictionary>
