@@ -54,4 +54,13 @@
     <!-- Transparent brush convenience resource -->
     <SolidColorBrush x:Key="Transparent" Color="Transparent"/>
 
+    <!-- Stage 7.12 Batch A: semantic tag colours for patch-notes badges.
+         Used by DataTriggers in the patch-notes ItemTemplate so NEW vs.
+         IMPROVED vs. FIXED vs. REMOVED are visually distinct at a glance. -->
+    <SolidColorBrush x:Key="TagNewBrush"      Color="#22C55E"/>   <!-- green -->
+    <SolidColorBrush x:Key="TagImprovedBrush" Color="#38BDF8"/>   <!-- blue -->
+    <SolidColorBrush x:Key="TagFixedBrush"    Color="#FB923C"/>   <!-- orange -->
+    <SolidColorBrush x:Key="TagRemovedBrush"  Color="#F87171"/>   <!-- red -->
+    <SolidColorBrush x:Key="TagNoteBrush"     Color="#5C5C66"/>   <!-- neutral grey -->
+
 </ResourceDictionary>

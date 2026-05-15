@@ -84,11 +84,14 @@ public partial class WelcomeWindow : Window
 
         // Stage 7.12 Issue 6: if opened as patch-notes view, hide the
         // first-run welcome content and show the patch notes panel instead.
+        // Also collapse the left brand column (280 -> 0) so the patch-notes
+        // list gets the full window width — easier to read at any window size.
         if (DataContext is ViewModels.WelcomeViewModel vm && vm.ShowAboutTab)
         {
             WelcomeContentScroller.Visibility = Visibility.Collapsed;
             WelcomeActionButtons.Visibility   = Visibility.Collapsed;
             PatchNotesPanel.Visibility        = Visibility.Visible;
+            LeftBrandColumn.Width             = new GridLength(0);
         }
     }
 
