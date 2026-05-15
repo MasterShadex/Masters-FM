@@ -12,6 +12,7 @@
 // a deterministic BeginTime so bars never all peak at once. When
 // App.IsReducedMotion is true, bars are placed statically from seed 42.
 
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -85,15 +86,37 @@ public partial class WelcomeWindow : Window
         // bar overflow inside its column.
         BuildWaveform();
 
+        // Stamp the actual running version on the brand-panel caption.
+        // Reads AssemblyInformationalVersion (csproj <Version>), stripped of
+        // any "+build.metadata", same logic ConfigService uses internally.
+        var versionLabel = "v" + GetAppVersion();
+        if (VersionText != null) VersionText.Text = versionLabel;
+
         // Stage 7.12 Issue 6: if opened as patch-notes view, hide the
         // first-run welcome copy + action buttons and show the patch notes
-        // panel instead.  Left brand column stays put.
+        // panel instead.  Window title becomes "You are currently running
+        // version v..." so the operator can see at a glance which build
+        // they're looking at.
         if (DataContext is ViewModels.WelcomeViewModel vm && vm.ShowAboutTab)
         {
             WelcomeContentScroller.Visibility = Visibility.Collapsed;
             WelcomeActionButtons.Visibility   = Visibility.Collapsed;
             PatchNotesPanel.Visibility        = Visibility.Visible;
+            Title = $"You are currently running version {versionLabel}";
         }
+    }
+
+    private static string GetAppVersion()
+    {
+        var asm  = Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            var plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        var ver = asm.GetName().Version;
+        return ver != null ? ver.ToString() : "0.0.0";
     }
 
     private void BuildWaveform()

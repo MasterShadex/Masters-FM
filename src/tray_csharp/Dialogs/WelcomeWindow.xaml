@@ -196,16 +196,14 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Header area -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Patch notes"
-                               Style="{StaticResource TinyTextStyle}"
-                               Foreground="{StaticResource TextTertiary}"
-                               Margin="0,0,0,8"/>
-                    <TextBlock Text="Master's FM - Patch notes"
-                               Style="{StaticResource DisplayTextStyle}"
-                               Foreground="{StaticResource TextPrimary}"/>
-                </StackPanel>
+                <!-- Header area (the small "Patch notes" overline was removed; the
+                     window title bar already reads "You are currently running
+                     version v...", so the redundant overline is gone). -->
+                <TextBlock Grid.Row="0"
+                           Text="Master's FM - Patch notes"
+                           Style="{StaticResource DisplayTextStyle}"
+                           Foreground="{StaticResource TextPrimary}"
+                           Margin="0,0,0,24"/>
 
                 <!-- Version list -->
                 <ListBox Grid.Row="1"
