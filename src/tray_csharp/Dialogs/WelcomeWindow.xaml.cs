@@ -26,7 +26,7 @@ public partial class WelcomeWindow : Window
     // Deterministic seed so reduced-motion static heights are consistent
     // across launches (user sees the same "frozen" waveform every time).
     private const int WaveformSeed = 42;
-    private const int BarCount    = 32;
+    private const int BarCount    = 28;   // 28 bars fit cleanly inside the 232-px Canvas
     private const int BarWidth    = 4;
     private const int BarGap      = 4;
     private const int BarMinH     = 8;
@@ -115,6 +115,12 @@ public partial class WelcomeWindow : Window
 
         var rng = new Random(WaveformSeed);
 
+        // Centre the whole bar group horizontally in the Canvas so there's
+        // equal breathing room on the left and right edges (rather than the
+        // bars being left-anchored and bleeding past the right side).
+        double barGroupWidth = BarCount * BarWidth + (BarCount - 1) * BarGap;
+        double offsetX = Math.Max(0, (canvas.Width - barGroupWidth) / 2.0);
+
         for (int i = 0; i < BarCount; i++)
         {
             int startH = rng.Next(BarMinH, BarMaxH + 1);
@@ -129,8 +135,8 @@ public partial class WelcomeWindow : Window
                 VerticalAlignment = VerticalAlignment.Bottom
             };
 
-            // Position bar on canvas: left edge + gap, pinned to canvas bottom.
-            Canvas.SetLeft(bar, i * (BarWidth + BarGap));
+            // Position bar on canvas: centred bar group, pinned to canvas bottom.
+            Canvas.SetLeft(bar, offsetX + i * (BarWidth + BarGap));
             Canvas.SetBottom(bar, 0);
             canvas.Children.Add(bar);
 

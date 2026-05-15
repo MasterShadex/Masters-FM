@@ -198,11 +198,11 @@
 
                 <!-- Header area -->
                 <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="PATCH NOTES"
+                    <TextBlock Text="Patch notes"
                                Style="{StaticResource TinyTextStyle}"
                                Foreground="{StaticResource TextTertiary}"
                                Margin="0,0,0,8"/>
-                    <TextBlock Text="Master's FM"
+                    <TextBlock Text="Master's FM - Patch notes"
                                Style="{StaticResource DisplayTextStyle}"
                                Foreground="{StaticResource TextPrimary}"/>
                 </StackPanel>
