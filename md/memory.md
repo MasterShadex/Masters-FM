@@ -534,6 +534,19 @@ operator-verified PASS in this session.  See the dated entries above for each ph
 
 ## IN-FLIGHT WORK
 
+**STAGE 7.12 BATCH B -- COMPLETE 2026-05-16 (all phases A through J rev3, PASS)**
+- Phases A-J rev3 all operator-verified PASS in a single session (see CHANGELOG entry for `2026-05-16` for the full commit-by-commit list).
+- Real-time pause/seek/skip sync to ~5-10 ms latency on OBS overlay, ~10-60 ms on Discord card.
+- Native Discord IPC pipe shipped — `Lachee.DiscordRPC` and `DiscordRichPresence` NuGet removed from `server_dotnet.csproj`.
+- Per-platform album art cascade with Dice-similarity gating + new `SoundCloudApiSearchSource`.
+- Combined idle CPU ~0.5 % across all three processes.
+- Two items remain from the DIAG diagnosis as deferred (NOT in flight):
+  - **DIAG 04** — KS / ASIO audio backend tabs (placeholder tabs in audio device dialog)
+  - **DIAG 05** — Customize Overlay redesign (Batch D scope — pre-v14 design retained)
+- Decision on RC.3 publication / RC.4 cut pending operator direction.
+
+---
+
 **RC.3 PUBLICATION HOLD -- ACTIVE 2026-05-11**
 - rc.3 GitHub release remains DRAFT (not published); tag v14.0.0-rc.3 on remote stays in place
 - 10 issues found in real-world testing; all diagnosed in V14_S7_11_DIAG_*.md
@@ -610,6 +623,8 @@ operator-verified PASS in this session.  See the dated entries above for each ph
 
 ## DEFERRED ITEMS
 
+- **DIAG 04 — KS / ASIO audio backend tabs** (Stage 7.11 diagnosis, deferred at end of Batch B 2026-05-16).  KS tab is in XAML but only a static placeholder; ASIO tab is hidden because `HasAsio` is always false (`AsioDevices` never populated).  Fix: remove `HasAsio` gating + actually populate ASIO devices.  Trivial-to-small fix, just needs a slot.
+- **DIAG 05 — Customize Overlay redesign** (Stage 7.11 diagnosis, deferred at end of Batch B 2026-05-16).  `customize.html` still on pre-v14 design.  Batch D scope, requires operator decision (rebuild for rc.4 or defer to v14.1.0).
 - **P2-SMTC-3: SHIPPED in v11.2.2 as rate-limiting wrapper** — Rate-limiting approach used instead of full async (Start-ThreadJob unavailable on PS 5.1; Runspace-based async would require passing all globals). `Get-SMTCNowPlayingCached` wrapper at tray.ps1:7039 runs Get-SMTCNowPlaying at most every 300ms. CPU: 79% of 1 core → 1.5% of 1 core. NOT fully async, but achieves CPU reduction goal. See V1122_FINAL_REPORT.md.
 
 - **P1-SMTC-2: FIXED in v11.2.3** — v11.2.2's Fix 3 had circular deadlock (Remove in title-change branch). v11.2.3 moved Remove to `finally` (unconditional) + added 500ms rate limit. Art refresh confirmed working in 5b test.
@@ -679,6 +694,14 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 - Version bump: bump `$script:APP_VERSION` in `src/tray.ps1` AND prepend a new `$script:PATCH_HISTORY` entry
 - PS 5.1 in `.ps1` files: NEVER use `} else {` on same line inside a block -- use `if (-not x) {}` on separate line
 - Em-dashes in `.ps1` and build scripts cause PS 5.1 to misread UTF-8 bytes as CP1252 and crash -- use `--` instead
+- **WinRT timestamps are snapshots, not counters.** `GlobalSystemMediaTransportControlsSessionTimelineProperties.Position` is the position-as-of-`LastUpdatedTime`.  ALWAYS pair the two and interpolate forward by `(now − LastUpdatedTime)` when playing.  Same pattern applies to Spotify's API, MediaSession's `MediaPositionState`, and any other "media position" surface (Phase F lesson).
+- **For sub-15 ms timer cadences on Windows: call `timeBeginPeriod(1)` from winmm.dll on app startup, pair with `timeEndPeriod(1)` on exit.** Default OS timer is 15.6 ms — `Task.Delay(1)` rounds up without this.  Per-process on Win10+, cost <0.05 % CPU.  All media apps do it (Phase D lesson).
+- **For high-frequency event marshaling to WPF dispatcher: prefer `Task.Run` polling + `Dispatcher.InvokeAsync(..., DispatcherPriority.Normal, ct)`** over `DispatcherTimer(DispatcherPriority.Background)`.  DispatcherTimer is bounded by WM_TIMER (~15 ms) AND gets preempted by render frames at Background priority.  Normal priority is high enough to run within ~1 ms but doesn't fight WPF's render loop the way Send does (Phase D lesson).
+- **`EnumWindows` for browser tab detection** — beats `GetForegroundWindow` alone, which only fires when the user is on the playing tab.  Sweep visible top-level windows and check titles for known site keywords.  ~0.5 ms cost, ~50-200 windows typical (Phase H rev2 lesson).
+- **For an accuracy-critical resolution cascade: per-platform routing > parallel race.** When the same external resource has multiple potential lookup providers, "first to respond wins" trades correctness for latency.  Define an ordered preference list per source platform and walk it sequentially; only fall back to generic providers when platform-specific ones return empty (Phase I lesson).
+- **Sørensen-Dice on character bigrams is the right default similarity metric** for short user-facing strings (song titles, video titles).  Order-insensitive, length-normalized, fast.  Handles "Artist - Track" vs "Track - Artist" and "feat." vs "ft." trivially.  Use a ≥ 0.75 threshold to reject obviously-wrong music-DB matches (Phase I lesson).
+- **For "frozen" Discord-RPC indicators: encode the information in plain text (e.g. `State`), not in interpolated channels (timestamps).** Discord's client interpolates the progress bar from `(now − start)` continuously; only text fields are truly static.  When you need a "paused at exactly here" indicator, embed `⏸ M:SS / M:SS` into State and consider dropping timestamps entirely (Phase J rev3 lesson).
+- **`DoubleAnimationUsingKeyFrames` with `LinearDoubleKeyFrame` at equal values = constant hold.** No need for `DiscreteDoubleKeyFrame` unless you genuinely want an instant jump.  `RepeatBehavior.Forever` snaps the value at cycle boundaries — gives a free snap-back without an explicit snap-back keyframe (Phase G lesson).
 
 ## THINGS TRIED THAT FAILED — DO NOT RETRY
 
@@ -692,6 +715,16 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 - **True async Get-SMTCNowPlaying via Start-ThreadJob (v11.2.2 planned, abandoned):** Start-ThreadJob NOT available on PS 5.1 without ThreadJob module (not installed). Runspace-based async would require serialising ALL globals (complicated). Rate-limiting cache wrapper achieves the same CPU reduction goal.
 - **Here-string quoting for msiexec path (v11.1.6 wrong, v11.1.8 correct):** The auto-update helper's msiexec reinstall line must use single-string `-ArgumentList` with double-backtick escaping. See HARD CONSTRAINTS → CRITICAL AUTO-UPDATE HELPER SCRIPT for the full rule, both correct and wrong forms, and the escaping breakdown. This caused real tester self-uninstalls twice. The correct line is locked in tray.ps1 — do NOT "simplify" or "fix" it.
 - **`_smtcPropsFiredThisTick.Remove($key)` in title-change branch (v11.2.2 Fix 3):** Caused circular deadlock — Remove needed completed task, no new task could start while key was set. Permanently stuck on startup track's art. Fixed in v11.2.3 by moving Remove to `finally` block + adding 500ms rate-limit guard. RULE: async task cleanup MUST go in `finally`, never in a conditional branch.
+
+- **Lachee.DiscordRPC's `RichPresence` ActivityType hack (briefly tried before Phase B):** RichPresence is `sealed` and `BaseRichPresence` doesn't expose `Type`.  Worked around it by hooking `JsonConvert.DefaultSettings` to install a global `JsonConverter<RichPresence>` that injects `"type": 2` into every serialised RichPresence — works but is fragile (any future Lachee internal change could break it).  Replaced wholesale in Phase B (commit `f245b92`) by writing our own native pipe implementation (`DiscordIpcClient.cs`) where `Type` is a first-class field on `DiscordIpcActivity`.  RULE: don't fight a sealed external type with global-converter monkey-patching when the underlying protocol is simple enough to reimplement.
+
+- **`GetForegroundWindow`-only browser-tab detection (Phase H first attempt, fixed in Phase H rev2):** Only catches the site if the user is actively focused on the playing tab at the exact moment SMTC fires `MediaPropertiesChanged`.  Real-world: user starts a video, alt-tabs to OBS, our event arrives, we see OBS's window title, cache "browser" forever.  Replaced with `EnumWindows` over all visible top-level windows in Phase H rev2 (commit `d959d91`).  Also: when caching the result, only lock in POSITIVE detections (`youtube`/`twitch`/etc.); never lock in `"browser"` — let subsequent events keep retrying.
+
+- **First-HTTPS-wins parallel art cascade (replaced in Phase I):** Original cascade raced ALL remote sources in parallel and took the first HTTPS URL.  For non-music platforms (YouTube videos, Twitch streams) this meant Deezer/iTunes returned the first-match for any title token and won the race with a totally wrong album cover.  Operator-reported 60-70 % accuracy was almost entirely this.  Replaced with per-platform routing table + Dice similarity scoring in Phase I (commit `e0ad850`).  RULE: speed and correctness conflict — never race accuracy-critical lookups.
+
+- **Periodic Discord-RPC pushes to "pin" a paused progress bar (Phase J + rev2, replaced in rev3):** Tried to keep the bar frozen at the pause position by re-sending shifted timestamps every 5-10 s.  Discord's client interpolates between pushes, so the bar visibly drifts forward then snaps back at each refresh — operator could see the motion.  Replaced by simply OMITTING timestamps when paused (operator's own suggestion, commit `7e2146b`) and embedding the explicit `⏸ M:SS / M:SS` into the `State` text instead.  RULE: when the external API enforces client-side interpolation you can't disable, encode the static information in a non-interpolated channel.
+
+- **`DispatcherPriority.Send` for high-frequency event marshaling (Phase D first attempt, fixed mid-Phase-D):** Preempts the WPF render loop — caused UI judder during rapid scrub bursts.  Lowered to `DispatcherPriority.Normal` in the final Phase D commit (`07f09ac`) — still high enough to run within ~1 ms but doesn't fight rendering.  RULE: `Send` is for synchronous-must-run-now operations only; everything else uses `Normal`.
 
 ## AUTO-UPDATE SYSTEM
 
@@ -729,6 +762,44 @@ Inside `@"..."@`, `` "`"`$msiFile`"" `` expands to `""$msiFile""` — PowerShell
 ---
 
 ## CHANGELOG
+
+### 2026-05-16 -- Stage 7.12 Batch B Phases A-J: real-time sync + native Discord pipe + per-platform art accuracy
+
+**Commits this session (oldest → newest):**
+`a6ba26e` Phase A (real-time sync), `f245b92` Phase B (native Discord IPC pipe), `8cf4c64` Phase C (last-mile latency), `07f09ac` Phase D (1 ms drain + timeBeginPeriod + 50 ms heartbeat + tightened seek thresholds), `dd79aa2` Phase E (Discord rate-limit defence), `855103a` Phase F (startup-mid-track sync), `b964eea` Phase G (tray-menu marquee), `52ebac3` Phase H (YouTube label + browser jitter), `d959d91` Phase H rev2 (EnumWindows + positive-only cache), `e0ad850` Phase I (per-platform art accuracy), `257af2c` Phase J (paused-state Discord bar visible), `f4583b9` Phase J rev2 (5 s drift + State pause-time text), `7e2146b` Phase J rev3 (drop bar when paused per operator), `5e467cc` memory checkpoint after PASS.
+
+**Outcome:** all phases operator-verified PASS in a single session.  See the dated entries at the top of this file (lines 8-520) for each phase's full detail.
+
+#### What shipped (high level)
+
+| Phase | Outcome |
+|---|---|
+| A | Real-time sync: state-aware tray dedup, 100 ms heartbeat, 16 ms SMTC drain, 250 ms Discord throttle |
+| B | **Native Discord IPC pipe** — replaced `Lachee.DiscordRPC` with our own protocol implementation (`DiscordIpcClient.cs`).  ActivityType.Listening as a first-class field; no more JsonConverter hack |
+| C | Thumbnail cache, throttle 50 ms, server broadcast dedup, SMTC IsSeek detection, overlay poll 100→2000 ms |
+| D | Background-Task SMTC drain @ 1 ms, `timeBeginPeriod(1)`, heartbeat 100→50 ms, all seek thresholds tightened |
+| E | Discord rate-limit defence — no early Discord push + sliding 5/20 s window + adaptive burst throttle |
+| F | Startup-mid-track sync — interpolate stale `TimelineProperties.Position` forward by `(now − LastUpdatedTime)` |
+| G | Tray-menu marquee: 2 s pause → slide → 2 s pause → snap-back via `DoubleAnimationUsingKeyFrames` |
+| H + rev2 | YouTube label via `EnumWindows`; raised browser-source seek thresholds to 1000 ms; cache only positive site detections |
+| I | Per-platform art cascade: SMTC trust for all platforms (incl. Spotify), music DBs skip non-music sources, Dice-similarity gating (≥ 0.75), new `SoundCloudApiSearchSource` using the existing client_id cache, full per-platform routing table |
+| J + rev2 + rev3 | Paused-state Discord card: no progress bar (per operator), explicit `⏸ M:SS / M:SS` in State text |
+
+#### Latency budget achieved
+- User input → OBS overlay: **~5–10 ms typical**, ~30 ms peak
+- User input → Discord card: **~10–60 ms typical** (Discord client render dominates from here)
+- Combined idle CPU: **~0.5 %** across launcher + tray + server
+
+#### Files touched (sketch)
+Tray: `App.xaml.cs`, `MainWindow.xaml.cs`, `Detectors/SmtcEventBridge.cs`, `Services/HeartbeatService.cs`, `Services/TrackResolver.cs`.
+Server: full Discord stack (`DiscordIpcClient.cs` new, `DiscordRpcService.cs` + `DiscordRpcThrottle.cs` rewritten, `Program.cs` + `server_dotnet.csproj` updated, `DiscordRichPresence` NuGet removed), full art cascade (`ArtCascade.cs` rewritten + new `ArtSources/SoundCloudApiSearchSource.cs` + `ArtSources/TextSimilarity.cs`; rewrote `Deezer/Itunes/MusicBrainz` sources with filter + similarity).
+Overlay: `overlay.html` poll cadence.
+
+#### Deferred (next sessions)
+- **DIAG 04** — KS / ASIO audio backend tabs (placeholder tabs in audio device dialog)
+- **DIAG 05** — Customize Overlay redesign (Batch D scope; pre-v14 design retained)
+
+---
 
 ### 2026-05-11 -- Stage 7.11: diagnosis of 10 operator-reported rc.3 issues
 
