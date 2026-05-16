@@ -8,8 +8,21 @@ namespace MastersFM.Server;
 // from server.js:686-696
 internal sealed class SmtcSource : IArtSource
 {
+    // Stage 7.12 Batch B Phase I #1: added "spotify", "applemusic", "twitch", and
+    // the umbrella "browser" name.  Spotify (desktop AND Spotify Web in Chrome)
+    // publishes the actual album art via SMTC — ignoring it forced us through
+    // Deezer/iTunes searches that returned the wrong VERSION of a song (single
+    // vs album vs remix → wrong cover).  Apple Music desktop is the same.
+    // Adding "twitch" prevents wrong music-DB matches from racing past the
+    // SMTC thumbnail (or empty fallback) for Twitch streams.  "browser" covers
+    // the case where the Phase H tab-title heuristic couldn't pin down a site.
     private static readonly string[] s_browserPlatforms =
-        { "soundcloud", "youtube", "deezer", "tidal", "apple music", "bandcamp", "mixcloud" };
+    {
+        "soundcloud", "youtube", "youtubemusic",
+        "spotify", "applemusic", "apple music",
+        "deezer", "tidal", "bandcamp", "mixcloud",
+        "twitch", "browser",
+    };
 
     private readonly ILogger<SmtcSource> _logger;
 

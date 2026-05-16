@@ -54,6 +54,8 @@
     <Compile Include="ArtSources\MusicBrainzSource.cs" />
     <Compile Include="ArtSources\SoundCloudScraper.cs" />
     <Compile Include="ArtSources\SoundCloudOembedSource.cs" />
+    <Compile Include="ArtSources\SoundCloudApiSearchSource.cs" />
+    <Compile Include="ArtSources\TextSimilarity.cs" />
     <Compile Include="ArtSources\OsuScraperSource.cs" />
     <Compile Include="ArtSources\YouTubeSource.cs" />
     <Compile Include="ArtSources\BingImageSource.cs" />

@@ -9,8 +9,16 @@ using Microsoft.Extensions.Logging;
 namespace MastersFM.Server;
 
 // from server.js:760-770
+//
+// Stage 7.12 Batch B Phase I #2 + #4: skip for non-music sources, request
+// top 5 candidates, similarity-gate to ≥ 0.75 BEFORE doing the (relatively
+// expensive) CoverArtArchive redirect resolution.  The CAA redirect resolver
+// (added in Batch B DIAG-10 for Discord) is unchanged.
 internal sealed class MusicBrainzSource : IArtSource
 {
+    private const double SimilarityThreshold = 0.75;
+    private const int    CandidateLimit      = 5;
+
     private readonly IHttpClientFactory _factory;
     private readonly ILogger<MusicBrainzSource> _logger;
 
@@ -26,33 +34,59 @@ internal sealed class MusicBrainzSource : IArtSource
         string cleanedArtist, string cleanedTrack,
         string? webhookArt, string? originUrl, string? source, CancellationToken ct)
     {
+        var sourceLower = (source ?? string.Empty).ToLowerInvariant();
+        if (sourceLower == "youtube" || sourceLower == "twitch") return string.Empty;
+
         try
         {
-            // from server.js:762-764: recording:{t}+artist:{a}&fmt=json&limit=1
-            // Uses "musicbrainz" named client (MastersFM/1.7 UA per MusicBrainz rate-limit policy)
             var url = "https://musicbrainz.org/ws/2/recording/" +
                       $"?query=recording:{HttpUtility.UrlEncode(cleanedTrack)}" +
-                      $"+artist:{HttpUtility.UrlEncode(cleanedArtist)}&fmt=json&limit=1";
+                      $"+artist:{HttpUtility.UrlEncode(cleanedArtist)}&fmt=json&limit={CandidateLimit}";
 
             var json = await HttpHelpers.HttpsGetAsync(_factory, "musicbrainz", url, _logger, ct);
             if (string.IsNullOrEmpty(json)) return string.Empty;
 
-            var node = JsonNode.Parse(json);
-            // from server.js:767: recordings[0].releases[0].id
-            var id = node?["recordings"]?[0]?["releases"]?[0]?["id"]?.GetValue<string>() ?? string.Empty;
-            if (string.IsNullOrEmpty(id)) return string.Empty;
+            var recordings = JsonNode.Parse(json)?["recordings"]?.AsArray();
+            if (recordings == null || recordings.Count == 0) return string.Empty;
+
+            var queryLine = $"{cleanedArtist} {cleanedTrack}";
+            double bestScore = 0.0;
+            string bestId    = string.Empty;
+            string bestLine  = string.Empty;
+            foreach (var rec in recordings)
+            {
+                if (rec == null) continue;
+                var hitTitle  = rec["title"]?.GetValue<string>() ?? string.Empty;
+                var hitArtist = rec["artist-credit"]?[0]?["name"]?.GetValue<string>() ?? string.Empty;
+                var releaseId = rec["releases"]?[0]?["id"]?.GetValue<string>() ?? string.Empty;
+                if (string.IsNullOrEmpty(releaseId)) continue;
+
+                var hitLine = $"{hitArtist} {hitTitle}";
+                var score   = TextSimilarity.Dice(queryLine, hitLine);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestId    = releaseId;
+                    bestLine  = hitLine;
+                }
+            }
+
+            if (bestScore < SimilarityThreshold || string.IsNullOrEmpty(bestId))
+            {
+                _logger.LogDebug(
+                    "MusicBrainzSource: best candidate '{Hit}' scored {Score:F2} for query '{Query}' — below {Thr:F2} threshold, rejecting",
+                    bestLine, bestScore, queryLine, SimilarityThreshold);
+                return string.Empty;
+            }
 
             // Stage 7.12 Batch B (DIAG-10 fix): resolve the CoverArtArchive
             // 307 redirect ourselves and return the final archive.org URL.
-            // Discord's media proxy doesn't follow multi-hop redirects, so
-            // the raw coverartarchive.org/release/{mbid}/front URL ends up
-            // displaying as "?" placeholder even though browsers handle it
-            // fine.  A single HEAD with AllowAutoRedirect=true gives us the
-            // direct CDN URL Discord can fetch in one hop.
-            var cacheUrl = $"https://coverartarchive.org/release/{id}/front";
+            // Discord's media proxy doesn't follow multi-hop redirects.
+            var cacheUrl = $"https://coverartarchive.org/release/{bestId}/front";
             var finalUrl = await ResolveRedirectAsync(cacheUrl, ct);
-            _logger.LogDebug("MusicBrainzSource: release MBID {Id} -> {Url} for {Artist} - {Track}",
-                id, finalUrl, cleanedArtist, cleanedTrack);
+            _logger.LogDebug(
+                "MusicBrainzSource: accepted '{Hit}' at score {Score:F2}, MBID {Id} -> {Url}",
+                bestLine, bestScore, bestId, finalUrl);
             return finalUrl;
         }
         catch (Exception ex)
@@ -62,16 +96,10 @@ internal sealed class MusicBrainzSource : IArtSource
         }
     }
 
-    // HEAD the CoverArtArchive URL with redirects enabled and return the
-    // final response URI.  Falls back to the input URL if anything goes
-    // wrong — better to return a working-most-of-the-time URL than empty.
     private async Task<string> ResolveRedirectAsync(string startUrl, CancellationToken ct)
     {
         try
         {
-            // Use a fresh HttpClient with AllowAutoRedirect=true; the factory's
-            // configured "musicbrainz" client may have redirects disabled to
-            // preserve the MB rate-limit semantics, so we don't reuse it here.
             using var handler = new HttpClientHandler
             {
                 AllowAutoRedirect      = true,
@@ -83,8 +111,6 @@ internal sealed class MusicBrainzSource : IArtSource
             using var req  = new HttpRequestMessage(HttpMethod.Head, startUrl);
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
 
-            // resp.RequestMessage.RequestUri is the URL the client ended up at
-            // after following the redirect chain.
             var final = resp.RequestMessage?.RequestUri?.ToString();
             if (!resp.IsSuccessStatusCode || string.IsNullOrEmpty(final))
                 return string.Empty;

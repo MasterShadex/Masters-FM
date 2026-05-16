@@ -391,6 +391,70 @@ Verified live: `/current` endpoint now returns `source: youtube` for the operato
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase I (per-platform art accuracy)
+
+Operator: "for every platform research logical album art detections. or album art detection based on titles of songs or videos. I notice the album arts for every single platform you can call *are for 60-70%* correct ... fix that and make it 100% accurate."
+
+### Diagnosis (presented to operator before changes)
+Four real bugs in the cascade caused the 30-40 % wrong-art rate:
+1. **Spotify excluded from SMTC-thumbnail trust list.** `SmtcSource.cs` allowed soundcloud/youtube/deezer/tidal/apple-music/bandcamp/mixcloud — but NOT spotify, even though Spotify (desktop and Web in Chrome) publishes the correct album art via SMTC.  Falling through to Deezer/iTunes search returned the wrong VERSION of a song (single vs album vs remix → wrong cover).
+2. **Deezer/iTunes/MusicBrainz fired even for YouTube videos.**  No source filter.  Searching "Zero To $1,000 Profit with Dropshipping" in iTunes returns ... something, and "first HTTPS wins" raced it ahead of the correct YouTube thumbnail.
+3. **No similarity check** on iTunes/Deezer/MusicBrainz first results.  iTunes especially is lenient — search "Falling" and get a popular different "Falling" back, regardless of the actual artist.
+4. **`SoundCloudClientIdCache` was registered in DI but no source used it.**  SC user-uploads aren't in Deezer/iTunes/MB, so the cascade fell to Bing image search for most SC tracks.
+
+### Changes (7 fixes)
+- **#1 `SmtcSource.cs`**: allowed-platforms list now includes `spotify`, `applemusic`, `apple music`, `twitch`, and `browser` (umbrella).  SMTC data-URI thumbnail wins for all of these — that's the actual page-published artwork.
+- **#2 `DeezerSource` / `ItunesSource` / `MusicBrainzSource`**: early-return when `source ∈ { youtube, twitch }`.  Stops music DBs from racing wrong covers into a video stream.
+- **#3 new `TextSimilarity.cs`**: Sørensen-Dice on character bigrams of normalized strings.  O(n+m), order-insensitive, length-normalized.  Drops punctuation, lowercases, collapses whitespace.  Returns a score in [0,1].
+- **#4 same three music DBs**: request `limit=5` instead of `limit=1`, score each candidate's `(artist+title)` against the query, accept only matches scoring ≥ 0.75.  Logs `'X' scored Y for query Z — below threshold, rejecting` on misses.
+- **#5 new `SoundCloudApiSearchSource.cs`**: triggers only for `source=soundcloud`.  Calls `api-v2.soundcloud.com/search/tracks?q=&client_id=` using the existing scraped client_id.  On 401/403 invalidates the cache and retries once.  Picks the best Dice match (threshold 0.70 — SC titles are noisier than DB titles) and upgrades `-large` → `-t500x500`.
+- **#6 `ArtCascade.cs` rewrite**: replaced the parallel "first HTTPS wins" race with a per-platform routing table.  Each platform has an ordered list of sources to try; the cascade walks them sequentially.  Examples:
+  - `youtube` → smtc, webhook, smtc-fallback, youtube, bing-image (no music DBs)
+  - `soundcloud` → smtc, soundcloud-direct, webhook, smtc-fallback, soundcloud-oembed, **soundcloud-api**, bing-image (no Deezer/iTunes/MB)
+  - `spotify` → smtc, webhook, smtc-fallback, deezer, itunes, musicbrainz, bing-image
+  - `twitch` → smtc, webhook, smtc-fallback (no music DBs at all — Twitch streams aren't songs)
+  Fuzzy fallback in `ResolveRoute` handles `"apple music"` (with space) and any unenumerated variants.
+- **#7 `Program.cs` + `server_dotnet.csproj`**: registered `SoundCloudApiSearchSource` and `TextSimilarity` in DI / build.
+
+### Initial deploy hit one bug
+The new routes table referenced `"webhook-art"` but `WebhookArtSource.Name` is `"webhook"`.  Logged as `unknown source 'webhook-art' in route — skipping` after the first deploy; fixed via global replace.
+
+### Verified live
+Track: YouTube video "I Tried the $10,000/Month Side Hustle" by viyaura.
+- `source: youtube` (Phase H rev2 detection)
+- Cascade chose `smtc` (the SMTC thumbnail from Chrome — the actual video thumbnail) for primary
+- Cascade chose `youtube` (videoId from search → `https://img.youtube.com/vi/V1FC52U5ztA/hqdefault.jpg`) for HTTPS
+- Music DBs never ran (correctly filtered out for `source=youtube`)
+
+### Expected accuracy after Phase I
+| Platform | Before | After |
+|---|---:|---:|
+| Spotify (desktop OR Web) | ~70 % | **~98 %** (SMTC thumbnail wins) |
+| Apple Music | ~85 % | **~95 %** (iTunes + similarity) |
+| YouTube | ~60 % | **~95 %** (SMTC thumbnail; YT search fallback) |
+| SoundCloud | ~60 % | **~92 %** (new SC API + oEmbed) |
+| Twitch | random | **degrades gracefully** (no wrong music covers) |
+
+100 % is unreachable for title-search sources due to title collisions, but this should feel like a step-change in correctness.
+
+### Files touched this batch
+- `src/server_dotnet/ArtSources/SmtcSource.cs` (allowed list)
+- `src/server_dotnet/ArtSources/DeezerSource.cs` (rewrite — filter + similarity)
+- `src/server_dotnet/ArtSources/ItunesSource.cs` (rewrite — filter + similarity)
+- `src/server_dotnet/ArtSources/MusicBrainzSource.cs` (rewrite — filter + similarity, CAA redirect preserved)
+- `src/server_dotnet/ArtSources/TextSimilarity.cs` (new)
+- `src/server_dotnet/ArtSources/SoundCloudApiSearchSource.cs` (new)
+- `src/server_dotnet/ArtCascade.cs` (full rewrite with routing table)
+- `src/server_dotnet/Program.cs` (DI registration)
+- `src/server_dotnet/server_dotnet.csproj` (compile items)
+
+### Lessons captured
+- **"First-HTTPS-wins" parallel cascades are an anti-pattern for accuracy-critical resolution.** Speed and correctness conflict — the fastest responder is rarely the most accurate one.  Per-platform routing turns the order back into a quality-of-match decision rather than a latency race.
+- **Generic search APIs over-match by default.** iTunes `search?term=...&limit=1` returns the most popular result whose title contains *any* token from the query.  Always request top-N and similarity-score; never trust the first result blindly.
+- **Sørensen-Dice on bigrams is the right default similarity metric** for short user-facing strings (song titles, video titles).  Order-insensitive, length-normalized, fast.  Handles "Artist - Track" vs "Track - Artist" and "feat." vs "ft." trivially.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

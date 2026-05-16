@@ -191,6 +191,8 @@ public class Program
         // SoundCloudClientIdCache: singleton with SemaphoreSlim single-flight + 6h TTL.
         builder.Services.AddSingleton<SoundCloudClientIdCache>();
         builder.Services.AddSingleton<SoundCloudOembedSource>();
+        // Phase I #5: api-v2.soundcloud.com search consumer of the client_id cache.
+        builder.Services.AddSingleton<SoundCloudApiSearchSource>();
         builder.Services.AddSingleton<OsuScraperSource>();
         builder.Services.AddSingleton<YouTubeSource>();
         builder.Services.AddSingleton<BingImageSource>();
