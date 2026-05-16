@@ -495,6 +495,22 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase N — Audio Source dialog: mouse-wheel scroll + natural-sorted ASIO
+Operator: "1 thing that annoys me in 'Audio Source'... i can't scroll with my mousewheel to go up and down in the menu's. And in ASIO the sources are not in alphabet."
+
+**Issue 1 — mouse wheel doesn't scroll.**  Classic WPF `ScrollViewer`-wrapping-`ListBox` interaction.  Every tab had its `ListBox` wrapped in an outer `ScrollViewer`.  The outer one captured the wheel event but had nothing to scroll (the ListBox fit visibly inside it).  The inner ListBox's built-in scroller never received the wheel because WPF routes the event top-down and the outer ScrollViewer marks it as handled.  Bug shipped in Stage 7.7B and was inherited by Phase K's KS / ASIO tabs.
+
+Fix: remove the outer `ScrollViewer` from all four tabs.  ListBox already has a built-in ScrollViewer in its default template — we just need to let it work.  `ScrollViewer.VerticalScrollBarVisibility="Auto"` / `HorizontalScrollBarVisibility="Disabled"` are still set as attached properties on the ListBox itself so the visual is unchanged.  For the KS and ASIO tabs (which use a Grid to overlay an empty-state panel), the `Visibility` binding (`HasKs`/`HasAsio`) moved from the ScrollViewer onto the ListBox directly.
+
+**Issue 2 — ASIO list isn't alphabetical.**  `audio_spectrum.cs` enumerates via `NAudio.Wave.AsioOut.GetDriverNames()` which reads `HKLM\SOFTWARE\ASIO` subkeys in registry-enumeration order — NOT guaranteed alphabetical.  The tray just iterated the JSON in arrival order.
+
+Fix: new `AudioApi.NaturalStringComparer` (P/Invoke `StrCmpLogicalW` from `shlwapi.dll` — the same comparer Windows Explorer uses for filenames with numbers).  `AudioDeviceViewModel.RefreshAsync` now `OrderBy`s the ASIO list with this comparer before populating `AsioDevices`.  Result: drivers sort alphabetically by display name AND number-aware (`VASIO-32` before `VASIO-64A` before `VASIO-128`), with channel pairs (`Ch 1-2`, `Ch 3-4`, …) staying in numeric order within each driver.
+
+Files touched:
+- `src/tray_csharp/Dialogs/AudioDeviceWindow.xaml` (4 ScrollViewer wrappers removed; KS/ASIO Visibility binding moved to ListBox)
+- `src/tray_csharp/Services/AudioApi.cs` (P/Invoke + comparer class)
+- `src/tray_csharp/ViewModels/AudioDeviceViewModel.cs` (OrderBy before foreach AsioDevices)
+
 ### Phase M #3A — Real root cause: Chrome's SMTC position freezes on some YouTube videos
 Operator: "on youtube the timestamps bug out again. it keeps going up and down sometimes."
 

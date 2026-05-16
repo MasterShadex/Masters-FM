@@ -312,31 +312,34 @@
                 <Style TargetType="TabItem" BasedOn="{StaticResource AudioTabItemStyle}"/>
             </TabControl.Resources>
 
-            <!-- WASAPI tab (output devices via WinRT enumeration) -->
+            <!-- WASAPI tab (output devices via WinRT enumeration).
+                 Phase N #1: ListBox is no longer wrapped in a ScrollViewer.
+                 WPF's classic mouse-wheel-eaten-by-outer-ScrollViewer bug
+                 was making the wheel useless in all four tabs — outer
+                 ScrollViewer caught the event but had nothing to scroll,
+                 ListBox's internal scroller never received it.  Removing
+                 the wrapper lets ListBox's own scroller handle the wheel. -->
             <TabItem Header="WASAPI">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="0">
-                    <ListBox ItemsSource="{Binding OutputDevices}"
-                             IsSynchronizedWithCurrentItem="False"
-                             SelectionChanged="OnDeviceSelectionChanged"
-                             Style="{StaticResource DeviceListBoxStyle}"
-                             ItemTemplate="{StaticResource DeviceRowTemplate}"/>
-                </ScrollViewer>
+                <ListBox ItemsSource="{Binding OutputDevices}"
+                         IsSynchronizedWithCurrentItem="False"
+                         SelectionChanged="OnDeviceSelectionChanged"
+                         Style="{StaticResource DeviceListBoxStyle}"
+                         ItemTemplate="{StaticResource DeviceRowTemplate}"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </TabItem>
 
-            <!-- MME tab -->
+            <!-- MME tab — Phase N #1: ScrollViewer wrapper removed. -->
             <TabItem Header="MME"
                      Visibility="{Binding HasMme, Converter={StaticResource BoolToVis},
                                           FallbackValue=Visible}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <ListBox ItemsSource="{Binding MmeDevices}"
-                             IsSynchronizedWithCurrentItem="False"
-                             SelectionChanged="OnDeviceSelectionChanged"
-                             Style="{StaticResource DeviceListBoxStyle}"
-                             ItemTemplate="{StaticResource DeviceRowTemplate}"/>
-                </ScrollViewer>
+                <ListBox ItemsSource="{Binding MmeDevices}"
+                         IsSynchronizedWithCurrentItem="False"
+                         SelectionChanged="OnDeviceSelectionChanged"
+                         Style="{StaticResource DeviceListBoxStyle}"
+                         ItemTemplate="{StaticResource DeviceRowTemplate}"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </TabItem>
 
             <!-- KS (Kernel Streaming) tab: WinRT capture endpoints opened
@@ -344,17 +347,18 @@
                  Stage 7.12 Batch B Phase K (DIAG 04). -->
             <TabItem Header="KS">
                 <Grid>
-                    <!-- Device list when KS endpoints exist -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  Visibility="{Binding HasKs, Converter={StaticResource BoolToVis},
-                                                       FallbackValue=Collapsed}">
-                        <ListBox ItemsSource="{Binding KsDevices}"
-                                 IsSynchronizedWithCurrentItem="False"
-                                 SelectionChanged="OnDeviceSelectionChanged"
-                                 Style="{StaticResource DeviceListBoxStyle}"
-                                 ItemTemplate="{StaticResource DeviceRowTemplate}"/>
-                    </ScrollViewer>
+                    <!-- Device list when KS endpoints exist.
+                         Phase N #1: ScrollViewer wrapper removed; Visibility
+                         binding moved onto the ListBox itself. -->
+                    <ListBox ItemsSource="{Binding KsDevices}"
+                             IsSynchronizedWithCurrentItem="False"
+                             SelectionChanged="OnDeviceSelectionChanged"
+                             Style="{StaticResource DeviceListBoxStyle}"
+                             ItemTemplate="{StaticResource DeviceRowTemplate}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             Visibility="{Binding HasKs, Converter={StaticResource BoolToVis},
+                                                  FallbackValue=Collapsed}"/>
                     <!-- Empty state when no capture endpoints exist (rare) -->
                     <StackPanel VerticalAlignment="Center"
                                 HorizontalAlignment="Center"
@@ -390,16 +394,16 @@
                  installed — the common case for most users. -->
             <TabItem Header="ASIO">
                 <Grid>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  Visibility="{Binding HasAsio, Converter={StaticResource BoolToVis},
-                                                       FallbackValue=Collapsed}">
-                        <ListBox ItemsSource="{Binding AsioDevices}"
-                                 IsSynchronizedWithCurrentItem="False"
-                                 SelectionChanged="OnDeviceSelectionChanged"
-                                 Style="{StaticResource DeviceListBoxStyle}"
-                                 ItemTemplate="{StaticResource DeviceRowTemplate}"/>
-                    </ScrollViewer>
+                    <!-- Phase N #1: ScrollViewer wrapper removed. -->
+                    <ListBox ItemsSource="{Binding AsioDevices}"
+                             IsSynchronizedWithCurrentItem="False"
+                             SelectionChanged="OnDeviceSelectionChanged"
+                             Style="{StaticResource DeviceListBoxStyle}"
+                             ItemTemplate="{StaticResource DeviceRowTemplate}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             Visibility="{Binding HasAsio, Converter={StaticResource BoolToVis},
+                                                  FallbackValue=Collapsed}"/>
                     <!-- Empty state: no ASIO drivers installed -->
                     <StackPanel VerticalAlignment="Center"
                                 HorizontalAlignment="Center"

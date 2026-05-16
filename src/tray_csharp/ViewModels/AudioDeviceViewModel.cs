@@ -248,7 +248,15 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 if (asioList.Count > 0)
                     _logger.Log("ASIO: spectrum unreachable, using registry-only fallback (no channel pairs)", Component);
             }
-            foreach (var drv in asioList)
+            // Phase N #2: sort ASIO entries with Windows-native natural
+            // ordering on the display name so e.g. "VASIO-32  -  Ch 1-2"
+            // sorts before "VASIO-128  -  Ch 1-2" (and Ch 3-4, Ch 5-6 stay
+            // grouped by driver in numeric channel order — same comparer
+            // Explorer uses for filenames containing numbers).
+            var sortedAsio = asioList
+                .OrderBy(d => string.IsNullOrWhiteSpace(d.Description) ? d.Name : d.Description,
+                              AudioApi.NaturalStringComparer.OrdinalIgnoreCase);
+            foreach (var drv in sortedAsio)
             {
                 AsioDevices.Add(new AudioDeviceInfo
                 {

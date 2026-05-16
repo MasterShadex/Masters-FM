@@ -20,6 +20,20 @@ namespace MastersFM.Tray.Services;
 
 public static class AudioApi
 {
+    // Phase N #2: Windows-native natural string ordering (the same comparer
+    // Explorer uses, so e.g. "VASIO-32" sorts before "VASIO-128" instead of
+    // after it lexically).  Used by the ASIO list sorter to make the
+    // dialog's driver order predictable regardless of registry-enumeration
+    // order.
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int StrCmpLogicalW(string x, string y);
+
+    internal sealed class NaturalStringComparer : IComparer<string>
+    {
+        public static readonly NaturalStringComparer OrdinalIgnoreCase = new();
+        public int Compare(string? x, string? y)
+            => StrCmpLogicalW(x ?? string.Empty, y ?? string.Empty);
+    }
     // ------------------------------------------------------------------
     // MME P/Invoke surface (winmm.dll)
     // ------------------------------------------------------------------
