@@ -84,27 +84,35 @@
                                            FontSize="14"
                                            FontWeight="Bold"
                                            Foreground="{StaticResource BrandPurpleBase}"/>
-                                <!-- Marquee viewport: clipped to menu width so a long
-                                     track title scrolls leftward and snaps back to the
-                                     LEFT edge each loop. ClipToBounds clips horizontally
-                                     only — vertical sizing is automatic from the inner
-                                     TextBlock's natural line height. -->
+                                <!-- Marquee viewport: FIXED 220-px-wide clipped Grid so a
+                                     long track title can't stretch the whole context menu
+                                     (operator screenshot of "Good Morning Charlie ..." had
+                                     the menu blow out 600+ px wide).  The TextBlock is
+                                     wrapped in a Canvas so WPF passes Infinity as its
+                                     measure constraint — TextBlock.ActualWidth therefore
+                                     equals the FULL text width (not the clipped 220 px),
+                                     which is what the marquee animation needs to know how
+                                     far to scroll leftward each loop. -->
                                 <Grid x:Name="NowPlayingMarqueeViewport"
+                                      Width="220"
+                                      Height="16"
                                       ClipToBounds="True"
+                                      HorizontalAlignment="Left"
                                       Margin="0,3,0,0">
-                                    <TextBlock x:Name="NowPlayingMarquee"
-                                               Text="{Binding NowPlayingHeaderText}"
-                                               FontFamily="Segoe UI"
-                                               FontSize="11"
-                                               Foreground="{StaticResource TextSecondary}"
-                                               TextWrapping="NoWrap"
-                                               HorizontalAlignment="Left"
-                                               Loaded="OnNowPlayingMarqueeLoaded"
-                                               SizeChanged="OnNowPlayingMarqueeSizeChanged">
-                                        <TextBlock.RenderTransform>
-                                            <TranslateTransform x:Name="NowPlayingMarqueeTransform"/>
-                                        </TextBlock.RenderTransform>
-                                    </TextBlock>
+                                    <Canvas>
+                                        <TextBlock x:Name="NowPlayingMarquee"
+                                                   Text="{Binding NowPlayingHeaderText}"
+                                                   FontFamily="Segoe UI"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}"
+                                                   TextWrapping="NoWrap"
+                                                   Loaded="OnNowPlayingMarqueeLoaded"
+                                                   SizeChanged="OnNowPlayingMarqueeSizeChanged">
+                                            <TextBlock.RenderTransform>
+                                                <TranslateTransform x:Name="NowPlayingMarqueeTransform"/>
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                    </Canvas>
                                 </Grid>
                             </StackPanel>
                         </Grid>
