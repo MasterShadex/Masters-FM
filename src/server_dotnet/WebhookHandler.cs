@@ -385,8 +385,27 @@ internal static class WebhookHandler
                                 "Sync fwd [{Source}]: overlay {DriftS}s behind -> resynced to {PosS}s",
                                 source, Math.Round(signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
                         }
-                        else if (signedDrift < -30000)
+                        else if (signedDrift < -30000 && !IsBrowserLikeSource(source))
                         {
+                            // Phase M #3A: backward correction disabled for
+                            // browser sources.  Chrome's SMTC TimelineProperties.
+                            // Position freezes on some YouTube videos (the
+                            // player stops calling setPositionState while
+                            // playback continues), so the WEBHOOK keeps
+                            // reporting a stale positionMs while the overlay
+                            // legitimately advances via (now − startedAt).
+                            // signedDrift hits −30 000 exactly every 30 s and
+                            // the previous code snapped the overlay back to
+                            // the stale value — a visible 30-second sawtooth.
+                            //
+                            // Real user-driven backward seeks still get
+                            // detected through the bridge / heartbeat IsSeek
+                            // flag (B7 path) which doesn't care about
+                            // signedDrift magnitude — so we don't lose
+                            // legitimate seek handling.  For desktop sources
+                            // (Spotify, SoundCloud-RPC, etc.) where position
+                            // reporting is reliable, B10 backward stays
+                            // enabled exactly as before.
                             ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
                             ct2Dirty = true;
                             state.LastStartedAtUpdateMs = nowMs;

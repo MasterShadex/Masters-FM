@@ -495,6 +495,47 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase M #3A — Real root cause: Chrome's SMTC position freezes on some YouTube videos
+Operator: "on youtube the timestamps bug out again. it keeps going up and down sometimes."
+
+Phase M #1A's 2-s cooldown coalesced rapid ad-burst sequences but didn't help this specific pattern.  Live server.log inspection found a textbook 30-second sawtooth:
+
+```
+[19:24:43] Sync bwd [youtube]: overlay 30s ahead (extreme) -> resynced to 172s
+[19:25:13] Sync bwd [youtube]: overlay 30s ahead (extreme) -> resynced to 172s
+[19:25:43] Sync bwd [youtube]: overlay 30s ahead (extreme) -> resynced to 172s
+... (8 in a row, all identical) ...
+```
+
+And the diagnostic counter showed why:
+```
+reported=172s overlay=197s drift=+25s paused=False
+reported=172s overlay=198s drift=+26s paused=False
+reported=172s overlay=200s drift=+28s paused=False
+...
+```
+
+**Chrome's `TimelineProperties.Position` was frozen at 172 s for the entire 5-minute video**, even though `paused=False`.  This is a Chrome/YouTube bug — for some videos the player stops calling `setPositionState()` after the initial publication, so Chrome never has fresh position data to forward.  Our overlay correctly advanced via `now − startedAt`, but every 30 seconds the server's B10 backward branch (`signedDrift < −30000`) hit exactly and snapped the overlay back to the stale 172 s.
+
+#### Fix
+Single condition added to the B10 backward branch in `WebhookHandler`:
+```csharp
+else if (signedDrift < -30000 && !IsBrowserLikeSource(source))
+```
+
+For browser-like sources (`youtube` / `youtubemusic` / `browser` / `twitch`), the backward "extreme" correction is now disabled.  The forward correction (B10 `> +4000`) still runs — that's the useful case where the source genuinely reports a newer-than-expected position (e.g., resumed from a long pause).
+
+#### Why this is safe
+Real user-driven backward seeks still get detected through the bridge / heartbeat `IsSeek` flag (B7 path).  B7 doesn't care about `signedDrift` magnitude — it fires whenever the bridge/heartbeat sees a position jump unexplained by wall-clock advance.  So dragging the YouTube scrubber back from 5:00 to 1:00 still works: heartbeat detects the jump → `IsSeek=true` → B7 fires → `startedAt` resyncs.
+
+#### Why this is necessary
+The "backward extreme" branch was originally a defensive net for cases where the overlay had somehow gotten WAY ahead of reality.  That assumption breaks when the source's reported position is itself stale — the overlay is the one with correct data, not the source.  For desktop sources (Spotify, SoundCloud-RPC, etc.) where position reporting is reliable, B10 backward stays enabled exactly as before.
+
+#### Lesson
+"Trust the source over the overlay" is a reasonable default for reliable sources.  Chrome's MediaSession-via-SMTC is reliable enough on average but has correlated failure modes (it doesn't just go slightly off — it goes completely silent or returns a constant for long stretches).  A binary "trust this source" classification at the route layer is better than trying to compensate at the drift-correction layer.
+
+Files: `src/server_dotnet/WebhookHandler.cs` (one-line condition added)
+
 ### Phase M — YouTube progress-bar jumps + Chrome-favicon art (low-cost fixes only)
 Operator: "with youtube the progress bar bugs again, and the entire obs overlay card keeps struggling to keep up while soundcloud is completely fine.  Sometimes the album art from youtube just doesn't get detected and i only see the chrome icon as album art." + "i rather have no latency added"
 
