@@ -260,6 +260,56 @@ Steady-state idle: 58 PushDiscord enters in 10 s, 0 SetActivity (all deduped by 
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase F (startup-mid-track sync)
+
+Operator: "When Master's FM starts mid-track, it never syncs properly — acts like we just started the track when in reality I just started Master's FM."
+
+**Root cause.** WinRT's `GlobalSystemMediaTransportControlsSessionTimelineProperties.Position` is **NOT a live counter**.  It's the position-as-of-`LastUpdatedTime` (also exposed on the same struct).  Most SMTC sources only re-emit `TimelinePropertiesChanged` on user actions (seek, pause, resume, track change).  Between those events, `Position` is increasingly stale.  Worst case: a track has been playing 4:30 since the last `TimelinePropertiesChanged` fired — we'd read `Position = 0:30` (the value when it last fired) instead of `4:30 + 0:30 = 5:00` (the real current position).
+
+When Master's FM started mid-track:
+- `_watcher.GetSnapshot(saumid)` returned the cached snap with `PositionMs = <stale>`.
+- `SmtcEventBridge.ProcessEvent` built `TrackUpdate { Position = stale }`.
+- `WebhookHandler.HandleAsync` set `startedAt = nowMs - stale_positionMs`.
+- OBS overlay and Discord RPC showed the progress bar at the stale position, advancing from there — so the track "appeared to just start" or was wherever the source last bothered to update.
+
+### Fix
+In `SmtcEventBridge.ProcessEvent`, interpolate `Position` forward by `(now - LastUpdatedTime)` whenever the track is playing:
+
+```csharp
+long effectivePosMs = snap.PositionMs;
+if (isPlaying && snap.HasTimeline && snap.LastUpdatedTimeUtcTicks > 0)
+{
+    var lastUpdUtc = new DateTime(snap.LastUpdatedTimeUtcTicks, DateTimeKind.Utc);
+    var elapsedMs  = (nowUtc - lastUpdUtc).TotalMilliseconds;
+    if (elapsedMs > 0)
+    {
+        effectivePosMs += (long)elapsedMs;
+        if (snap.DurationMs > 0 && effectivePosMs > snap.DurationMs)
+            effectivePosMs = snap.DurationMs;   // never report past end-of-track
+    }
+}
+```
+
+`effectivePosMs` is then used both for the outgoing `TrackUpdate.Position` AND for the `_prevPos` seek-detection tracker (so apples-to-apples comparison between events).
+
+### Safety
+- Paused tracks: skip interpolation — position stays frozen at the pause point.
+- Clock skew: only apply if `elapsedMs > 0`.
+- Past end-of-track: clamp to `DurationMs`.
+- Snap not yet captured (no timeline yet): skip — `effectivePosMs` stays at the snap's value (likely 0), which is fine for a brand-new session.
+
+### Files touched this batch
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` (interpolation logic in ProcessEvent)
+
+### Verified live
+Restarted Master's FM mid-song (SoundCloud-RPC source).  Server log shows "Seek (5s jump) -- startedAt resynced to pos=19s" — that's the heartbeat catching the corrected position right after startup.  OBS overlay progress bar and Discord RPC progress bar both reflect actual current position, not 0:00.
+
+### Lessons captured
+- **WinRT `TimelineProperties.Position` is a snapshot, not a counter.**  This is documented but easy to miss because the property name implies "current".  Always pair it with `LastUpdatedTime` and interpolate forward by wall-clock delta when the track is playing.  Same pattern applies to Spotify's API, MediaSession's `MediaPositionState`, and any other "media position" surface — it's almost always a timestamped snapshot.
+- **Be careful what fields you stash for `_prevPos`-style trackers.**  If the upstream value is stale-and-self-correcting, comparing two stale values against wall-clock will report spurious seeks.  Interpolate FIRST, store the interpolated value, then compare interpolated-vs-interpolated.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

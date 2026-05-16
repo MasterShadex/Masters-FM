@@ -260,21 +260,45 @@ public sealed class SmtcEventBridge : IDisposable
             }
         }
 
+        // Stage 7.12 Batch B Phase F (startup sync fix): SMTC's
+        // TimelineProperties.Position is the position *as of LastUpdatedTime*,
+        // NOT a live counter.  Most sources only re-emit TimelinePropertiesChanged
+        // on seek / pause / resume / track-change — between those, the cached
+        // PositionMs becomes increasingly stale.  Worst case: Master's FM starts
+        // while a track has been playing for 5 minutes since the last SMTC
+        // update — we'd read PositionMs ≈ (the position when SMTC last fired)
+        // and the OBS overlay + Discord RPC progress bar would show that
+        // ancient position instead of "now".
+        //
+        // Fix: interpolate forward by (now - LastUpdatedTime) when the track is
+        // playing.  Skip when paused (position stays frozen at the pause point).
+        // Skip when elapsed < 0 (clock skew safety).  Cap at duration so we
+        // never report past the end of the track.
+        bool isPlaying  = (snap.PlaybackStatusValue == 4);
+        var  nowUtc     = ev.UtcTime;
+        long effectivePosMs = snap.PositionMs;
+        if (isPlaying && snap.HasTimeline && snap.LastUpdatedTimeUtcTicks > 0)
+        {
+            var lastUpdUtc = new DateTime(snap.LastUpdatedTimeUtcTicks, DateTimeKind.Utc);
+            var elapsedMs  = (nowUtc - lastUpdUtc).TotalMilliseconds;
+            if (elapsedMs > 0)
+            {
+                effectivePosMs += (long)elapsedMs;
+                if (snap.DurationMs > 0 && effectivePosMs > snap.DurationMs)
+                    effectivePosMs = snap.DurationMs;
+            }
+        }
+
         // Stage 7.12 Batch B Phase C #7: detect seeks at the SMTC bridge so
         // the server's B7-seek branch fires immediately instead of waiting
-        // for the 100 ms heartbeat to notice the drift.  Compare this event's
-        // reported position against the last observed (snap, wall-clock)
-        // pair for the same saumid.  If the position jump exceeds expected
-        // wall-clock drift by >250 ms, flag IsSeek=true.
+        // for the 100 ms heartbeat to notice the drift.  Uses the interpolated
+        // position so the tracker compares apples-to-apples between events.
         bool isSeek = false;
-        var nowUtc      = ev.UtcTime;
-        var nowPosMs    = snap.PositionMs;
-        bool isPlaying  = (snap.PlaybackStatusValue == 4);
         lock (_cacheLock)
         {
-            if (_prevPos.TryGetValue(saumid, out var prev) && nowPosMs > 0 && prev.PositionMs > 0)
+            if (_prevPos.TryGetValue(saumid, out var prev) && effectivePosMs > 0 && prev.PositionMs > 0)
             {
-                var posDeltaMs  = nowPosMs - prev.PositionMs;
+                var posDeltaMs  = effectivePosMs - prev.PositionMs;
                 var wallDeltaMs = (nowUtc - prev.ObservedUtc).TotalMilliseconds;
                 var expectedMs  = isPlaying ? wallDeltaMs : 0.0;
                 var jump        = Math.Abs(posDeltaMs - expectedMs);
@@ -285,7 +309,7 @@ public sealed class SmtcEventBridge : IDisposable
             // Always update so the next event has a fresh baseline (even when
             // the current event was a seek — otherwise we'd flag the corrected
             // position as another seek next time around).
-            _prevPos[saumid] = (nowPosMs, nowUtc);
+            _prevPos[saumid] = (effectivePosMs, nowUtc);
         }
 
         var update = new TrackUpdate
@@ -295,7 +319,7 @@ public sealed class SmtcEventBridge : IDisposable
             Track = string.IsNullOrEmpty(snap.Title) ? null : snap.Title,
             Album = string.IsNullOrEmpty(snap.AlbumTitle) ? null : snap.AlbumTitle,
             Duration = snap.DurationMs > 0 ? TimeSpan.FromMilliseconds(snap.DurationMs) : null,
-            Position = snap.PositionMs > 0 ? TimeSpan.FromMilliseconds(snap.PositionMs) : null,
+            Position = effectivePosMs > 0 ? TimeSpan.FromMilliseconds(effectivePosMs) : null,
             IsPlaying = isPlaying,
             IsSeek = isSeek,
             ArtUri = artUri,
