@@ -495,6 +495,27 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase J rev3 — operator-proposed simplification
+Operator: "We could just use that feature [the State text] and put the progress bar away that shows how long people have Master's FM open. That solves the issue as well :)"
+
+Their reasoning was correct.  Now that the State text carries the explicit `⏸ M:SS / M:SS`, the progress bar is redundant — and the bar's only failure mode (the 5-s drift between refreshes) is gone the moment we stop sending timestamps when paused.
+
+Reverted in rev3:
+- BuildActivity's paused-timestamps branch — now emits `tsStart = tsEnd = null` when `isPaused`.
+- The `pauseBucket` term in the PushDiscord dedup signature — no timestamps to refresh, so the sig stays constant while paused (only the existing 30-s self-heal pings keep the activity alive).
+- The `PauseBucketMs` constant.
+
+Kept:
+- The `pausedAt` extraction in PushDiscord.
+- The `FormatMmSs` helper.
+- The State-text augmentation (`"by X  •  ⏸ M:SS / M:SS"`).
+
+Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 7:33 / 15:25'` and `tsStart=(null) tsEnd=(null)` in the SetActivity log.  Discord card now displays the song info with the explicit paused indicator and no animated bar.
+
+### Lessons captured (J + rev2 + rev3)
+- **Less can be more when the underlying API constraint is unfixable.** Discord's client-side bar interpolation can't be disabled; trying to keep it pinned via repeated refreshes is a 5-s-drift compromise that the user still notices.  Encoding the same information in a non-interpolated channel (the State text) and dropping the bar entirely is strictly better UX once that text exists.
+- **Operator-proposed solutions are often the right answer.** Their suggestion to "put the progress bar away" trusted that the State text was enough to convey pause state — and it was.  Reverting our own work was the correct move.
+
 ---
 
 ## CURRENT STATE

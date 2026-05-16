@@ -49,18 +49,6 @@ internal sealed class DiscordRpcService : BackgroundService
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
     private const int    ActivityTypeListening = 2;      // Discord ActivityType.Listening
-    // Stage 7.12 Batch B Phase J rev2: tightened from 10 s to 5 s drift.
-    // Discord interpolates the progress bar client-side from (now - start)
-    // between our pushes, so the bar visually advances; each refresh snaps
-    // it back to the actual pause position.  5 s is the floor — at 4 s
-    // we'd hit Discord's 5-per-20-s rate limit ceiling when other pauses,
-    // resumes, or seeks share the window.  5 s = 4 pushes per 20 s,
-    // leaving headroom for one state-change push without triggering Phase
-    // E's rate-limit deferral.  The explicit "⏸ M:SS / M:SS" indicator
-    // baked into the activity's State line (BuildActivity below) is the
-    // authoritative source of the pause time, so even mid-drift the user
-    // sees a frozen "Paused at 2:30 / 5:00" in plain text.
-    private const long   PauseBucketMs       = 5_000;
 
     // ── DI ────────────────────────────────────────────────────────────────────
     private readonly ServerState             _state;
@@ -289,17 +277,12 @@ internal sealed class DiscordRpcService : BackgroundService
 
         // ── Dedup ─────────────────────────────────────────────────────────────
         // Includes startedAt so seeks re-push the activity (shifted end time).
-        //
-        // Phase J: when paused, add a 10-second "pause bucket" to the sig.
-        // Discord's progress bar is rendered client-side from the timestamps
-        // we send, so the bar visually advances during the interval between
-        // our pushes — we periodically re-push fresh start/end values to
-        // re-pin the displayed position at the pause point.  Bucket flips
-        // every 10 s while paused → push fires every 10 s → ~10 s max drift.
+        // Phase J rev3 removed the per-second pause-bucket — without paused
+        // timestamps there's nothing to refresh, so the sig stays constant
+        // while paused and the 30-s self-heal handles any keepalive needs.
         var  nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        long pauseBucket = isPaused ? (nowMs / PauseBucketMs) : 0L;
         var  sig   = string.Join("|", artist, track, source, startedAt, duration,
-                                      isPaused ? 1 : 0, safeArt, originUrl, pauseBucket);
+                                      isPaused ? 1 : 0, safeArt, originUrl);
 
         lock (_lock)
         {
@@ -534,20 +517,18 @@ internal sealed class DiscordRpcService : BackgroundService
 
         // ── Timestamps ────────────────────────────────────────────────────────
         // Playing: start = original track-start wall-clock, end = start + duration.
-        // Paused (Phase J): pin start so (now − start) == pausedProgressMs.
-        // Bar shows the frozen pause position (with Discord's client
-        // interpolating between our 5-s pushes — see PauseBucketMs).
+        //
+        // Paused (Phase J rev3, operator-approved simplification): emit NO
+        // timestamps when paused.  Discord no longer has anything to
+        // animate, so the progress bar simply isn't drawn — no client-side
+        // drift, no need for periodic refreshes.  The "⏸ M:SS / M:SS"
+        // embedded into the State text (computed above) is the user-facing
+        // pause indicator; nothing else is needed.
         if (!isPaused && startedAtMs > 0)
         {
             activity.StartUnixMs = startedAtMs;
             if (durationMs > 0 && startedAtMs + durationMs > startedAtMs)
                 activity.EndUnixMs = startedAtMs + durationMs;
-        }
-        else if (isPaused && startedAtMs > 0)
-        {
-            activity.StartUnixMs = nowWallMs - pausedProgressMs;
-            if (durationMs > 0)
-                activity.EndUnixMs = activity.StartUnixMs + durationMs;
         }
 
         // Images
