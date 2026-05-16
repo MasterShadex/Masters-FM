@@ -495,6 +495,26 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase L — Tray menu + Platforms dialog use server cascade-resolved art
+Operator: "master's fm tray menu and in platform detection doesn't resolve the correct album arts, we forgot to change that part. We forget it when we changed to 95-99% accuracy of album arts detection."
+
+`NowPlayingViewModel` had two structural limitations that made Phase I's per-platform art improvements invisible inside the tray UI:
+1. It only consumed `TrackResolver.TrackChanged` events, which carry the RAW SMTC data-URI thumbnail — never the server's cascade-resolved HTTPS art.
+2. `DecodeDataUri` was hard-coded to data: URIs only; HTTPS URLs returned null and the image silently disappeared.
+
+Fix (one viewmodel, no new services):
+- **`OnArtUriChanged`** now dispatches to one of three paths based on the scheme:
+  - `data:` → existing synchronous base64 decode (microseconds).
+  - `http(s)://` → async `LoadHttpArtAsync` that GETs the URL via HttpClient, decodes the bytes, freezes the BitmapImage, and marshals back to the UI thread.  Token-based invalidation: every set of `ArtUri` bumps `_artLoadToken`; any in-flight load whose token no longer matches silently drops on resumption.
+  - empty / other → `ArtImageSource = null`.
+- **`UpgradeArtFromServerAsync`** fires after every `ApplyUpdate`.  Polls `http://127.0.0.1:4242/current` with delays `[500 ms, 1500 ms, 3000 ms]` (covers fast cascade typical + slow MusicBrainz cold lookups).  Identity-checks the response against `Artist`/`Track` to bail on a rapid-skip burst.  Prefers `trackArtHttps` (Phase I's HTTPS-only field, built for Discord) and falls back to `trackArt` (which can still be a data URI for browser sources).  Skips if the result string is identical to the current `ArtUri`.
+- **HttpClient injected** into the constructor — the singleton already registered in DI; no new dependency.
+
+Because both the tray menu (MainWindow.xaml) and the Platforms dialog (PlatformsWindow.xaml) bind to `NowPlaying.ArtImageSource`, fixing `NowPlayingViewModel` covers both surfaces with a single change.
+
+Files touched:
+- `src/tray_csharp/ViewModels/NowPlayingViewModel.cs` (rewrite — adds HttpClient, HTTPS decoder, server upgrade poller; ~150 → ~280 lines including new docstrings)
+
 ### Phase K rev2 (DIAG 04) — ASIO channel-pair entries (operator follow-up)
 Operator: "looks good, but we need on asio all inputs, we had before. There are many audio inputs more like 1-2 3-4 5-6 7-8"
 
