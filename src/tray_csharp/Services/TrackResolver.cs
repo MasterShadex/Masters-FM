@@ -52,54 +52,78 @@ public sealed class TrackResolver : ITrackResolver
             return;
         }
 
+        // Stage 7.12 Batch B (real-time sync): state-aware dedup.  Identity-only
+        // dedup (the original behaviour) silently dropped every pause / resume /
+        // seek webhook the SMTC bridge produced on the current track — forcing
+        // those updates to wait for the 1 s heartbeat tick.  Now we send the
+        // webhook IMMEDIATELY when either:
+        //   - identity changed (new track), OR
+        //   - IsPlaying flipped (pause/resume), OR
+        //   - position jumped beyond expected wall-clock drift (seek).
         bool isNew;
+        bool stateChanged = false;
+        TrackUpdate? prev;
         lock (_lock)
         {
-            isNew = !string.Equals(key, _currentKey, StringComparison.Ordinal);
+            prev   = _current;
+            isNew  = !string.Equals(key, _currentKey, StringComparison.Ordinal);
             if (isNew)
             {
-                _current = update;
+                _current    = update;
                 _currentKey = key;
             }
             else
             {
-                // Same identity; refresh state (position, isPlaying may change)
+                // Detect within-track state changes before we overwrite _current.
+                if (prev != null)
+                {
+                    if (prev.IsPlaying != update.IsPlaying) stateChanged = true;
+
+                    if (!stateChanged
+                        && prev.Position.HasValue
+                        && update.Position.HasValue)
+                    {
+                        var posDeltaMs  = (update.Position.Value - prev.Position.Value).TotalMilliseconds;
+                        var wallDeltaMs = (update.ObservedUtc - prev.ObservedUtc).TotalMilliseconds;
+                        var expectedMs  = update.IsPlaying ? wallDeltaMs : 0.0;
+                        // Seek = position jumped > 250 ms in either direction relative
+                        // to what wall-clock advance would predict (250 ms tolerates
+                        // normal poll jitter; a real human scrub overshoots by seconds).
+                        var jump = Math.Abs(posDeltaMs - expectedMs);
+                        if (jump > 250.0) stateChanged = true;
+                    }
+                }
                 _current = update;
             }
         }
 
-        if (!isNew)
+        if (isNew)
         {
-            _telemetry.IncrementCounter("track_dedup_hits");
+            _telemetry.IncrementCounter("track_changes");
+            _logger.Log($"new track: {update.Source} {update.Artist} - {update.Track}", Component);
+
+            try { TrackChanged?.Invoke(this, update); }
+            catch (Exception ex) { _logger.LogErr("TrackChanged subscriber", ex, Component); }
+
+            // Art prefetch in parallel with webhook.
+            if (!string.IsNullOrEmpty(update.ArtUri))
+            {
+                var artUri = update.ArtUri;
+                _ = Task.Run(() => { try { _artCache.Touch(artUri); } catch { } });
+            }
+
+            _ = _webhook.SendTrackUpdateAsync(update, CancellationToken.None);
             return;
         }
 
-        _telemetry.IncrementCounter("track_changes");
-        _logger.Log($"new track: {update.Source} {update.Artist} - {update.Track}", Component);
-
-        // Fire event outside lock
-        try
+        if (stateChanged)
         {
-            TrackChanged?.Invoke(this, update);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogErr("TrackChanged subscriber", ex, Component);
+            _telemetry.IncrementCounter("webhook_state_change_sends");
+            // Fire-and-forget — sync flows the same way as a new track from here.
+            _ = _webhook.SendTrackUpdateAsync(update, CancellationToken.None);
+            return;
         }
 
-        // Stage 7.8B: art prefetch fires in parallel with webhook (was sequential before).
-        // Warms the ArtLruCache so art is ready when overlay requests it.
-        if (!string.IsNullOrEmpty(update.ArtUri))
-        {
-            var artUri = update.ArtUri;
-            _ = Task.Run(() =>
-            {
-                try { _artCache.Touch(artUri); }
-                catch { /* best-effort */ }
-            });
-        }
-
-        // Webhook (fire-and-forget; matches PS S15 fire-and-forget pattern)
-        _ = _webhook.SendTrackUpdateAsync(update, CancellationToken.None);
+        _telemetry.IncrementCounter("track_dedup_hits");
     }
 }

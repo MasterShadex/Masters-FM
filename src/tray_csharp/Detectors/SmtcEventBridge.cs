@@ -28,7 +28,10 @@ namespace MastersFM.Tray.Detectors;
 
 public sealed class SmtcEventBridge : IDisposable
 {
-    private const int DrainCadenceMs = 100;  // was 250 (Stage 7.8B latency reduction)
+    // Stage 7.12 Batch B (real-time sync): 100 ms → 16 ms (~one frame at 60 Hz,
+    // the practical floor for WPF DispatcherTimer).  Drain cost is negligible
+    // (one TryDequeue + a few field reads) so running it every frame is fine.
+    private const int DrainCadenceMs = 16;
     private const int CanaryCadenceMs = 30000;
     private const string Component = "Detect-SMTC";
 

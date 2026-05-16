@@ -31,7 +31,12 @@ internal sealed class DiscordRpcService : BackgroundService
 {
     // ── Constants ─────────────────────────────────────────────────────────────
     private const string DefaultClientId     = "1495411843836018819";
-    private const int    ThrottleMs          = 2000;
+    // Stage 7.12 Batch B (real-time sync): 2000 ms → 250 ms.  Discord's
+    // documented rate-limit floor is 5 SET_ACTIVITY / 20 s = 250 ms minimum
+    // average between writes.  _lastSig dedup inside PushDiscord suppresses
+    // identical pushes so we won't actually hit that limit in normal use —
+    // 250 ms is just the safety ceiling for back-to-back rapid skips.
+    private const int    ThrottleMs          = 250;
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
 
