@@ -42,14 +42,56 @@ internal sealed class MusicBrainzSource : IArtSource
             var id = node?["recordings"]?[0]?["releases"]?[0]?["id"]?.GetValue<string>() ?? string.Empty;
             if (string.IsNullOrEmpty(id)) return string.Empty;
 
-            // from server.js:768: return coverartarchive URL directly -- no isValidArt, no isUrlAccessible
-            var artUrl = $"https://coverartarchive.org/release/{id}/front";
-            _logger.LogDebug("MusicBrainzSource: release MBID {Id} for {Artist} - {Track}", id, cleanedArtist, cleanedTrack);
-            return artUrl;
+            // Stage 7.12 Batch B (DIAG-10 fix): resolve the CoverArtArchive
+            // 307 redirect ourselves and return the final archive.org URL.
+            // Discord's media proxy doesn't follow multi-hop redirects, so
+            // the raw coverartarchive.org/release/{mbid}/front URL ends up
+            // displaying as "?" placeholder even though browsers handle it
+            // fine.  A single HEAD with AllowAutoRedirect=true gives us the
+            // direct CDN URL Discord can fetch in one hop.
+            var cacheUrl = $"https://coverartarchive.org/release/{id}/front";
+            var finalUrl = await ResolveRedirectAsync(cacheUrl, ct);
+            _logger.LogDebug("MusicBrainzSource: release MBID {Id} -> {Url} for {Artist} - {Track}",
+                id, finalUrl, cleanedArtist, cleanedTrack);
+            return finalUrl;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "MusicBrainzSource failed for {Artist} - {Track}", cleanedArtist, cleanedTrack);
+            return string.Empty;
+        }
+    }
+
+    // HEAD the CoverArtArchive URL with redirects enabled and return the
+    // final response URI.  Falls back to the input URL if anything goes
+    // wrong — better to return a working-most-of-the-time URL than empty.
+    private async Task<string> ResolveRedirectAsync(string startUrl, CancellationToken ct)
+    {
+        try
+        {
+            // Use a fresh HttpClient with AllowAutoRedirect=true; the factory's
+            // configured "musicbrainz" client may have redirects disabled to
+            // preserve the MB rate-limit semantics, so we don't reuse it here.
+            using var handler = new HttpClientHandler
+            {
+                AllowAutoRedirect      = true,
+                MaxAutomaticRedirections = 5,
+            };
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("MastersFM/1.7 (cover-art-redirect-resolver)");
+
+            using var req  = new HttpRequestMessage(HttpMethod.Head, startUrl);
+            using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            // resp.RequestMessage.RequestUri is the URL the client ended up at
+            // after following the redirect chain.
+            var final = resp.RequestMessage?.RequestUri?.ToString();
+            if (!resp.IsSuccessStatusCode || string.IsNullOrEmpty(final))
+                return string.Empty;
+            return final;
+        }
+        catch
+        {
             return string.Empty;
         }
     }
