@@ -32,6 +32,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     private readonly ILogger _logger;
     private readonly IConfigService _config;
     private readonly HttpClient _http;
+    private readonly AudioBackendBridge _backend;
 
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> outputDevices = new();
@@ -104,11 +105,12 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     public Dialogs.AudioDeviceResult? PendingResult { get; private set; }
 
-    public AudioDeviceViewModel(ILogger logger, IConfigService config, HttpClient http)
+    public AudioDeviceViewModel(ILogger logger, IConfigService config, HttpClient http, AudioBackendBridge backend)
     {
-        _logger = logger;
-        _config = config;
-        _http   = http;
+        _logger  = logger;
+        _config  = config;
+        _http    = http;
+        _backend = backend;
     }
 
     // -----------------------------------------------------------------------
@@ -347,6 +349,14 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         {
             _logger.LogErr("persist audio selection", ex, Component);
         }
+
+        // Stage 7.12 Batch B Phase O: actually apply the selection to the
+        // running audio_spectrum process AND persist to the keys its bootstrap
+        // reader consults.  Fire-and-forget — the bridge handles its own
+        // logging and never throws; spectrum unreachable just means the
+        // selection takes effect on the next spectrum start via BootstrapFromConfig.
+        _ = _backend.PushAsync(device);
+
         PendingResult = new Dialogs.AudioDeviceResult
         {
             DeviceId    = device.DeviceId,

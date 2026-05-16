@@ -188,6 +188,9 @@ public partial class App : Application
         // 5 Dialog Windows as transient (each show creates a fresh instance).
         // IDialogService as singleton (uses IServiceProvider to resolve).
         collection.AddSingleton<WelcomeViewModel>();
+        // Phase O: bridge from the tray's device dialog → audio_spectrum's
+        // /set-device HTTP endpoint + config keys it reads on bootstrap.
+        collection.AddSingleton<AudioBackendBridge>();
         collection.AddSingleton<AudioDeviceViewModel>();
         collection.AddSingleton<PlatformsViewModel>();
         collection.AddSingleton<SetupWizardViewModel>();

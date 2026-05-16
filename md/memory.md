@@ -495,6 +495,35 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase O — Audio backend selection actually routes (the bridge to audio_spectrum)
+Operator: "looks good, now make it work.  spectrum visualizer does nothing when i use the correct hardware in ASIO"
+
+Phase K + K rev2 + N surfaced the device lists.  But the click handler only wrote to legacy config keys (`audio.outputDeviceId`, `audio.outputDeviceName`, `audio.selectedBackend`) — and those are NOT what `audio_spectrum.cs:BootstrapFromConfig` reads.  It expects `audioSpectrumBackend` + `audioSpectrumDevice` with wire-protocol values (`"asio"`, `"wasapi_loopback"`, etc.).  Even if the keys had matched, the running process wouldn't pick up the change until restart — no live HTTP push to `/set-device`.  Operator's spectrum visualizer was still capturing the WASAPI-loopback default regardless of what they clicked in the dialog.
+
+Fix: new `AudioBackendBridge` service.  On every device-selection event:
+1. Map the tray's display backend ("WASAPI" / "MME" / "KS" / "ASIO") to the spectrum's wire format.  Specifically:
+   - `WASAPI` → `wasapi_loopback` (id passes through — WinRT endpoint ID = MMDevice ID).
+   - `MME` → `mme` (strip `"mme-out-"` prefix to recover the bare integer index spectrum's `WaveInEvent.DeviceNumber` consumes).
+   - `KS` → `wasapi_exclusive` (audio_spectrum treats `wdm_ks`/`wdmks`/`ks`/`wasapi_exclusive` identically).
+   - `ASIO` → `asio` (id is already the compound `"DriverName|channelOffset"` since K rev2 fetches it from `/devices`).
+2. POST `{backend, id}` to `http://127.0.0.1:4243/set-device`, 3-second timeout.  Spectrum stops the current capture, reopens with the new backend, and replies `{"ok":true,...}`.
+3. Write the wire-format values to the two root-level config keys spectrum's bootstrap regex looks for, so the selection survives a launcher restart even if the live push fails.
+
+Wired into `AudioDeviceViewModel.ApplyDevice` as fire-and-forget after the existing legacy-config writes — those stay too in case anything else still consumes them.  Registered in DI as `AudioBackendBridge` singleton.
+
+**Verified live**: hit the new endpoint directly with `curl -X POST -d '{"backend":"asio","id":"Audient USB Audio ASIO Driver|0"}'`.  audio_spectrum.log:
+```
+set-device: requested backend='asio' id='Audient USB Audio ASIO Driver|0'
+capture: stopped (exception=none)
+capture: inputGain = 40,0x for backend 'asio'
+capture: backend=asio target=Audient USB Audio ASIO Driver (ASIO)
+ASIO 'Audient USB Audio ASIO Driver' opened at 48000 Hz, 2 ch
+```
+
+Phase O failure mode: if audio_spectrum is briefly unreachable (e.g. mid-restart) when the bridge POSTs, the config write above already succeeded — next spectrum boot reads the keys via `BootstrapFromConfig` and applies them.
+
+Files: `src/tray_csharp/Services/AudioBackendBridge.cs` (new), `src/tray_csharp/ViewModels/AudioDeviceViewModel.cs` (inject bridge, call from ApplyDevice), `src/tray_csharp/App.xaml.cs` (DI registration).
+
 ### Phase N — Audio Source dialog: mouse-wheel scroll + natural-sorted ASIO
 Operator: "1 thing that annoys me in 'Audio Source'... i can't scroll with my mousewheel to go up and down in the menu's. And in ASIO the sources are not in alphabet."
 
