@@ -34,12 +34,18 @@ internal sealed class DiscordRpcService : BackgroundService
 {
     // ── Constants ─────────────────────────────────────────────────────────────
     private const string DefaultClientId     = "1495411843836018819";
-    // Stage 7.12 Batch B (real-time sync): 2000 ms → 250 ms.  Discord's
-    // documented rate-limit floor is 5 SET_ACTIVITY / 20 s = 250 ms minimum
-    // average between writes.  _lastSig dedup inside PushDiscord suppresses
-    // identical pushes so we won't actually hit that limit in normal use —
-    // 250 ms is just the safety ceiling for back-to-back rapid skips.
-    private const int    ThrottleMs          = 250;
+    // Stage 7.12 Batch B Phase C #2 (real-time sync): 250 ms → 50 ms.
+    //
+    // Discord's 5/20 s rate limit is an AVERAGE, not a per-write floor.  After
+    // a single state flip (pause/seek) we want to push immediately; the next
+    // unrelated heartbeat is suppressed by _lastSig (PushDiscord) and the 30 s
+    // age cap (DedupMaxAgeMs).  In normal use we send <1 write/s, well under
+    // the 5/20 s ceiling — but during rapid scrub bursts the 50 ms coalescer
+    // lets each scrub tick be visible within ~50-80 ms instead of 250 ms.
+    //
+    // The Phase B native pipe (DiscordIpcClient) writes in <2 ms, so 50 ms is
+    // genuinely the latency the user sees on a back-to-back state flip.
+    private const int    ThrottleMs          = 50;
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
     private const int    ActivityTypeListening = 2;      // Discord ActivityType.Listening

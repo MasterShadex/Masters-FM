@@ -418,10 +418,13 @@ internal static class WebhookHandler
         }
 
         // --- sseBroadcast() (server.js line 1065 -- always fires) ---
-        // Use CurrentTrackJson (cached serialization) -- avoids DeepClone + ToJsonString()
-        // on every 1-second heartbeat (a ~95 KB allocation for a 47 KB track payload).
-        state.Broadcast(state.CurrentTrackJson);
-        // Discord always-fires push: covers heartbeat, pause, resume, seek
+        // Stage 7.12 Batch B Phase C #6: BroadcastIfChanged skips the broadcast
+        // when the serialized JSON matches the previous frame (the dominant
+        // heartbeat case — 10/s identical payloads at 100 ms heartbeat cadence).
+        // Real state changes (pause/seek/track change) always go through
+        // because the JSON differs.  Discord push has its own dedup inside
+        // DiscordRpcService.PushDiscord, so it costs ~1 µs on a no-op.
+        state.BroadcastIfChanged(state.CurrentTrackJson);
         discordRpcService.PushDiscord(state.CurrentTrack);
 
         // --- 200 OK (server.js: res.writeHead(200); res.end('OK')) ---

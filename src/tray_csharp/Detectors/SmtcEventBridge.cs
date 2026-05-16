@@ -47,6 +47,26 @@ public sealed class SmtcEventBridge : IDisposable
     private bool _started;
     private bool _disposed;
 
+    // Stage 7.12 Batch B Phase C #1 (real-time sync fix): per-saumid thumbnail
+    // cache + per-saumid prev-position tracker.
+    //
+    // BEFORE:  TryExtractThumbnail ran on EVERY SMTC event (pause, resume, seek,
+    // timeline, properties) on the WPF dispatcher thread.  Three .Wait(1500)
+    // calls back-to-back meant a single bad-source pause could block dispatcher
+    // up to 4.5 s — that's not pause "lag", that's "the entire UI frozen".
+    //
+    // AFTER:   we only re-extract on MediaPropertiesChanged (event kind 4 =
+    // track changed).  PlaybackInfoChanged (3 = pause/play/seek) and
+    // TimelinePropertiesChanged (5 = position) reuse the cached artUri.
+    // Sessions get evicted on SessionRemoved.
+    //
+    // The prev-position tracker feeds Phase C #7: detect seeks at the SMTC
+    // bridge (rather than waiting for the 100 ms heartbeat) so the server's
+    // B7-seek branch fires immediately.
+    private readonly Dictionary<string, string?> _artCache = new();
+    private readonly Dictionary<string, (long PositionMs, DateTime ObservedUtc)> _prevPos = new();
+    private readonly object _cacheLock = new();
+
     public SmtcEventBridge(ILogger logger, ITelemetry telemetry, PlatformDetectorOptions options, ITrackResolver resolver)
     {
         _logger = logger;
@@ -132,8 +152,20 @@ public sealed class SmtcEventBridge : IDisposable
 
     private void ProcessEvent(SMTCChangeRecord ev)
     {
-        // Only respond to events that imply a meaningful state change.
-        if (ev.Kind == SMTCEventKind.SessionRemoved) return;
+        // Stage 7.12 Batch B Phase C #1: SessionRemoved evicts the per-saumid
+        // cache instead of being a silent no-op, so the dicts can't leak.
+        if (ev.Kind == SMTCEventKind.SessionRemoved)
+        {
+            if (!string.IsNullOrEmpty(ev.Saumid))
+            {
+                lock (_cacheLock)
+                {
+                    _artCache.Remove(ev.Saumid);
+                    _prevPos.Remove(ev.Saumid);
+                }
+            }
+            return;
+        }
 
         var saumid = ev.Saumid;
         if (string.IsNullOrEmpty(saumid)) return;
@@ -148,23 +180,63 @@ public sealed class SmtcEventBridge : IDisposable
             return;
         }
 
-        // Stage 7.7: art extraction (Workstream 3; B-013 empirical closure).
-        // Best-effort thumbnail read via WinRT TryGetMediaPropertiesAsync.
-        // SMTCWatcher already extracted Title/Artist/Album into snap; the
-        // raw MediaPropertiesRcw on snap may carry the Thumbnail reference
-        // but isn't always usable on cross-thread/dispose timing. Re-fetch
-        // for thumbnail via the active SessionRef. Wrapped in try/catch:
-        // some SMTC sources (soundcloud-rpc) don't publish thumbnails;
-        // failures must NOT break the track update flow.
+        // Stage 7.12 Batch B Phase C #1: thumbnail extraction is the SINGLE
+        // biggest source of pause latency.  Three .Wait(1500) calls back to
+        // back on the dispatcher thread can stretch a 10 ms pause event into
+        // a 4.5 second one for sources whose thumbnails are slow / missing
+        // (e.g. soundcloud-rpc).  Cache the extracted artUri per saumid and
+        // only re-extract on MediaPropertiesChanged (event kind 4 = the track
+        // itself changed).  Pause/resume/seek (kind 3) and timeline (kind 5)
+        // reuse the cached art.  First-ever event for a saumid also extracts
+        // (the cache miss).
         string? artUri = null;
-        try
+        bool extract = ev.Kind == SMTCEventKind.MediaPropertiesChanged;
+        if (!extract)
         {
-            artUri = TryExtractThumbnail(snap.SessionRef);
+            lock (_cacheLock)
+            {
+                if (_artCache.TryGetValue(saumid, out var cached)) artUri = cached;
+                else extract = true;
+            }
         }
-        catch (Exception ex)
+        if (extract)
         {
-            _logger.LogWarn("thumbnail extraction failed (non-fatal): " + ex.Message, Component);
-            _telemetry.IncrementCounter("art_extract_errors");
+            try
+            {
+                artUri = TryExtractThumbnail(snap.SessionRef);
+                lock (_cacheLock) { _artCache[saumid] = artUri; }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarn("thumbnail extraction failed (non-fatal): " + ex.Message, Component);
+                _telemetry.IncrementCounter("art_extract_errors");
+            }
+        }
+
+        // Stage 7.12 Batch B Phase C #7: detect seeks at the SMTC bridge so
+        // the server's B7-seek branch fires immediately instead of waiting
+        // for the 100 ms heartbeat to notice the drift.  Compare this event's
+        // reported position against the last observed (snap, wall-clock)
+        // pair for the same saumid.  If the position jump exceeds expected
+        // wall-clock drift by >250 ms, flag IsSeek=true.
+        bool isSeek = false;
+        var nowUtc      = ev.UtcTime;
+        var nowPosMs    = snap.PositionMs;
+        bool isPlaying  = (snap.PlaybackStatusValue == 4);
+        lock (_cacheLock)
+        {
+            if (_prevPos.TryGetValue(saumid, out var prev) && nowPosMs > 0 && prev.PositionMs > 0)
+            {
+                var posDeltaMs  = nowPosMs - prev.PositionMs;
+                var wallDeltaMs = (nowUtc - prev.ObservedUtc).TotalMilliseconds;
+                var expectedMs  = isPlaying ? wallDeltaMs : 0.0;
+                var jump        = Math.Abs(posDeltaMs - expectedMs);
+                if (jump > 250.0) isSeek = true;
+            }
+            // Always update so the next event has a fresh baseline (even when
+            // the current event was a seek — otherwise we'd flag the corrected
+            // position as another seek next time around).
+            _prevPos[saumid] = (nowPosMs, nowUtc);
         }
 
         var update = new TrackUpdate
@@ -175,7 +247,8 @@ public sealed class SmtcEventBridge : IDisposable
             Album = string.IsNullOrEmpty(snap.AlbumTitle) ? null : snap.AlbumTitle,
             Duration = snap.DurationMs > 0 ? TimeSpan.FromMilliseconds(snap.DurationMs) : null,
             Position = snap.PositionMs > 0 ? TimeSpan.FromMilliseconds(snap.PositionMs) : null,
-            IsPlaying = (snap.PlaybackStatusValue == 4),  // 4 = Playing per WinRT spec
+            IsPlaying = isPlaying,
+            IsSeek = isSeek,
             ArtUri = artUri,
             PlatformIdentity = saumid,
             ObservedUtc = ev.UtcTime

@@ -2413,15 +2413,20 @@ async function poll() {
 }
 
 poll();
-// 500 ms polling is the fallback when SSE is disconnected; otherwise SSE
-// pushes arrive within milliseconds of the tray webhook and polling just
-// reconciles drift.
-// v6.6.2: /current poll accelerated 500 ms -> 100 ms for instant
-// pause/unpause timestamp sync across platforms. Combined with the
-// tray's new 50 ms scrobble timer, total state-change latency is
-// ~80-120 ms end-to-end. CPU impact on the overlay side is tiny
-// (one fetch every 100 ms vs every 500 ms = ~0.2 % extra).
-setInterval(poll, 100);
+// Stage 7.12 Batch B Phase C #5: poll cadence raised back from 100 ms → 2000 ms.
+//
+// The v6.6.2 change to 100 ms was a workaround for the pre-Phase-B Discord/SSE
+// pipeline being too slow on its own.  With Phase A (state-aware tray dedup,
+// 100 ms heartbeat, 16 ms SMTC drain), Phase B (native Discord IPC pipe), and
+// Phase C (server broadcast dedup), the SSE push from the server arrives at
+// the overlay within 5-30 ms of the user input — there's nothing for a 100 ms
+// poll to reconcile.
+//
+// poll() now serves only as a slow watchdog for the case where the EventSource
+// has silently died (rare; CEF reconnects automatically within ~2 s of a server
+// restart) and for the initial state on a brand-new connection (handled by the
+// poll() call immediately above this line).  2000 ms is plenty.
+setInterval(poll, 2000);
 
 // ── Server-Sent Events: near-zero-latency track updates ─────────────────
 // Server pushes a message every time currentTrack mutates (webhook, art

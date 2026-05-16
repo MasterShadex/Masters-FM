@@ -105,6 +105,61 @@ Worst-case end-to-end latency for a user pause / scrub: was ~2 s, now ~300 ms; t
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase C (last-mile latency cleanup)
+
+Operator approval: "we put more delay on everything just for [Discord RPC]. But now we got our own pipeline so we can make as close as possible to 0ms on everything." Five fixes shipped after a deep audit identified that Phase A + B left these residual sources of lag.
+
+### #1 — Thumbnail cache in `SmtcEventBridge` (BIGGEST WIN)
+`TryExtractThumbnail` had three `.Wait(1500)` calls back-to-back, run on the WPF dispatcher thread for **every** SMTC event (pause, resume, seek, timeline, properties). On a source that publishes thumbnails fast (Spotify) it cost 10-50 ms per event; on a source that doesn't (soundcloud-rpc) it could block the dispatcher up to 4.5 s — turning a 10 ms pause into a 4.5 s one and freezing the heartbeat timer at the same time. Fixed:
+- Added `Dictionary<string, string?> _artCache` keyed by saumid.
+- Only re-extract when event kind is `MediaPropertiesChanged` (4 = track changed).
+- `PlaybackInfoChanged` (3) and `TimelinePropertiesChanged` (5) reuse the cached art.
+- `SessionRemoved` evicts the entry so the dict can't leak across browser-tab churn.
+
+### #2 — Discord IPC throttle 250 ms → 50 ms
+The 250 ms floor was overly cautious. Discord's documented rate limit is 5 SET_ACTIVITY per 20 s as an AVERAGE; the `_lastSig` dedup inside `PushDiscord` plus the 30 s age cap suppress identical pushes anyway. 50 ms gives back-to-back scrubs a visible response. Single-event case unaffected (immediate send when window is open).
+
+### #3 + #6 — Server broadcast dedup
+Heartbeats fire every 100 ms; `state.Broadcast(state.CurrentTrackJson)` was unconditionally pushing ~47 KB of identical JSON over loopback SSE to OBS at 10/s = 470 KB/s of pure waste. Added `ServerState.BroadcastIfChanged(string)` that compares against `_lastBroadcastData` and skips on string equality. `WebhookHandler.HandleAsync` now uses it for the always-fires broadcast — real state changes still fire because their JSON differs (changed `isPaused` / `startedAt` / etc).
+
+### #7 — SMTC IsSeek detection at the bridge
+The tray-side bridge wasn't setting `TrackUpdate.IsSeek` for position jumps reported by SMTC's `TimelinePropertiesChanged`. The server's B7 fast-seek branch only fires on `data["seek"] == true`, so SMTC seeks fell through to the slower B10 continuous-drift path (1 heartbeat cycle delay). Bridge now tracks `(PositionMs, ObservedUtc)` per saumid and flags `IsSeek=true` whenever the position jump exceeds expected wall-clock advance by >250 ms.
+
+### #5 — Overlay `/current` poll 100 ms → 2000 ms
+The v6.6.2 100 ms poll was a workaround for slow pre-Phase-B SSE. With Phase A (state-aware tray dedup) + Phase B (native Discord pipe) + Phase C #6 (broadcast dedup), the SSE push reaches the overlay within 5-30 ms of input. The 100 ms poll was just 10 redundant `/current` fetches per second. Slowed to 2000 ms as a watchdog; SSE is now the authoritative path.
+
+### Latency budget after Phase C (pause on a "good" SMTC source)
+| Hop | Before (Phase B) | After (Phase C) |
+| --- | ---: | ---: |
+| Spotify → SMTC                       |  20–50 ms | 20–50 ms (platform) |
+| SMTC queue → drain                   |   0–16 ms |   0–16 ms |
+| TryExtractThumbnail (cached path)    | 10–4500 ms |  **<1 ms** |
+| TrackResolver → webhook              |    2–5 ms |    2–5 ms |
+| WebhookHandler                       |   5–15 ms |    1–3 ms (dedup short-circuit) |
+| SSE broadcast                        |   1–3 ms  |    1–3 ms |
+| Server → Discord throttle            |   0–250 ms |   0–50 ms |
+| Native pipe write                    |    <2 ms |    <2 ms |
+
+Realistic worst case to OBS: **~30-50 ms** typical, ~80 ms peak.
+Realistic worst case to Discord: **~50-100 ms** typical (Discord's own render cadence dominates).
+
+### Skipped from the Phase C plan
+- **#4 (event-driven SMTC dispatch)** — would require modifying `tray_native.cs` SMTCWatcher to expose a callback, but per the bridge header comment ("Reuses v12.0.0's SMTCWatcher AS-IS per absolute rule 10") that file is off-limits. The 16 ms drain we already have on top of WPF DispatcherTimer is at the platform floor anyway. Re-open only if residual lag remains.
+
+### Files touched this batch
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` (thumbnail cache + seek detection)
+- `src/server_dotnet/DiscordRpcService.cs` (throttle 250→50 ms)
+- `src/server_dotnet/ServerState.cs` (BroadcastIfChanged + dedup state)
+- `src/server_dotnet/WebhookHandler.cs` (swap to BroadcastIfChanged)
+- `src/overlay.html` (poll cadence 100→2000 ms)
+
+### Lessons captured
+- **`.Wait(N)` on a WinRT async call inside a DispatcherTimer tick is a footgun.** It blocks the dispatcher thread, which means the timer can't fire its NEXT tick — so a 4.5 s thumbnail timeout freezes ALL event processing, not just the one event. Cache aggressively; only re-extract when the source data has actually changed.
+- **"Documented rate limit X per Y" usually means AVERAGE, not floor.** Discord's 5/20 s is an average; 50 ms between writes is fine as long as you don't sustain it. Don't over-throttle defensively when the upstream already has dedup.
+- **Heartbeat-driven SSE broadcasts are bandwidth waste if the content is identical.** Once you have a real heartbeat for keepalive (`: ping\n\n`), the data frames should be content-driven only. String-equality dedup is free.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

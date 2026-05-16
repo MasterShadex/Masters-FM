@@ -165,12 +165,50 @@ public class ServerState
         sb.Append('\n');
         var frame = sb.ToString();
 
+        // Stage 7.12 Batch B Phase C #6: track the last sent JSON so the
+        // BroadcastIfChanged path can dedup heartbeat frames.  Only updates
+        // when eventName == null (the track-state channel) — overlay-config
+        // and preview-config frames go through unconditionally.
+        if (eventName == null)
+        {
+            lock (_broadcastDedupLock) { _lastBroadcastData = data; }
+        }
+
         foreach (var client in _sseClients.Values)
         {
             // TryWrite is always successful for unbounded channels unless the
             // channel is already completed (client disconnected). Safe to ignore.
             client.Queue.Writer.TryWrite(frame);
         }
+    }
+
+    // ── Broadcast dedup (Stage 7.12 Batch B Phase C #6) ──────────────────────
+    // The webhook handler unconditionally broadcasts on every webhook, but
+    // heartbeats (every 100 ms) typically produce IDENTICAL JSON to the prior
+    // broadcast.  Without dedup we push ~470 KB/s of identical SSE frames over
+    // loopback to OBS — CEF eats it but it's pure waste.  BroadcastIfChanged
+    // compares against _lastBroadcastData and skips when unchanged.  Real
+    // changes always go through.
+    private readonly object _broadcastDedupLock = new();
+    private string _lastBroadcastData = string.Empty;
+
+    /// <summary>
+    /// Broadcasts only when <paramref name="data"/> differs from the previous
+    /// broadcast (string equality).  Returns true if the frame was sent.
+    /// Heartbeats with no state change become no-ops.  Used by the webhook
+    /// handler's always-fires path.
+    /// </summary>
+    public bool BroadcastIfChanged(string data)
+    {
+        if (_sseClients.IsEmpty) return false;
+        lock (_broadcastDedupLock)
+        {
+            if (string.Equals(data, _lastBroadcastData, StringComparison.Ordinal))
+                return false;
+            // Note: Broadcast() updates _lastBroadcastData under the same lock.
+        }
+        Broadcast(data);
+        return true;
     }
 
     // ── Screenshot state ──────────────────────────────────────────────────────
