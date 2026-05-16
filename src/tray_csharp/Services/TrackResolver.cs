@@ -86,13 +86,15 @@ public sealed class TrackResolver : ITrackResolver
                         var posDeltaMs  = (update.Position.Value - prev.Position.Value).TotalMilliseconds;
                         var wallDeltaMs = (update.ObservedUtc - prev.ObservedUtc).TotalMilliseconds;
                         var expectedMs  = update.IsPlaying ? wallDeltaMs : 0.0;
-                        // Stage 7.12 Batch B Phase D #4: 250 ms → 100 ms.  With
-                        // the 50 ms heartbeat (Phase D #3) the wall-clock delta
-                        // between adjacent updates is small enough that 100 ms
-                        // of unexplained drift is genuinely a scrub.  Catches
-                        // 100-200 ms in-bar scrubs that 250 ms missed.
+                        // Stage 7.12 Batch B Phase H #2: browser sources report
+                        // TimelineProperties irregularly (esp. YouTube during
+                        // buffering) — jitter up to ~800 ms is normal and is NOT
+                        // a real scrub.  Use 1000 ms for those; 100 ms otherwise
+                        // (Phase D's tight threshold catches small in-bar scrubs
+                        // on rock-steady desktop sources).
                         var jump = Math.Abs(posDeltaMs - expectedMs);
-                        if (jump > 100.0) stateChanged = true;
+                        var threshold = SmtcEventBridge.IsBrowserLikeSource(update.Source) ? 1000.0 : 100.0;
+                        if (jump > threshold) stateChanged = true;
                     }
                 }
                 _current = update;

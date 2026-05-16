@@ -27,6 +27,8 @@
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using MasterFM.SMTC;
@@ -77,6 +79,12 @@ public sealed class SmtcEventBridge : IDisposable
     // B7-seek branch fires immediately.
     private readonly Dictionary<string, string?> _artCache = new();
     private readonly Dictionary<string, (long PositionMs, DateTime ObservedUtc)> _prevPos = new();
+    // Stage 7.12 Batch B Phase H #1: per-saumid source-name cache.
+    // For browser AUMIDs we sniff the foreground window title to detect
+    // YouTube / Twitch / etc. — but we only want to evaluate it ONCE per
+    // track (when MediaPropertiesChanged fires) so the label stays stable
+    // when the user alt-tabs to a non-browser window between events.
+    private readonly Dictionary<string, string> _sourceCache = new();
     private readonly object _cacheLock = new();
 
     public SmtcEventBridge(ILogger logger, ITelemetry telemetry, PlatformDetectorOptions options, ITrackResolver resolver)
@@ -209,6 +217,7 @@ public sealed class SmtcEventBridge : IDisposable
                 {
                     _artCache.Remove(ev.Saumid);
                     _prevPos.Remove(ev.Saumid);
+                    _sourceCache.Remove(ev.Saumid);
                 }
             }
             return;
@@ -220,7 +229,21 @@ public sealed class SmtcEventBridge : IDisposable
         var snap = _watcher!.GetSnapshot(saumid);
         if (snap == null || !snap.HasMediaProps) return;
 
-        var sourceName = MapSaumidToSource(saumid);
+        // Stage 7.12 Batch B Phase H #1: source mapping is normally cached,
+        // but we MUST re-evaluate it on MediaPropertiesChanged because that's
+        // when the user might have switched from a YouTube tab to a Spotify
+        // tab (same saumid = chrome.exe, but different real source).  Also
+        // cleared on SessionRemoved further up.
+        string sourceName;
+        lock (_cacheLock)
+        {
+            if (ev.Kind == SMTCEventKind.MediaPropertiesChanged ||
+                !_sourceCache.TryGetValue(saumid, out sourceName!))
+            {
+                sourceName = MapSaumidToSource(saumid);
+                _sourceCache[saumid] = sourceName;
+            }
+        }
         if (!IsSourceEnabled(sourceName))
         {
             _logger.Log($"event ignored: source={sourceName} disabled by config", Component);
@@ -302,9 +325,9 @@ public sealed class SmtcEventBridge : IDisposable
                 var wallDeltaMs = (nowUtc - prev.ObservedUtc).TotalMilliseconds;
                 var expectedMs  = isPlaying ? wallDeltaMs : 0.0;
                 var jump        = Math.Abs(posDeltaMs - expectedMs);
-                // Stage 7.12 Batch B Phase D #4: 250 ms → 100 ms (paired with
-                // TrackResolver's same change — see comments there).
-                if (jump > 100.0) isSeek = true;
+                // Phase H #2: 1000 ms for browsers (jittery), 100 ms otherwise.
+                var seekJumpMs  = IsBrowserLikeSource(sourceName) ? 1000.0 : 100.0;
+                if (jump > seekJumpMs) isSeek = true;
             }
             // Always update so the next event has a fresh baseline (even when
             // the current event was a seek — otherwise we'd flag the corrected
@@ -349,9 +372,63 @@ public sealed class SmtcEventBridge : IDisposable
         if (s.Contains("pandora")) return "pandora";
         if (s.Contains("zenmedia") || s.Contains("media.player")) return "wmpSMTC";
         if (s.Contains("chrome") || s.Contains("edge") || s.Contains("firefox") || s.Contains("brave"))
+        {
+            // Stage 7.12 Batch B Phase H #1: Chrome / Edge / Firefox publish
+            // SMTC with their executable AUMID — the BROWSER, not the page.
+            // To distinguish "YouTube in Chrome" from "Spotify Web in Chrome"
+            // we sniff the foreground window's title (the active browser
+            // tab's title shows up in the window caption).  This is a best
+            // effort: works when the user has the playing tab focused;
+            // falls back to "browser" otherwise.
+            var t = GetForegroundWindowTitle().ToLowerInvariant();
+            if (t.Length > 0)
+            {
+                if (t.Contains("youtube") || t.Contains("youtu.be"))  return "youtube";
+                if (t.Contains("twitch"))                              return "twitch";
+                if (t.Contains("spotify"))                             return "spotify";
+                if (t.Contains("soundcloud"))                          return "soundcloud";
+            }
             return "browser";
+        }
         return "smtc-generic";
     }
+
+    // ── Win32 helpers (Phase H #1: detect YouTube via active window title) ────
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    private static string GetForegroundWindowTitle()
+    {
+        try
+        {
+            var hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return string.Empty;
+            var sb = new StringBuilder(512);
+            var n  = GetWindowText(hwnd, sb, sb.Capacity);
+            return n > 0 ? sb.ToString() : string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    // Stage 7.12 Batch B Phase H #2: browser sources (Chrome / Edge / etc.)
+    // report TimelinePropertiesChanged irregularly and lazily during buffering,
+    // causing our interpolation to extrapolate ahead while playback actually
+    // pauses for buffer, then snap back when the next event lands.  Phase D's
+    // 100 ms IsSeek threshold flags this as a seek, the server's B7 resyncs
+    // startedAt, and the OBS / Discord progress bar visibly jumps backward.
+    //
+    // For browser-shaped sources, raise the IsSeek threshold to 1000 ms so
+    // normal buffering/jitter is absorbed.  Real human seeks are typically
+    // multi-second so we don't lose anything meaningful.  Other sources
+    // (Spotify desktop, SoundCloud-RPC, etc.) stay on the tight Phase D
+    // thresholds because their position reporting is rock-steady.
+    internal static bool IsBrowserLikeSource(string source) =>
+        source == "browser" || source == "youtube" || source == "youtubemusic"
+        || source == "twitch";
 
     private bool IsSourceEnabled(string source)
     {

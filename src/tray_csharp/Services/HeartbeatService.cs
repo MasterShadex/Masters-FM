@@ -109,11 +109,18 @@ public sealed class HeartbeatService : IHeartbeatService
                 // When paused, position should not advance (~= 0).
                 var expectedMs    = track.IsPlaying ? wallElapsedMs : 0.0;
                 var drift         = Math.Abs(posAdvanceMs - expectedMs);
-                if (drift > SeekThresholdMs)
+                // Stage 7.12 Batch B Phase H #2: browser sources (YouTube via
+                // Chrome, etc.) report TimelineProperties irregularly; up to
+                // 800 ms of jitter during buffering is normal.  Use 1000 ms
+                // for them; 200 ms (Phase D #4) for rock-steady desktop sources.
+                var seekThresholdForSource = SmtcEventBridge.IsBrowserLikeSource(track.Source)
+                    ? 1000.0
+                    : SeekThresholdMs;
+                if (drift > seekThresholdForSource)
                 {
                     isSeek = true;
                     _logger.Log(
-                        $"seek: drift={drift:F0}ms pos={posAdvanceMs:F0}ms expected={expectedMs:F0}ms",
+                        $"seek: drift={drift:F0}ms pos={posAdvanceMs:F0}ms expected={expectedMs:F0}ms thr={seekThresholdForSource:F0}",
                         Component);
                 }
             }

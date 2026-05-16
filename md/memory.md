@@ -339,6 +339,47 @@ Side cleanup: removed the prior `gap=40` (an off-right-edge buffer that was the 
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase H (YouTube label + browser timeline jitter)
+
+Operator: "When I watch YouTube, it says I am playing or watching the browser. And not YouTube. The timetrack or bar progress keeps bugging out as well and it keeps glitching and falling back and forward and back and forward."
+
+Two bugs, related root cause: the SMTC source for YouTube-in-Chrome is the Chrome executable AUMID (`Chrome` or similar) — Chrome publishes one SMTC session per browser instance, not per tab. Worse, Chrome's `TimelinePropertiesChanged` for a YouTube video fires irregularly (~250 ms typical, longer during buffering), so our Phase F position interpolation extrapolates forward while the actual playback stalls during buffer → when the next event lands the snap.PositionMs is behind our extrapolation → our IsSeek detector (100 ms threshold post-Phase D) flags it as a seek → server B7 resyncs startedAt → OBS/Discord progress bar visibly jumps backward → cycle repeats.
+
+### #1 — YouTube label via foreground window title
+Added `GetForegroundWindow` / `GetWindowText` P/Invoke in `SmtcEventBridge.cs`. In `MapSaumidToSource`, when the saumid matches a browser executable (`chrome`/`edge`/`firefox`/`brave`), sniff the foreground window title:
+- contains `youtube` or `youtu.be` → `"youtube"`
+- contains `twitch` → `"twitch"`
+- contains `spotify` → `"spotify"`
+- contains `soundcloud` → `"soundcloud"`
+- otherwise → `"browser"`
+
+Cached per saumid in `_sourceCache` so a single eval-on-track-change keeps the label stable while the user alt-tabs. Re-evaluated when `MediaPropertiesChanged` fires (track changed) and evicted on `SessionRemoved`. Limitation: only correct when the user has the playing tab focused at the moment of the track-change event.
+
+### #2 — Raise IsSeek threshold to 1000 ms for browser-like sources
+Chrome's lazy TimelineProperties reporting + buffer stalls causes our interpolation to drift ahead by 200-800 ms naturally — that's NOT a seek. The Phase D #4 100 ms threshold was correctly tight for desktop sources (Spotify, SoundCloud-RPC) where timeline reporting is rock-steady, but too tight for browsers.
+
+Added `SmtcEventBridge.IsBrowserLikeSource(source)` helper (`browser`/`youtube`/`youtubemusic`/`twitch`). Used in three places that all had the same 100 ms / 200 ms logic post-Phase D:
+
+| Site | Desktop sources | Browser sources |
+|---|---|---|
+| `SmtcEventBridge.ProcessEvent` IsSeek | 100 ms | **1000 ms** |
+| `TrackResolver.OnTrackChanged` stateChanged | 100 ms | **1000 ms** |
+| `HeartbeatService.OnTick` IsSeek | 200 ms | **1000 ms** |
+
+Real human seeks are typically multi-second so we don't lose meaningful events.
+
+### Files touched this batch
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` (Win32 P/Invoke, source cache, helper, IsSeek threshold)
+- `src/tray_csharp/Services/TrackResolver.cs` (stateChanged threshold)
+- `src/tray_csharp/Services/HeartbeatService.cs` (IsSeek threshold)
+
+### Lessons captured
+- **Browser-published SMTC is fundamentally less reliable than desktop SMTC.** The browser is a middleman between the website's MediaSession API and Windows SMTC. The website controls how often it calls `setPositionState()`, the browser controls how often it forwards to SMTC, and buffering/throttling can add jitter on top of that. Any algorithm tuned to desktop SMTC (Spotify) will get false-positives on browser SMTC unless explicitly relaxed.
+- **`GetForegroundWindow` is a "good-enough" website detector but not reliable** — only works when the user is on the playing tab. For higher reliability we'd need a browser extension or DevTools Protocol connection. Phase H's heuristic covers the most common case (user is watching YouTube actively).
+- **One helper, three call sites.** When the same "seek threshold" rule lives in three files that already shared 100/200 ms logic, extracting a single `IsBrowserLikeSource` predicate and reaching it from all three keeps the rule in one place. Worth a small cross-namespace `using` rather than copying the predicate three times.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)
