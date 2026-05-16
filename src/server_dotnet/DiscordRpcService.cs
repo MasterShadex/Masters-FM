@@ -318,10 +318,13 @@ internal sealed class DiscordRpcService : BackgroundService
         {
             client?.SetPresence(presence);
             _logger.LogInformation(
-                "Discord RPC: SetPresence sent (details='{Details}' state='{State}' largeImg='{Large}')",
+                "Discord RPC: SetPresence sent (details='{Details}' state='{State}' largeImg='{Large}' tsStart={TsStart} tsEnd={TsEnd} largeImgIsUrl={IsUrl})",
                 presence?.Details ?? "(null)",
                 presence?.State   ?? "(null)",
-                presence?.Assets?.LargeImageKey ?? "(null)");
+                presence?.Assets?.LargeImageKey ?? "(null)",
+                presence?.Timestamps?.Start?.ToString("o") ?? "(null)",
+                presence?.Timestamps?.End?.ToString("o")   ?? "(null)",
+                IsHttpUrl(presence?.Assets?.LargeImageKey));
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: SetPresence error"); }
     }
