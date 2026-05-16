@@ -226,11 +226,17 @@ internal sealed class DiscordRpcService : BackgroundService
         long startedAt = (long?)currentTrack["startedAt"]?.GetValue<long>() ?? 0L;
         long duration  = (long?)currentTrack["duration"]?.GetValue<long>()  ?? 0L;
         bool isPaused  = currentTrack["isPaused"]?.GetValue<bool>() == true;
-        var  artRaw    = (string?)currentTrack["trackArt"]  ?? string.Empty;
-        var  originUrl = (string?)currentTrack["originUrl"] ?? string.Empty;
+        var  artRaw      = (string?)currentTrack["trackArt"]      ?? string.Empty;
+        var  artHttpsRaw = (string?)currentTrack["trackArtHttps"] ?? string.Empty;
+        var  originUrl   = (string?)currentTrack["originUrl"]     ?? string.Empty;
 
-        // safeArt: filter data: URIs -- Discord CDN rejects them (server.js line 312)
-        var safeArt = IsHttpUrl(artRaw) ? artRaw : string.Empty;
+        // safeArt prefers the HTTPS-only field (added by ArtCascade specifically
+        // for Discord, since the primary trackArt is often a data: URI from
+        // Windows SMTC which Discord's CDN rejects).  Falls back to trackArt if
+        // it happens to already be an HTTPS URL.
+        var safeArt = IsHttpUrl(artHttpsRaw)
+            ? artHttpsRaw
+            : (IsHttpUrl(artRaw) ? artRaw : string.Empty);
 
         // ── Dedup (mirrors server.js _lastDiscordSig, lines 315-322) ─────────
         // Includes startedAt so seeks re-push the activity (shifted end time).

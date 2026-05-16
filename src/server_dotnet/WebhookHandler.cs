@@ -195,7 +195,8 @@ internal static class WebhookHandler
                 {
                     ["artist"]    = JsonValue.Create(resolvedArtist),
                     ["track"]     = JsonValue.Create(track),
-                    ["trackArt"]  = JsonValue.Create(string.Empty),    // art set after resolution
+                    ["trackArt"]      = JsonValue.Create(string.Empty),  // art set after resolution
+                    ["trackArtHttps"] = JsonValue.Create(string.Empty),  // HTTPS-only art for Discord RPC (data: URIs filtered out)
                     ["duration"]  = JsonValue.Create(durationMs),
                     ["originUrl"] = JsonValue.Create(originUrl),
                     ["startedAt"] = JsonValue.Create(startedAt),
@@ -377,8 +378,8 @@ internal static class WebhookHandler
                 ? durationResolver.ResolveAsync(resolveArtist, resolveTrack, ct)
                 : Task.FromResult(0L);
             await Task.WhenAll(artTask, durTask);
-            var art           = artTask.Result;
-            var resolvedDurMs = durTask.Result;
+            var (art, artHttps) = artTask.Result;
+            var resolvedDurMs   = durTask.Result;
 
             await state.WebhookLock.WaitAsync(ct);
             try
@@ -388,7 +389,8 @@ internal static class WebhookHandler
                 var trackClone = state.CurrentTrack;
                 if (trackClone != null && IsSameTrack(resolveArtist, resolveTrack, trackClone))
                 {
-                    trackClone["trackArt"] = JsonValue.Create(art ?? string.Empty);
+                    trackClone["trackArt"]      = JsonValue.Create(art ?? string.Empty);
+                    trackClone["trackArtHttps"] = JsonValue.Create(artHttps ?? string.Empty);
                     // Store resolved duration only when webhook sent 0 and resolver found a value
                     if (resolvedDurMs > 0 && (long?)trackClone["duration"]?.GetValue<long>() == 0)
                         trackClone["duration"] = JsonValue.Create(resolvedDurMs);
@@ -397,8 +399,9 @@ internal static class WebhookHandler
                     // B11 art-retry can fire on a subsequent heartbeat that carries valid art.
                     state.ArtResolved  = !string.IsNullOrEmpty(art);
                     logger.LogInformation(
-                        "Track ready -- art: {ArtStatus}  duration: {DurStatus}",
+                        "Track ready -- art: {ArtStatus} (httpsArt: {HttpsStatus})  duration: {DurStatus}",
                         string.IsNullOrEmpty(art) ? "no" : "yes",
+                        string.IsNullOrEmpty(artHttps) ? "no" : "yes",
                         (long?)trackClone["duration"]?.GetValue<long>() > 0 ? "yes" : "not found");
                 }
                 state.ArtResolving = false;
@@ -439,7 +442,7 @@ internal static class WebhookHandler
     {
         try
         {
-            var art = await artCascade.ResolveAsync(
+            var (art, artHttps) = await artCascade.ResolveAsync(
                 artist, track, webhookArt, originUrl, source, CancellationToken.None);
 
             if (!string.IsNullOrEmpty(art))
@@ -451,7 +454,8 @@ internal static class WebhookHandler
                     var retryClone = state.CurrentTrack;
                     if (retryClone != null && IsSameTrack(artist, track, retryClone))
                     {
-                        retryClone["trackArt"] = JsonValue.Create(art);
+                        retryClone["trackArt"]      = JsonValue.Create(art);
+                        retryClone["trackArtHttps"] = JsonValue.Create(artHttps);
                         state.CurrentTrack = retryClone;
                         state.ArtResolved = true;
                         logger.LogInformation("Art updated from webhook retry");

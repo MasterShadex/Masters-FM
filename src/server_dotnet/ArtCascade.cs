@@ -57,32 +57,47 @@ internal sealed class ArtCascade
     }
 
     /// <summary>
-    /// Resolve art for the given track. Returns string.Empty if no source finds art.
+    /// Resolve art for the given track. Returns (primary, https) where:
+    ///   - primary  = first non-empty result the cascade produced (data: URI or HTTPS URL)
+    ///   - https    = first HTTPS URL the cascade produced (skips data: URI results)
+    /// Both fields default to string.Empty.  Single pass through sources;
+    /// caches both results under separate LRU keys.
+    ///
+    /// Stage 7.12 Batch B (post DIAG-10): a separate HTTPS-only art field is
+    /// needed for Discord Rich Presence (Discord's CDN rejects data: URIs),
+    /// while the overlay uses the primary art directly (data URIs are fine
+    /// for the local WPF/WebView2 renderers).
     /// </summary>
-    public async Task<string> ResolveAsync(
+    public async Task<(string art, string artHttps)> ResolveAsync(
         string rawArtist, string rawTrack,
         string? webhookArt, string? originUrl, string? source,
         CancellationToken ct)
     {
-        var artist = TextNormalization.CleanArtist(rawArtist);
-        var track  = TextNormalization.CleanTrack(rawTrack);
-        var key    = $"{artist}|||{track}".ToLowerInvariant();
+        var artist   = TextNormalization.CleanArtist(rawArtist);
+        var track    = TextNormalization.CleanTrack(rawTrack);
+        var key      = $"{artist}|||{track}".ToLowerInvariant();
+        var keyHttps = "https||" + key;
 
-        // Cache hit (ID-20: LRU cache not present in server.js)
-        // Cache stores both resolved URLs (non-empty) and "not found" (empty string).
-        // A cached empty string short-circuits the cascade immediately, preventing the
-        // B11 retry loop from running 11 HTTP sources on every heartbeat.
-        if (_cache.TryGet(key, out var cached))
+        bool gotPrimary = _cache.TryGet(key,      out var cachedPrimary);
+        bool gotHttps   = _cache.TryGet(keyHttps, out var cachedHttps);
+        if (gotPrimary && gotHttps)
         {
-            if (string.IsNullOrEmpty(cached))
+            if (string.IsNullOrEmpty(cachedPrimary))
                 _logger.LogDebug("ArtCascade cache: known no-art for {Key}", key);
             else
                 _logger.LogDebug("ArtCascade cache hit for {Key}", key);
-            return cached; // "" or resolved URL -- both are valid cached answers
+            return (cachedPrimary ?? string.Empty, cachedHttps ?? string.Empty);
         }
+
+        string primaryArt = gotPrimary ? (cachedPrimary ?? string.Empty) : string.Empty;
+        string httpsArt   = gotHttps   ? (cachedHttps   ?? string.Empty) : string.Empty;
 
         foreach (var src in _sources)
         {
+            // Early-out: both already found.
+            if (!string.IsNullOrEmpty(primaryArt) && !string.IsNullOrEmpty(httpsArt))
+                break;
+
             string result;
             try
             {
@@ -90,23 +105,37 @@ internal sealed class ArtCascade
             }
             catch (Exception ex)
             {
-                // Belt-and-suspenders: sources MUST NOT throw, but guard anyway
                 _logger.LogWarning(ex, "ArtCascade: source {Source} threw unexpectedly", src.Name);
                 result = string.Empty;
             }
 
-            if (!string.IsNullOrEmpty(result))
+            if (string.IsNullOrEmpty(result)) continue;
+
+            // First non-empty wins the primary slot.
+            if (string.IsNullOrEmpty(primaryArt))
             {
-                _cache.Set(key, result);
+                primaryArt = result;
                 _logger.LogInformation(
                     "ArtCascade resolved via {Source} for {Artist} - {Track}",
                     src.Name, artist, track);
-                return result;
+            }
+
+            // First HTTPS URL (skips data: URI results) wins the https slot.
+            if (string.IsNullOrEmpty(httpsArt)
+                && !result.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                httpsArt = result;
+                _logger.LogInformation(
+                    "ArtCascade-HTTPS resolved via {Source} for {Artist} - {Track}",
+                    src.Name, artist, track);
             }
         }
 
-        _logger.LogInformation("ArtCascade: no art found for {Artist} - {Track}", artist, track);
-        _cache.Set(key, string.Empty); // Cache "not found" -- short-circuits future calls for this track
-        return string.Empty;
+        if (string.IsNullOrEmpty(primaryArt))
+            _logger.LogInformation("ArtCascade: no art found for {Artist} - {Track}", artist, track);
+
+        _cache.Set(key,      primaryArt);
+        _cache.Set(keyHttps, httpsArt);
+        return (primaryArt, httpsArt);
     }
 }
