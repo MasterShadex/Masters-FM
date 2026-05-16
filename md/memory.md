@@ -495,6 +495,49 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase M — YouTube progress-bar jumps + Chrome-favicon art (low-cost fixes only)
+Operator: "with youtube the progress bar bugs again, and the entire obs overlay card keeps struggling to keep up while soundcloud is completely fine.  Sometimes the album art from youtube just doesn't get detected and i only see the chrome icon as album art." + "i rather have no latency added"
+
+Diagnosis presented and approved.  Two unrelated bugs, both YouTube-only, both fixed without adding latency anywhere.
+
+#### Issue 1 — root cause: YouTube ad insertions look like seeks
+When YouTube plays a mid-roll ad, Chrome's SMTC reports the AD's timeline, not the video's: position jumps from 5:00 → 0:00 at ad start and 0:30 → 5:30 at ad end.  Each jump exceeds Phase H's 1000 ms isSeek threshold for browser sources → B7 (server seek-resync) fires twice in rapid succession (plus any Chrome jitter or PlaybackStatus flicker during buffers) → OBS bar snaps both ways, visibly thrashes.
+
+Fix 1A — startedAt-resync cooldown (`Phase M #1A`):
+- New `ServerState.LastStartedAtUpdateMs` (thread-safe long).  Tracks the most recent wall-clock ms that B7 or B10 changed `CurrentTrack.startedAt`.  Resets to 0 on every new track (so the first correction on a fresh track always applies regardless of recent history).
+- New constants in `WebhookHandler`: `MinResyncIntervalMs = 2000`, helper `IsBrowserLikeSource(source)` matching the Phase H tray-side predicate.
+- B7 (seek) and B10 (drift-correction) now check the cooldown before updating `startedAt` IF source is browser-like.  Within 2 s of a previous resync → skip + log (`"Seek ignored (browser cooldown: …)"`).  After 2 s → apply normally.  B10 isn't logged on skip (too chatty at heartbeat cadence); B7's log shows the pattern.
+- B5/B6 (pause/resume) are NOT cooldown-gated — those are user-driven and should respond instantly.
+
+Why this works: ad-start triggers B7 once (bar snaps to 0:00).  Ad-end's B7 is suppressed (within 2 s window).  When the ad ends and the 2-s window has cleared, B10's normal drift-correction sees the >4 s discrepancy and resyncs to the correct video position.  Net effect: one snap per ad instead of two, plus any rapid Chrome jitter collapses to one event per 2 s.
+
+SoundCloud is unaffected — it's not in `IsBrowserLikeSource`.
+
+#### Issue 2 — root cause: overlay uses `trackArt`, never `trackArtHttps`
+Chrome's MediaSession-to-SMTC bridge sometimes publishes its OWN favicon (the tab icon) as the thumbnail when YouTube's player hasn't called `MediaSession.metadata.artwork(...)` yet.  Phase I trusts SMTC data: URIs for browser sources (`SmtcSource`'s allowed list) — so the cascade puts the favicon into `trackArt`.  `YouTubeSource` runs LATER in the cascade, finds the real thumbnail at `img.youtube.com/vi/{videoId}/hqdefault.jpg`, and stores it in `trackArtHttps`.
+
+Discord uses `trackArtHttps` first (Phase I) → correct thumbnail.
+Tray menu uses `trackArtHttps` first (Phase L) → correct thumbnail.
+OBS overlay used ONLY `d.trackArt` → Chrome favicon.
+
+Fix 2A — overlay prefers `trackArtHttps` (`Phase M #2A`):
+- New helper `const bestArt = d => (d && (d.trackArtHttps || d.trackArt)) || ''` next to the existing `sleep` utility.
+- All five art-display references swapped from `d.trackArt`/`latest.trackArt` to `bestArt(d)`/`bestArt(latest)`:
+  - `applyTrackContent`: `setArt(bestArt(latest))`, `lastArt = bestArt(latest)`
+  - `transitionToTrack`: `lastArt = bestArt(d)`
+  - `poll()`: `newArt = bestArt(d)` used by isNew/artChanged/forceArt branches
+  - `applyServerUpdate` (SSE path): same pattern
+- Falls back to data: URI when no HTTPS art exists (e.g., desktop SMTC where the data URI IS the right art).
+
+Verified live: operator's `/current` showed `trackArt=data:image/png;base64,…` and `trackArtHttps=https://i1.sndcdn.com/artworks-…-t500x500.png` simultaneously for a SoundCloud track — overlay now loads the SoundCloud CDN URL instead of decoding the larger data URI.  Same pattern for YouTube once the cascade resolves the proper thumbnail.
+
+Why no latency added: Both fixes are reactive, not preemptive.  Fix 1A only triggers when a SECOND resync attempt arrives within 2 s — doesn't slow down the first one.  Fix 2A reads existing fields that the cascade already populates; doesn't change cascade order or timing.
+
+Files touched:
+- `src/server_dotnet/ServerState.cs` (LastStartedAtUpdateMs field + accessor)
+- `src/server_dotnet/WebhookHandler.cs` (cooldown gate on B7 + B10; resets on new track)
+- `src/overlay.html` (bestArt helper + 5 swap sites)
+
 ### Phase L — Tray menu + Platforms dialog use server cascade-resolved art
 Operator: "master's fm tray menu and in platform detection doesn't resolve the correct album arts, we forgot to change that part. We forget it when we changed to 95-99% accuracy of album arts detection."
 

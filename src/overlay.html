@@ -2189,6 +2189,13 @@ function getPlatformLabel(src) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Phase M #2A: prefer the cascade-resolved HTTPS URL when present, fall back
+// to the raw primary art (typically the SMTC data: URI).  Discord and the
+// tray menu already prefer trackArtHttps; this brings the OBS overlay in
+// line so a Chrome favicon published by SMTC doesn't end up on screen when
+// the cascade has the correct YouTube/SoundCloud/etc. thumbnail available.
+const bestArt = d => (d && (d.trackArtHttps || d.trackArt)) || '';
+
 let _transitioning = false;
 // Rapid-scroll queue. When a new track arrives mid-transition (e.g. you
 // scroll through osu! song-select), remember the latest one and re-transition
@@ -2215,11 +2222,11 @@ function applyTrackContent(d) {
   pl.textContent   = name;
   pl.style.display = name ? '' : 'none';
 
-  if (_cfg.art.enabled) setArt(latest.trackArt || '');
+  if (_cfg.art.enabled) setArt(bestArt(latest));
   setDuration(latest.duration || 0);
 
   // Keep poll() in sync so it doesn't redundantly re-apply the same art
-  lastArt = latest.trackArt || '';
+  lastArt = bestArt(latest);
 }
 
 // Slide out → swap content → slide in (seamless song change).
@@ -2285,7 +2292,7 @@ async function transitionToTrack(d) {
 
   applyTrackContent(d);                           // update content while hidden/faded
   lastTrack = { ...d };                           // sync so poll() won't treat it as new
-  lastArt   = d.trackArt || '';
+  lastArt   = bestArt(d);
   await sleep(20);                                // tiny settle delay
 
   if (crossfade) {
@@ -2352,19 +2359,20 @@ async function poll() {
     if (!d) { _latestData = null; lastTrack = null; lastArt = ''; hideWidget(); return; }
     _latestData = d;  // kept fresh so applyTrackContent (runs after slide-out) sees resolved art
 
+    const newArt     = bestArt(d);
     const isNew      = !lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist;
-    const forceArt   = _sseNeedsArtRefresh && d.trackArt;
-    const artChanged = (!isNew && d.trackArt && d.trackArt !== lastArt) || forceArt;
+    const forceArt   = _sseNeedsArtRefresh && newArt;
+    const artChanged = (!isNew && newArt && newArt !== lastArt) || forceArt;
     const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
 
     if (isNew) {
-      lastTrack = { ...d }; lastArt = d.trackArt || '';
+      lastTrack = { ...d }; lastArt = newArt;
       showTrack(d);
       _sseNeedsArtRefresh = false;
       return;  // let transitionToTrack fully own this cycle
     }
     if (artChanged) {
-      lastArt = d.trackArt; setArt(d.trackArt);  // smooth art crossfade
+      lastArt = newArt; setArt(newArt);   // smooth art crossfade
       if (forceArt) overlayLog('INFO', `Art force-refreshed after SSE reconnect (poll)`);
       _sseNeedsArtRefresh = false;
     }
@@ -2443,21 +2451,22 @@ function applyServerUpdate(d) {
   }
   if (!d) { _latestData = null; lastTrack = null; lastArt = ''; hideWidget(); return; }
   _latestData = d;
+  const newArt     = bestArt(d);
   const isNew      = !lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist;
   // Force art refresh on SSE reconnect even if the URL didn't change — OBS
   // Browser Source (CEF) otherwise keeps serving a stale image after Master's
   // FM restarts. The flag is set in connectSSE().onopen and cleared below.
-  const forceArt   = _sseNeedsArtRefresh && d.trackArt;
-  const artChanged = (!isNew && d.trackArt && d.trackArt !== lastArt) || forceArt;
+  const forceArt   = _sseNeedsArtRefresh && newArt;
+  const artChanged = (!isNew && newArt && newArt !== lastArt) || forceArt;
   const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
   if (isNew) {
-    lastTrack = { ...d }; lastArt = d.trackArt || '';
+    lastTrack = { ...d }; lastArt = newArt;
     showTrack(d);
     _sseNeedsArtRefresh = false;   // isNew path re-renders via transitionToTrack
     return;  // let transitionToTrack fully own this cycle
   }
   if (artChanged) {
-    lastArt = d.trackArt; setArt(d.trackArt);
+    lastArt = newArt; setArt(newArt);
     if (forceArt) overlayLog('INFO', `Art force-refreshed after SSE reconnect`);
     _sseNeedsArtRefresh = false;
   }

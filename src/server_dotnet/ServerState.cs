@@ -72,6 +72,21 @@ public class ServerState
         get { lock (_trackLock) return _currentTrackJson; }
     }
 
+    // ── Last "startedAt" update (Stage 7.12 Batch B Phase M) ─────────────────
+    // Tracks the most recent wall-clock ms at which WebhookHandler's seek-
+    // resync (B7) or drift-correction (B10) updated CurrentTrack.startedAt.
+    // Used by the seek-cooldown gate in WebhookHandler — for browser-platform
+    // sources (YouTube etc.) where ad insertions and Chrome's lazy timeline
+    // reporting can cause rapid back-to-back pseudo-seeks, we refuse to
+    // re-resync more often than once every ~2 s.  Resets to 0 (= no cooldown)
+    // when a new track lands so the first correction always applies.
+    private long _lastStartedAtUpdateMs;
+    public long LastStartedAtUpdateMs
+    {
+        get { lock (_trackLock) return _lastStartedAtUpdateMs; }
+        set { lock (_trackLock) _lastStartedAtUpdateMs = value; }
+    }
+
     // ── Config file paths ─────────────────────────────────────────────────────
     // Mirrors server.js getUserDataDir() + findConfigPath() + getPresetsDir()
     // %APPDATA%\MastersFM\ is Roaming AppData -- survives uninstall/reinstall.

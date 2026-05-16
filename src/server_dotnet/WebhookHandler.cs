@@ -27,6 +27,23 @@ internal static class WebhookHandler
     private static readonly byte[] s_okBytes = Encoding.UTF8.GetBytes("OK");
     private static readonly byte[] s_badRequestBytes = Encoding.UTF8.GetBytes("Bad Request");
 
+    // ── Phase M #1A — browser-source startedAt-resync cooldown ──────────────
+    // YouTube ads insert ~30-second segments mid-video.  Chrome's SMTC reports
+    // the AD'S timeline during the ad, so position jumps from 5:00 → 0:00 at
+    // ad start and 0:30 → 5:30 at ad end.  Each looks like a real seek to our
+    // bridge / heartbeat (jump > Phase H's 1000 ms threshold), so B7 and B10
+    // fire twice in rapid succession and the OBS bar visibly snaps both ways.
+    // The cooldown coalesces ad bursts (and any other Chrome-side jitter)
+    // by refusing repeat resyncs within MinResyncIntervalMs.  Browser sources
+    // only — desktop SMTC (Spotify, etc.) doesn't have this pattern.
+    private const long MinResyncIntervalMs = 2000;
+
+    private static bool IsBrowserLikeSource(string source) =>
+        string.Equals(source, "youtube",      StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(source, "youtubemusic", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(source, "browser",      StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(source, "twitch",       StringComparison.OrdinalIgnoreCase);
+
     // ── Route registration ────────────────────────────────────────────────────
     public static void MapWebhookEndpoint(WebApplication app)
     {
@@ -214,6 +231,10 @@ internal static class WebhookHandler
                 state.CurrentTrack = newTrack;
                 state.ArtResolved  = false;
                 state.ArtResolving = true;
+                // Phase M #1A: new track = fresh cooldown window.  First seek
+                // / drift correction on this track always applies; subsequent
+                // ones within MinResyncIntervalMs are suppressed.
+                state.LastStartedAtUpdateMs = 0;
 
                 // Signal that art + duration resolution runs AFTER releasing the lock
                 needsNewTrackArtResolution = true;
@@ -281,15 +302,33 @@ internal static class WebhookHandler
 
                 // B7: Seek handling (server.js lines 1004-1009)
                 // Fires AFTER pause/resume block. Only when not paused.
-                if (isSeek && ct2["isPaused"]?.GetValue<bool>() != true)
+                //
+                // Phase M #1A: cooldown-gated for browser sources only.
+                // YouTube ad insertions trigger this twice in quick succession
+                // (start + end of ad).  Coalescing reduces the OBS-bar
+                // double-snap to a single resync; the post-ad correct
+                // position lands via B10 below as soon as the cooldown clears
+                // and drift > 4 s is detected.
+                bool b7Cooldown = IsBrowserLikeSource(source)
+                    && state.LastStartedAtUpdateMs > 0
+                    && (nowMs - state.LastStartedAtUpdateMs) < MinResyncIntervalMs;
+                if (isSeek && ct2["isPaused"]?.GetValue<bool>() != true && !b7Cooldown)
                 {
                     long expectedPos = nowMs - ((long?)ct2["startedAt"]?.GetValue<long>() ?? nowMs);
                     long drift7 = Math.Abs(expectedPos - positionMs);
                     ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
                     ct2Dirty = true;
+                    state.LastStartedAtUpdateMs = nowMs;
                     logger.LogInformation(
                         "Seek ({DriftS}s jump) -- startedAt resynced to pos={PosS}s",
                         Math.Round(drift7 / 1000.0), Math.Round(positionMs / 1000.0));
+                }
+                else if (isSeek && ct2["isPaused"]?.GetValue<bool>() != true && b7Cooldown)
+                {
+                    long age = nowMs - state.LastStartedAtUpdateMs;
+                    logger.LogInformation(
+                        "Seek ignored (browser cooldown: {Age}ms < {Min}ms) [{Source}]",
+                        age, MinResyncIntervalMs, source);
                 }
 
                 // B9: First-heartbeat correction (server.js lines 1014-1023)
@@ -315,25 +354,46 @@ internal static class WebhookHandler
 
                 // B10: Continuous drift correction (server.js lines 1038-1050)
                 // Only when: !isSeek && !isPaused && positionMs > 1000
+                //
+                // Phase M #1A: cooldown-gated for browser sources, same logic
+                // as B7.  Critically B10 is ALSO what catches up the position
+                // ~50 ms after a B7 cooldown expires (e.g. end of a YouTube ad
+                // — B7 was skipped, B10 sees the drift > 4 s and resyncs once
+                // the cooldown has elapsed).  So the cooldown coalesces rapid
+                // bursts but doesn't permanently strand the bar.
                 if (!isSeek && !isPaused && positionMs > 1000)
                 {
-                    long computedElapsed10 = nowMs - ((long?)ct2["startedAt"]?.GetValue<long>() ?? nowMs);
-                    long signedDrift = positionMs - computedElapsed10; // + = SMTC ahead
-                    if (signedDrift > 4000)
+                    bool b10Cooldown = IsBrowserLikeSource(source)
+                        && state.LastStartedAtUpdateMs > 0
+                        && (nowMs - state.LastStartedAtUpdateMs) < MinResyncIntervalMs;
+                    if (b10Cooldown)
                     {
-                        ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
-                        ct2Dirty = true;
-                        logger.LogInformation(
-                            "Sync fwd [{Source}]: overlay {DriftS}s behind -> resynced to {PosS}s",
-                            source, Math.Round(signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
+                        // Skip silently — too chatty to log at the heartbeat
+                        // cadence; B7's cooldown-ignored log already shows the
+                        // pattern when it matters.
                     }
-                    else if (signedDrift < -30000)
+                    else
                     {
-                        ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
-                        ct2Dirty = true;
-                        logger.LogInformation(
-                            "Sync bwd [{Source}]: overlay {DriftS}s ahead (extreme) -> resynced to {PosS}s",
-                            source, Math.Round(-signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
+                        long computedElapsed10 = nowMs - ((long?)ct2["startedAt"]?.GetValue<long>() ?? nowMs);
+                        long signedDrift = positionMs - computedElapsed10; // + = SMTC ahead
+                        if (signedDrift > 4000)
+                        {
+                            ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                            ct2Dirty = true;
+                            state.LastStartedAtUpdateMs = nowMs;
+                            logger.LogInformation(
+                                "Sync fwd [{Source}]: overlay {DriftS}s behind -> resynced to {PosS}s",
+                                source, Math.Round(signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
+                        }
+                        else if (signedDrift < -30000)
+                        {
+                            ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                            ct2Dirty = true;
+                            state.LastStartedAtUpdateMs = nowMs;
+                            logger.LogInformation(
+                                "Sync bwd [{Source}]: overlay {DriftS}s ahead (extreme) -> resynced to {PosS}s",
+                                source, Math.Round(-signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
+                        }
                     }
                 }
 
