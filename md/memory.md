@@ -523,7 +523,14 @@ Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 7:33 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)
 **Source folder:** `G:\Project Folder\Master FM\` (confirmed 2026-04-30)
 **Current version:** v14.0.0-rc.3 (rc.3 GitHub release DRAFT -- NOT published; 10-issue diagnosis complete; publication on hold)
-**Last updated:** 2026-05-11 (Stage 7.11 diagnosis complete; rc.3 publication blocked on Batch A/B fixes)
+**Last updated:** 2026-05-16 (Stage 7.12 Batch B all phases A-J shipped + operator-verified PASS;
+  Discord RPC fully rewritten on our own pipe protocol; real-time sync to ~0 ms latency;
+  per-platform album art accuracy; pause-state Discord UX cleaned up)
+
+**Recent shipped (2026-05-16 session):** Phases A through J rev3 of Stage 7.12 Batch B —
+real-time pause/seek/skip sync, native Discord IPC pipe, art-cascade per-platform routing,
+SoundCloud API search, YouTube label detection, paused-state Discord card cleanup.  All
+operator-verified PASS in this session.  See the dated entries above for each phase's details.
 
 ## IN-FLIGHT WORK
 
