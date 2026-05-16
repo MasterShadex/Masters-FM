@@ -10,7 +10,11 @@
 // KS list lives in AudioDeviceViewModel where the WinRT call already runs.
 
 using Microsoft.Win32;
+using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace MastersFM.Tray.Services;
 
@@ -133,6 +137,65 @@ public static class AudioApi
         var list = new List<AsioDriver>(byName.Values);
         list.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
         return list;
+    }
+
+    /// <summary>
+    /// Ask the running audio_spectrum process for its enumerated ASIO entries.
+    /// audio_spectrum probes each registered driver via NAudio's AsioOut for
+    /// the real channel count and emits one entry per stereo channel pair
+    /// (e.g. "VB-Matrix VASIO-32  -  Ch 5-6" with id "VB-Matrix VASIO-32|4").
+    /// The compound id is exactly what audio_spectrum's set-device endpoint
+    /// expects to receive back — so round-tripping is byte-identical.
+    ///
+    /// Returns an empty list if audio_spectrum isn't reachable (e.g. the
+    /// dialog opened during the brief startup window before the child
+    /// process is listening).  The caller should fall back to the
+    /// registry-only path via <see cref="EnumerateAsioDrivers"/>.
+    /// </summary>
+    public static async Task<IReadOnlyList<AsioDriver>> FetchAsioFromSpectrumAsync(
+        HttpClient http, CancellationToken ct = default)
+    {
+        const string url = "http://127.0.0.1:4243/devices";
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseContentRead, linked.Token);
+            if (!resp.IsSuccessStatusCode) return Array.Empty<AsioDriver>();
+
+            var json = await resp.Content.ReadAsStringAsync(linked.Token);
+            var root = JsonNode.Parse(json);
+            var arr  = root?["devices"]?.AsArray();
+            if (arr == null) return Array.Empty<AsioDriver>();
+
+            var list = new List<AsioDriver>(arr.Count);
+            foreach (var node in arr)
+            {
+                if (node == null) continue;
+                var backend = node["backend"]?.GetValue<string>();
+                if (!string.Equals(backend, "asio", StringComparison.OrdinalIgnoreCase)) continue;
+                var id    = node["id"]?.GetValue<string>()   ?? string.Empty;
+                var name  = node["name"]?.GetValue<string>() ?? id;
+                var type  = node["type"]?.GetValue<string>() ?? string.Empty;
+                // audio_spectrum emits a synthetic "asio_none" marker row when
+                // no drivers are installed — skip it; the empty-state UI panel
+                // handles that case.
+                if (string.Equals(type, "asio_none", StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.IsNullOrEmpty(id)) continue;
+                list.Add(new AsioDriver
+                {
+                    Name        = id,    // compound id (driver|offset) — used as DeviceId by the tray
+                    Description = name,  // pretty display (e.g. "VB-Matrix VASIO-32  -  Ch 5-6")
+                    Clsid       = string.Empty,
+                });
+            }
+            return list;
+        }
+        catch
+        {
+            // Network unreachable / timeout / parse failure → fall back to registry path.
+            return Array.Empty<AsioDriver>();
+        }
     }
 
     private static void ReadAsioHive(RegistryView view, Dictionary<string, AsioDriver> sink)

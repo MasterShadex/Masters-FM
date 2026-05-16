@@ -17,6 +17,7 @@
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Net.Http;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MastersFM.Tray.Services;
@@ -30,6 +31,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     private readonly ILogger _logger;
     private readonly IConfigService _config;
+    private readonly HttpClient _http;
 
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> outputDevices = new();
@@ -102,10 +104,11 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     public Dialogs.AudioDeviceResult? PendingResult { get; private set; }
 
-    public AudioDeviceViewModel(ILogger logger, IConfigService config)
+    public AudioDeviceViewModel(ILogger logger, IConfigService config, HttpClient http)
     {
         _logger = logger;
         _config = config;
+        _http   = http;
     }
 
     // -----------------------------------------------------------------------
@@ -229,19 +232,30 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                     Backend = "MME"
                 });
             }
-            // Stage 7.12 Batch B Phase K (DIAG 04): ASIO drivers from registry.
-            // Audio_spectrum's "asio" backend opens a driver by name (registry
-            // subkey under HKLM\SOFTWARE\ASIO), optionally suffixed with
-            // "|channelOffset" — we omit the offset here, defaulting to 0.
-            var asioList = AudioApi.EnumerateAsioDrivers();
+            // Stage 7.12 Batch B Phase K rev2 (DIAG 04): ASIO entries from the
+            // running audio_spectrum process.  It probes each registered
+            // driver via NAudio's AsioOut for the real input-channel count
+            // and emits one entry per stereo pair (e.g. "VB-Matrix VASIO-32
+            // — Ch 5-6" with compound id "VB-Matrix VASIO-32|4").  Bypasses
+            // the channel-count guessing we'd otherwise have to do in the
+            // tray.  Falls back to the registry-only single-entry-per-driver
+            // path if the spectrum isn't reachable (rare race during startup;
+            // the user can hit Refresh to retry).
+            IReadOnlyList<AudioApi.AsioDriver> asioList = await AudioApi.FetchAsioFromSpectrumAsync(_http);
+            if (asioList.Count == 0)
+            {
+                asioList = AudioApi.EnumerateAsioDrivers();
+                if (asioList.Count > 0)
+                    _logger.Log("ASIO: spectrum unreachable, using registry-only fallback (no channel pairs)", Component);
+            }
             foreach (var drv in asioList)
             {
                 AsioDevices.Add(new AudioDeviceInfo
                 {
-                    DeviceId = drv.Name,                    // bare driver name; audio_spectrum.cs:580-592
+                    DeviceId = drv.Name,                       // compound id "driver|offset" or bare driver name
                     Name     = string.IsNullOrWhiteSpace(drv.Description) ? drv.Name : drv.Description,
                     IsDefault   = false,
-                    IsEnabled   = !string.IsNullOrEmpty(drv.Clsid),
+                    IsEnabled   = true,                        // spectrum already filtered unusable drivers
                     IsStereoMix = false,
                     Backend     = "ASIO"
                 });

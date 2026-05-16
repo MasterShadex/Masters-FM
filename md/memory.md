@@ -495,6 +495,19 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase K rev2 (DIAG 04) — ASIO channel-pair entries (operator follow-up)
+Operator: "looks good, but we need on asio all inputs, we had before. There are many audio inputs more like 1-2 3-4 5-6 7-8"
+
+The Phase K registry-based enum gave one entry per driver name.  But ASIO drivers are usually multi-channel — Audient USB Audio has 12 inputs, VB-Matrix VASIO-128 has 128, etc. — and the prior tray version exposed each stereo pair as its own selectable entry (`"VB-Matrix VASIO-32 — Ch 5-6"`) because `audio_spectrum.cs` uses a compound `"driverName|channelOffset"` device ID to route to a specific pair.  Phase K rev2 restores that.
+
+Key realization: `audio_spectrum.cs` already does ALL the work — its `HandleDevices` HTTP handler at port 4243 reads `HKLM\SOFTWARE\ASIO`, probes each driver via NAudio's `AsioOut.DriverInputChannelCount` (cached after first hit), emits one JSON entry per stereo pair up to 16 pairs/driver (capped — VASIO-128 would otherwise produce 64 entries).  Display names like `"VB-Matrix VASIO-32  -  Ch 5-6"`, compound ids like `"VB-Matrix VASIO-32|4"`.  Single source of truth.
+
+Changes:
+- **`AudioApi.FetchAsioFromSpectrumAsync(HttpClient, ct)`** — GET `http://127.0.0.1:4243/devices`, 2-second timeout, parse JSON, return entries with `backend=="asio"`.  Skips the synthetic `"asio_none"` marker row the spectrum emits when no drivers are installed (the empty-state UI panel handles that case).
+- **`AudioDeviceViewModel`** — constructor now takes `HttpClient` (singleton already registered).  `RefreshAsync` calls the spectrum first; falls back to the registry-only path on failure (logged as `"ASIO: spectrum unreachable, using registry-only fallback (no channel pairs)"`).  Either way the resulting list is pushed into `AsioDevices` with `DeviceId` = the compound id so `set-device` round-trips byte-identically.
+
+Verified live: 143 ASIO entries on dev box.  Audient USB Audio ASIO Driver gives Ch 1-2 through 11-12 (6 pairs).  VB-Matrix VASIO-128 caps at 16 pairs = Ch 1-2 through 31-32.  All emitted as `"driverName|N"` compound IDs (offset N = first channel of pair minus 1, even numbers).
+
 ### Phase K (DIAG 04) — real KS + ASIO enumeration in the audio device dialog
 Operator: "next thing was KS and ASIO right?" → "approve"
 
