@@ -216,6 +216,50 @@ Worst case to OBS: **~5-10 ms** typical, ~30 ms peak. Discord: **~10-60 ms** typ
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase E (Discord rate-limit defence)
+
+Operator after Phase D: "I notice when I skip like 3 or 5x... Discord RPC pauses for like 10-20 seconds, is that a rate limit? So yes, can we bypass it?"
+
+**Diagnosis.** Yes, it's Discord's rate limit: ~5 SET_ACTIVITY per 20 s per IPC client.  Discord doesn't error when exceeded — it silently suppresses subsequent writes until the window expires, hence the "pause 10-20 s, then jumps to final state" pattern.  The limit is enforced inside Discord; we can't bypass it.  But we can **stay under it** so we never hit it in the first place.
+
+**Why we were hitting it.**  Each new track triggered TWO Discord pushes:
+- Line 368 in WebhookHandler — early push with placeholder art (so Discord saw the track ASAP).
+- Line 417 — post-cascade push with resolved art URL.
+
+5 rapid skips × 2 pushes = 10 writes in <1 s → trip 5/20 s limit → Discord ignores everything for ~19 s.
+
+### #1 — Removed the early Discord push on new tracks
+`WebhookHandler.HandleAsync` no longer fires `discordRpcService.PushDiscord` before the cascade.  Discord now sees the new track only after ArtCascade resolves (~80 ms typical, up to a few seconds on slow upstreams).  OBS overlay is unaffected — `state.Broadcast` still fires immediately on new track at lines 415 + 423.  Cuts Discord write traffic per new track from 2 → 1.
+
+### #2 — Sliding-window rate limiter in `DiscordRpcThrottle`
+New `_recentSends Queue<long>` tracking the last 5 send timestamps.  Eviction on every Queue call drops entries older than 20 s.  If the count is at the cap, the next Queue() call defers until `oldest + 20 s + 200 ms safety buffer`.  During the deferral the throttle's latest-wins coalescer ensures the pending activity is always the most recent — so the eventual send shows the user's FINAL track choice, not some intermediate one.  Logs `rate-limited` at INFO level when this kicks in.
+
+### #3 — Adaptive burst-mode throttle
+When ≥3 sends have happened in the last 1 s, the base throttle floor bumps from 50 ms → 1500 ms.  A rapid skip burst collapses into 1-2 SetActivity calls (showing the final track) instead of one per skip.  Auto-exits when the burst stops (looking back at the last 1 s).
+
+### Combined effect
+| Scenario | Before Phase E | After Phase E |
+|---|---|---|
+| 1 pause/seek | 1-2 writes | **1 write** (~50 ms after webhook) |
+| 3 quick skips | 6 writes | **1-2 writes**, burst-throttled |
+| 5 rapid skips | 10 writes → tripped limit → 19 s pause | **1-2 writes**, no limit hit |
+| 10+ skips | tripped limit, long pause | **5 writes max** then deferred, no pause |
+| Steady-state heartbeat | dedup at `_lastSig` — unchanged | dedup at `_lastSig` — unchanged |
+
+### Files touched this batch
+- `src/server_dotnet/WebhookHandler.cs` (removed early Discord push)
+- `src/server_dotnet/DiscordRpcThrottle.cs` (rate limiter + adaptive throttle)
+
+### Verified live
+Steady-state idle: 58 PushDiscord enters in 10 s, 0 SetActivity (all deduped by `_lastSig`), 0 rate-limited events.  Pipe handshake clean, Discord still connected as mastershadex.
+
+### Lessons captured
+- **Don't double-push to a rate-limited downstream.** If the downstream allows N writes per T seconds, and your upstream pattern naturally produces 2 writes per logical event, you halve your effective allowance before doing anything else.  Identify the "show partial state ASAP" vs. "show full state once" trade-off explicitly and pick one — don't quietly do both.
+- **Sliding-window rate limiters need a small safety buffer.**  Discord's window is 20 s; we defer to `oldest + 20 s + 200 ms`.  The 200 ms covers clock skew between our timestamping and Discord's.  Without it, the very edge of the window can still trip the limit intermittently.
+- **Adaptive burst detection > "just raise the throttle to X ms".**  A 1500 ms fixed throttle would make every single pause feel laggy.  A 1500 ms throttle that activates ONLY when 3+ sends have happened in 1 s catches the burst case without compromising the common path.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

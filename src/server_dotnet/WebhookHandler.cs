@@ -361,11 +361,24 @@ internal static class WebhookHandler
             state.WebhookLock.Release();
         }
 
-        // --- Discord EARLY push: show new track immediately before art resolves ---
-        // Mirrors server.js setTrack line 886: sseBroadcast() before cascade.
-        // Dedup will suppress it if identical to the last push (shouldn't be on new track).
-        if (needsNewTrackArtResolution)
-            discordRpcService.PushDiscord(state.CurrentTrack);
+        // Stage 7.12 Batch B Phase E #1: REMOVED the Discord EARLY push.
+        //
+        // Originally we pushed twice per new track (early with placeholder art,
+        // post-cascade with resolved art) so Discord showed the track ASAP.
+        // But Discord's IPC enforces ~5 SET_ACTIVITY per 20 s — so 5 rapid
+        // track skips × 2 writes each = 10 writes in <1 s, blowing past the
+        // limit.  Discord then silently suppresses ALL updates for ~19 s
+        // until the window expires.  That's the "Discord paused for 10-20 s
+        // after rapid skipping" report.
+        //
+        // Trade-off: Discord now waits for ArtCascade (~80 ms typical, up to
+        // a few seconds on slow upstreams) before showing the new track.
+        // OBS overlay is unaffected — it still gets the early sseBroadcast()
+        // below.  The post-cascade push at line ~417 handles Discord on its
+        // own, and the always-fires PushDiscord at line ~425 covers same-track
+        // state changes (pause/resume/seek).
+        //
+        // (was: if (needsNewTrackArtResolution) discordRpcService.PushDiscord(state.CurrentTrack);)
 
         // --- New track: resolve art + duration OUTSIDE the lock (server.js:889-892 Promise.all) ---
         if (needsNewTrackArtResolution)
