@@ -1,11 +1,7 @@
-using DiscordRPC;
-using DiscordRPC.Message;
-using Newtonsoft.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -15,12 +11,19 @@ namespace MastersFM.Server;
 
 /// <summary>
 /// IHostedService: manages Discord Rich Presence lifecycle.
-/// Ports server.js lines 205-336 (discord_rpc init + pushDiscord) via Lachee.DiscordRPC NuGet.
+/// Ports server.js lines 205-336 (discord_rpc init + pushDiscord).
 ///
-/// Lachee handles IPC protocol; this service adds:
+/// Stage 7.12 Batch B Phase B: now uses our native DiscordIpcClient instead of
+/// Lachee.DiscordRPC.  Benefits:
+///   - ActivityType is a first-class field on DiscordIpcActivity (no JsonConverter
+///     hack against JsonConvert.DefaultSettings).
+///   - SetActivityAsync awaits the actual pipe write (latency visible & bounded).
+///   - No external NuGet dependency, full byte-level control over the protocol.
+///
+/// This service adds:
 ///   - Config loading  (discord_rpc.enabled, discord_rpc.client_id)
 ///   - Connection lifecycle + 30 s reconnect loop on disconnect
-///   - 2000 ms throttle + latest-wins coalescer (via DiscordRpcThrottle)
+///   - 250 ms throttle + latest-wins coalescer (via DiscordRpcThrottle)
 ///   - Dedup + 30 s age-refresh (mirrors server.js _lastDiscordSig logic, lines 299-322)
 ///   - Activity building from currentTrack JsonNode (mirrors discord_rpc.js buildActivity, lines 209-258)
 ///
@@ -39,6 +42,7 @@ internal sealed class DiscordRpcService : BackgroundService
     private const int    ThrottleMs          = 250;
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
+    private const int    ActivityTypeListening = 2;      // Discord ActivityType.Listening
 
     // ── DI ────────────────────────────────────────────────────────────────────
     private readonly ServerState             _state;
@@ -48,12 +52,12 @@ internal sealed class DiscordRpcService : BackgroundService
     private bool   _enabled  = false;
     private string _clientId = DefaultClientId;
 
-    // ── Client + throttle (all guarded by _lock) ──────────────────────────────
+    // ── Client + throttle (all guarded by _lock unless noted) ─────────────────
     private readonly object       _lock = new();
-    private DiscordRpcClient?     _client;
+    private DiscordIpcClient?     _client;
     private DiscordRpcThrottle?   _throttle;
     private bool                  _connected;        // READY received and not yet closed
-    private RichPresence?         _pendingPresence;  // queued while disconnected; flushed on READY
+    private DiscordIpcActivity?   _pendingActivity;  // queued while disconnected; flushed on READY
 
     // ── Dedup (guarded by _lock) ──────────────────────────────────────────────
     private string _lastSig    = string.Empty;
@@ -65,63 +69,6 @@ internal sealed class DiscordRpcService : BackgroundService
     {
         _state  = state;
         _logger = logger;
-    }
-
-    // Stage 7.12 Batch B (DIAG-10 enhancement): inject "type": 2 (Listening)
-    // into the SET_ACTIVITY JSON Lachee.DiscordRPC sends to Discord IPC.
-    // RichPresence is sealed and BaseRichPresence has no Type property, so we
-    // hook the global JsonConvert.DefaultSettings to add a converter that
-    // wraps the standard RichPresence serialization with an extra "type" key.
-    // Discord's IPC SET_ACTIVITY activity object DOES accept type per the
-    // RPC docs even though Lachee never exposed it.
-    static DiscordRpcService()
-    {
-        var previous = JsonConvert.DefaultSettings;
-        JsonConvert.DefaultSettings = () =>
-        {
-            var settings = previous?.Invoke() ?? new JsonSerializerSettings();
-            // Add only once even if DefaultSettings is invoked many times.
-            if (!settings.Converters.Any(c => c is ListeningTypeInjectingConverter))
-                settings.Converters.Add(new ListeningTypeInjectingConverter());
-            return settings;
-        };
-    }
-
-    // Custom JsonConverter that intercepts RichPresence serialization and
-    // injects "type": 2 alongside the standard fields, so Discord renders
-    // the activity as "Listening to ..." with a real progress bar.
-    private sealed class ListeningTypeInjectingConverter : JsonConverter
-    {
-        public override bool CanConvert(Type objectType) =>
-            objectType == typeof(RichPresence);
-
-        public override bool CanWrite => true;
-        public override bool CanRead  => false;
-
-        public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
-        {
-            if (value == null) { writer.WriteNull(); return; }
-
-            // Re-enter serialization with this converter temporarily removed,
-            // so the standard RichPresence serializer runs to produce the JSON
-            // object we want to augment.
-            serializer.Converters.Remove(this);
-            try
-            {
-                var token = Newtonsoft.Json.Linq.JToken.FromObject(value, serializer);
-                if (token is Newtonsoft.Json.Linq.JObject obj)
-                    obj["type"] = 2;        // 2 = ActivityType.Listening
-                token.WriteTo(writer);
-            }
-            finally
-            {
-                serializer.Converters.Add(this);
-            }
-        }
-
-        public override object ReadJson(JsonReader reader, Type objectType,
-            object? existingValue, JsonSerializer serializer) =>
-            throw new NotSupportedException();
     }
 
     // ── IHostedService ────────────────────────────────────────────────────────
@@ -138,20 +85,19 @@ internal sealed class DiscordRpcService : BackgroundService
             try { await Task.Delay(ReconnectIntervalMs, stoppingToken); }
             catch (OperationCanceledException) { return; }
 
-            lock (_lock)
+            bool shouldInit;
+            lock (_lock) { shouldInit = _enabled && !_connected; }
+            if (shouldInit)
             {
-                if (_enabled && !_connected)
-                {
-                    _logger.LogInformation("Discord RPC: reconnect attempt");
-                    TryInitClient();
-                }
+                _logger.LogInformation("Discord RPC: reconnect attempt");
+                await TryInitClientAsync(stoppingToken);
             }
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        lock (_lock) { DisposeClient(); }
+        DisposeClient();
         await base.StopAsync(cancellationToken);
     }
 
@@ -193,6 +139,8 @@ internal sealed class DiscordRpcService : BackgroundService
 
         bool   prevEnabled;
         string prevClientId;
+        bool   clientIdChanged;
+        bool   enabledChanged;
         lock (_lock)
         {
             prevEnabled  = _enabled;
@@ -200,52 +148,62 @@ internal sealed class DiscordRpcService : BackgroundService
             _enabled     = newEnabled;
             _clientId    = newClientId;
 
-            bool clientIdChanged = !string.Equals(prevClientId, newClientId, StringComparison.Ordinal);
-            bool enabledChanged  = prevEnabled != newEnabled;
+            clientIdChanged = !string.Equals(prevClientId, newClientId, StringComparison.Ordinal);
+            enabledChanged  = prevEnabled != newEnabled;
+        }
 
-            if (clientIdChanged)
+        if (clientIdChanged)
+        {
+            // Different App ID — old client can't represent it, full reinit.
+            _logger.LogInformation(
+                "Discord RPC: client_id changed ({Old} -> {New}); reinitialising",
+                prevClientId == DefaultClientId ? "built-in" : "custom",
+                newClientId  == DefaultClientId ? "built-in" : "custom");
+            DisposeClient();
+            if (newEnabled)
             {
-                // Different App ID — old client can't represent it, full reinit.
-                _logger.LogInformation(
-                    "Discord RPC: client_id changed ({Old} -> {New}); reinitialising",
-                    prevClientId == DefaultClientId ? "built-in" : "custom",
-                    newClientId  == DefaultClientId ? "built-in" : "custom");
-                DisposeClient();
-                if (newEnabled)
-                {
-                    _lastSig = string.Empty;
-                    TryInitClient();
-                }
+                lock (_lock) { _lastSig = string.Empty; }
+                await TryInitClientAsync(ct);
             }
-            else if (enabledChanged)
+        }
+        else if (enabledChanged)
+        {
+            // Stage 7.12 Batch B DIAG-10 rev2: only the enabled flag flipped.
+            // Don't churn the client on every toggle — a Dispose/Initialize cycle
+            // inside the same process leaves Discord in a state where the
+            // re-connected client is acknowledged by IPC but not surfaced in
+            // the user's profile activity.  Keep the pipe alive, just clear or
+            // restore the displayed presence.
+            if (newEnabled)
             {
-                // Stage 7.12 Batch B DIAG-10 rev2: only the enabled flag flipped.
-                // Don't churn the Lachee DiscordRpcClient on every toggle — a
-                // Dispose/Initialize cycle inside the same process leaves Discord
-                // in a state where the re-connected client is acknowledged by IPC
-                // but not surfaced in the user's profile activity.  Keep the
-                // pipe alive, just clear or restore the displayed presence.
-                if (newEnabled)
+                _logger.LogInformation("Discord RPC: re-enabled (client kept alive)");
+                bool needInit;
+                lock (_lock)
                 {
-                    _logger.LogInformation("Discord RPC: re-enabled (client kept alive)");
                     _lastSig = string.Empty;   // force next PushDiscord through
-                    if (_client == null) TryInitClient();
-                    // Caller (PushDiscord on next track update) will set presence.
+                    needInit = _client == null;
                 }
-                else
+                if (needInit) await TryInitClientAsync(ct);
+                // Caller (PushDiscord on next track update) will set presence.
+            }
+            else
+            {
+                _logger.LogInformation("Discord RPC: disabled (clearing presence, client kept alive)");
+                DiscordIpcClient? clientToClear = null;
+                lock (_lock)
                 {
-                    _logger.LogInformation("Discord RPC: disabled (clearing presence, client kept alive)");
-                    if (_connected)
-                    {
-                        try   { _client?.SetPresence(null); }
-                        catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: clear presence on disable failed"); }
-                    }
+                    if (_connected) clientToClear = _client;
                     _lastSig    = "__cleared__";
                     _lastPushAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 }
+                if (clientToClear != null)
+                {
+                    try { await clientToClear.SetActivityAsync(null, ct); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: clear presence on disable failed"); }
+                }
             }
-            // (no change to either field — nothing to do)
         }
+        // (no change to either field — nothing to do)
     }
 
     /// <summary>
@@ -273,13 +231,16 @@ internal sealed class DiscordRpcService : BackgroundService
         // ── No track: clear activity ──────────────────────────────────────────
         if (currentTrack == null)
         {
+            DiscordIpcClient? clientToClear = null;
             lock (_lock)
             {
                 if (_lastSig == "__cleared__") return;
                 _lastSig    = "__cleared__";
                 _lastPushAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                if (_connected) _client?.SetPresence(null);
+                if (_connected) clientToClear = _client;
             }
+            if (clientToClear != null)
+                _ = clientToClear.SetActivityAsync(null, CancellationToken.None);
             return;
         }
 
@@ -315,150 +276,172 @@ internal sealed class DiscordRpcService : BackgroundService
             _lastPushAt = nowMs;
         }
 
-        // ── Build RichPresence ────────────────────────────────────────────────
-        var presence = BuildPresence(artist, track, source, startedAt, duration, isPaused, safeArt, originUrl);
-        if (presence == null) return;
+        // ── Build activity ────────────────────────────────────────────────────
+        var activity = BuildActivity(artist, track, source, startedAt, duration, isPaused, safeArt, originUrl);
+        if (activity == null) return;
 
         // ── Queue through throttle (or hold as pending if disconnected) ───────
+        DiscordRpcThrottle? throttle;
         lock (_lock)
         {
             if (!_connected)
             {
                 // Hold for flush on READY (mirrors discord_rpc.js pendingState, line 277)
-                _pendingPresence = presence;
+                _pendingActivity = activity;
                 return;
             }
-            _throttle?.Queue(presence);
+            throttle = _throttle;
         }
+        throttle?.Queue(activity);
     }
 
-    // ── Client lifecycle (all called inside _lock) ────────────────────────────
+    // ── Client lifecycle ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Initialize (or re-initialize) the Discord client.
+    /// Initialize (or re-initialize) the Discord IPC client.
     /// Creates a fresh throttle (resets rate-limit state, mirrors discord_rpc.js line 103).
-    /// MUST be called inside _lock.
+    /// Caller must NOT hold _lock (we await network I/O).
     /// </summary>
-    private void TryInitClient()
+    private async Task TryInitClientAsync(CancellationToken ct)
     {
         DisposeClient();
-        try
+
+        string clientId;
+        lock (_lock) { clientId = _clientId; }
+
+        var client = new DiscordIpcClient(clientId, _logger);
+        client.Ready  += OnReady;
+        client.Closed += OnClosed;
+        client.Error  += OnError;
+
+        lock (_lock)
         {
-            _client = new DiscordRpcClient(_clientId);
-
-            _client.OnReady            += OnReady;
-            _client.OnConnectionFailed += OnConnectionFailed;
-            _client.OnClose            += OnClose;
-            _client.OnError            += OnError;
-
+            _client = client;
             // Fresh throttle for each connection: resets lastSentAt to 0, so the
             // first post-READY update fires immediately (mirrors discord_rpc.js line 103).
-            _throttle = new DiscordRpcThrottle(ThrottleMs, SendToClient, _logger);
+            _throttle = new DiscordRpcThrottle(ThrottleMs, SendActivityAsync, _logger);
+        }
 
-            _client.Initialize();
-            _logger.LogInformation("Discord RPC: client initialized (client_id={ClientId})", _clientId);
+        try
+        {
+            var ok = await client.ConnectAsync(ct);
+            if (!ok)
+            {
+                _logger.LogInformation("Discord RPC: ConnectAsync returned false (is Discord running?)");
+                DisposeClient();
+                return;
+            }
+            _logger.LogInformation("Discord RPC: client initialized (client_id={ClientId})", clientId);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Discord RPC: TryInitClient failed");
+            _logger.LogWarning(ex, "Discord RPC: TryInitClientAsync failed");
             DisposeClient();
         }
     }
 
-    /// <summary>Dispose client + throttle. MUST be called inside _lock.</summary>
+    /// <summary>Dispose client + throttle (idempotent, lock-safe).</summary>
     private void DisposeClient()
     {
-        _connected = false;
-        try { _client?.Dispose(); } catch { }
-        _client = null;
-        _throttle?.Dispose();
-        _throttle = null;
+        DiscordIpcClient?   client;
+        DiscordRpcThrottle? throttle;
+        lock (_lock)
+        {
+            _connected = false;
+            client     = _client;
+            throttle   = _throttle;
+            _client    = null;
+            _throttle  = null;
+        }
+        if (client != null)
+        {
+            client.Ready  -= OnReady;
+            client.Closed -= OnClosed;
+            client.Error  -= OnError;
+            try { client.Dispose(); } catch { }
+        }
+        throttle?.Dispose();
     }
 
-    /// <summary>Throttle callback -- actually calls SetPresence on the Discord client.</summary>
-    private void SendToClient(RichPresence? presence)
+    /// <summary>
+    /// Throttle callback -- awaits the actual SetActivity pipe write.
+    /// Snapshots the client under the lock so a concurrent reconnect can't NRE us.
+    /// </summary>
+    private async Task SendActivityAsync(DiscordIpcActivity? activity)
     {
-        DiscordRpcClient? client;
+        DiscordIpcClient? client;
         lock (_lock)
         {
             if (!_connected) return;
             client = _client;
         }
+        if (client == null) return;
+
         try
         {
-            client?.SetPresence(presence);
+            await client.SetActivityAsync(activity, CancellationToken.None);
             _logger.LogInformation(
-                "Discord RPC: SetPresence sent (details='{Details}' state='{State}' largeImg='{Large}' tsStart={TsStart} tsEnd={TsEnd} largeImgIsUrl={IsUrl})",
-                presence?.Details ?? "(null)",
-                presence?.State   ?? "(null)",
-                presence?.Assets?.LargeImageKey ?? "(null)",
-                presence?.Timestamps?.Start?.ToString("o") ?? "(null)",
-                presence?.Timestamps?.End?.ToString("o")   ?? "(null)",
-                IsHttpUrl(presence?.Assets?.LargeImageKey));
+                "Discord RPC: SetActivity sent (details='{Details}' state='{State}' largeImg='{Large}' tsStart={TsStart} tsEnd={TsEnd} largeImgIsUrl={IsUrl})",
+                activity?.Details                ?? "(null)",
+                activity?.State                  ?? "(null)",
+                activity?.LargeImage             ?? "(null)",
+                activity?.StartUnixMs?.ToString() ?? "(null)",
+                activity?.EndUnixMs?.ToString()   ?? "(null)",
+                IsHttpUrl(activity?.LargeImage));
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: SetPresence error"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Discord RPC: SetActivity error"); }
     }
 
-    // ── Discord event handlers ────────────────────────────────────────────────
-    // Events fire on Lachee's background thread (AutoEvents=true by default).
+    // ── Discord event handlers (fired from DiscordIpcClient read loop) ────────
 
-    private void OnReady(object sender, ReadyMessage e)
+    private void OnReady(string user)
     {
-        _logger.LogInformation(
-            "Discord RPC: connected as {User}", e.User?.Username ?? "unknown");
-        RichPresence? pending;
+        _logger.LogInformation("Discord RPC: connected as {User}", user);
+        DiscordIpcActivity?  pending;
+        DiscordRpcThrottle? throttle;
         lock (_lock)
         {
-            _connected       = true;
+            _connected = true;
             // Reset dedup so the next PushDiscord always fires a fresh SET_ACTIVITY.
             // Mirrors discord_rpc.js _onDiscordReady: _lastDiscordSig = '' (server.js line 281).
             _lastSig         = string.Empty;
-            pending          = _pendingPresence;
-            _pendingPresence = null;
+            pending          = _pendingActivity;
+            _pendingActivity = null;
+            throttle         = _throttle;
         }
         // Flush any activity queued while we were disconnected.
-        if (pending != null) _throttle?.Queue(pending);
+        if (pending != null) throttle?.Queue(pending);
     }
 
-    private void OnConnectionFailed(object sender, ConnectionFailedMessage e)
+    private void OnClosed(string? reason)
     {
-        _logger.LogInformation("Discord RPC: connection failed -- is Discord running?");
+        _logger.LogInformation("Discord RPC: disconnected (reason={Reason})", reason ?? "(none)");
         lock (_lock) { _connected = false; }
     }
 
-    private void OnClose(object sender, CloseMessage e)
+    private void OnError(string message)
     {
-        _logger.LogInformation(
-            "Discord RPC: disconnected (code={Code} reason={Reason})", e.Code, e.Reason);
-        lock (_lock) { _connected = false; }
-    }
-
-    private void OnError(object sender, ErrorMessage e)
-    {
-        _logger.LogWarning(
-            "Discord RPC: error code={Code} msg={Msg}", (int)e.Code, e.Message);
-        // Rate-limit errors are logged but not acted on -- the 2000 ms throttle
-        // should prevent hitting Discord's 5/20 s limit in normal operation.
+        _logger.LogWarning("Discord RPC: error {Msg}", message);
     }
 
     // ── Activity building ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Build a Lachee RichPresence from track state.
+    /// Build a DiscordIpcActivity from track state.
     /// Mirrors discord_rpc.js buildActivity() (lines 209-258) field-by-field.
     ///
     /// Mapping:
+    ///   type             = 2 (Listening) — shows progress bar in Discord UI
     ///   details          = track (clamp 128) || "Unknown track"
     ///   state            = "by {artist}" || source (clamp 128, min 2)
-    ///   timestamps.start = startedAt/1000 (only when !isPaused and startedAt > 0)
-    ///   timestamps.end   = (startedAt+duration)/1000 (only when !isPaused and end > start)
-    ///   assets.large_image = trackArt (https) || "mastersfm_logo"
-    ///   assets.large_text  = srcName (clamp 128)
-    ///   assets.small_image = "mastersfm_logo" (always)
-    ///   assets.small_text  = isPaused ? "Paused" : "Master's FM"
+    ///   start_ms / end_ms = startedAt and startedAt+duration (only when !isPaused)
+    ///   large_image      = trackArt (https) || "mastersfm_logo"
+    ///   large_text       = srcName (clamp 128)
+    ///   small_image      = "mastersfm_logo"
+    ///   small_text       = isPaused ? "⏸ Paused" : "Master's FM"
     ///   buttons[0]       = {label:"Listen on {src}"(clamp 32), url:originUrl} if https URL
     /// </summary>
-    private static RichPresence? BuildPresence(
+    private static DiscordIpcActivity? BuildActivity(
         string artist, string track, string source,
         long startedAtMs, long durationMs, bool isPaused,
         string trackArt, string originUrl)
@@ -478,8 +461,9 @@ internal sealed class DiscordRpcService : BackgroundService
         stateText = Clamp(stateText, 128);
         if (stateText.Length < 2) stateText = "Master's FM";
 
-        var presence = new RichPresence
+        var activity = new DiscordIpcActivity
         {
+            Type    = ActivityTypeListening,   // 2 = Listening → progress bar
             Details = details,
             State   = stateText,
         };
@@ -487,38 +471,26 @@ internal sealed class DiscordRpcService : BackgroundService
         // Timestamps -- only while playing; paused tracks show no timer.
         if (!isPaused && startedAtMs > 0)
         {
-            var startSec = startedAtMs / 1000L;
-            var ts = new Timestamps
-            {
-                Start = DateTimeOffset.FromUnixTimeSeconds(startSec).UtcDateTime,
-            };
-            if (durationMs > 0)
-            {
-                var endSec = (startedAtMs + durationMs) / 1000L;
-                if (endSec > startSec)
-                    ts.End = DateTimeOffset.FromUnixTimeSeconds(endSec).UtcDateTime;
-            }
-            presence.Timestamps = ts;
+            activity.StartUnixMs = startedAtMs;
+            if (durationMs > 0 && startedAtMs + durationMs > startedAtMs)
+                activity.EndUnixMs = startedAtMs + durationMs;
         }
 
-        // Images -- data: URIs rejected; large_image uses track art URL or logo asset.
+        // Images
         var hasHttpsArt = IsHttpUrl(trackArt);
-        presence.Assets = new Assets
-        {
-            LargeImageKey  = hasHttpsArt ? trackArt : "mastersfm_logo",
-            LargeImageText = Clamp(srcName, 128),
-            SmallImageKey  = "mastersfm_logo",
-            SmallImageText = isPaused ? "⏸ Paused" : "Master's FM",
-        };
+        activity.LargeImage = hasHttpsArt ? trackArt : "mastersfm_logo";
+        activity.LargeText  = Clamp(srcName, 128);
+        activity.SmallImage = "mastersfm_logo";
+        activity.SmallText  = isPaused ? "⏸ Paused" : "Master's FM";
 
         // Button -- "Listen on [Source]"; only when originUrl is an HTTPS URL.
         if (IsHttpUrl(originUrl))
         {
             var btnLabel = Clamp($"Listen on {srcName}", 32);
-            presence.Buttons = new[] { new Button { Label = btnLabel, Url = originUrl } };
+            activity.Buttons = new[] { new DiscordIpcButton { Label = btnLabel, Url = originUrl } };
         }
 
-        return presence;
+        return activity;
     }
 
     // ── Utilities ─────────────────────────────────────────────────────────────

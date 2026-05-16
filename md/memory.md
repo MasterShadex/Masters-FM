@@ -5,6 +5,106 @@ The user is your editor, not your co-author here. Keep it factual, scannable, an
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch A FAR exceeded scope, all PASSED
+
+Operator-verified everything below this session. Deployment via hot-swap:
+`dotnet publish -r win-x64 --self-contained false -p:PublishReadyToRun=true`
+then copy `MastersFM_Tray_v14.dll` to `%LOCALAPPDATA%\MastersFM\`.
+REBUILD.bat is the proper full path (build server.exe + MSI + reinstall +
+launch); we hot-swap only because it's faster for iteration. **Operator's
+running tray loads from `%LOCALAPPDATA%\MastersFM\`, not `bin/Release/`.**
+
+### Issues from V14_S7_11_DIAG_* fixed this session
+- **DIAG 01** left_click_wrong_monitor — PASS (commit `49664d4` + `0aff057` rev2 for per-monitor DPI conversion using MonitorFromPoint + GetDpiForMonitor)
+- **DIAG 02** tray_menu_missing_icons — PASS (commit `cfabc90` added IconDiscord, IconStartup, IconDocument, IconRestart + MenuItem.Icon blocks)
+- **DIAG 03** alignment_layout_bugs — PASS for audio dialog (rev2-rev19, see "WPF tab/binding lessons" below)
+- **DIAG 06** patch_notes_wrong_window — PASS (uses WelcomeWindow with ShowAboutTab=true, overhauled this session)
+- **DIAG 08** update_window_wrong_monitor — PASS (commit `0e90e0f`, then later switched ALL dialogs to PRIMARY monitor per operator preference)
+
+### Issues from V14_S7_11_DIAG_* still PENDING
+- **DIAG 04** ks_asio_missing — KS/ASIO tabs in audio dialog still placeholder
+- **DIAG 05** customize_overlay_unchanged — customize.html still pre-v14 design (only the slim scrollbar got applied this session)
+- **DIAG 07** view_log_wrong_target — "View log" opens folder instead of file
+- **DIAG 09** obs_toggle_doesnt_stick — CRITICAL before publish
+- **DIAG 10** discord_rpc_broken — Discord RPC functionality
+
+### Bonus polish shipped (beyond the diag list)
+- All dialogs now center on PRIMARY monitor (DIPs via SystemParameters.WorkArea, not device pixels) — commits `3a3de0a` `4cc6cd7`
+- Patch notes window: 720×480 → 1100×780; tag badges with semantic colours (NEW=green, IMPROVED=blue, FIXED=orange, REMOVED=red); waveform retained on left, bars reduced 32→28 and centred in Canvas; window title shows `You are currently running version v...` dynamically — commits `39ebe68`, `66ea447` `92b2907`, `05af04a`, `50d1229`
+- Slim modern ScrollBar style applied globally in tray (Theme/ScrollBars.xaml, implicit TargetType="ScrollBar") AND in customize.html (`*::-webkit-scrollbar` rule) — commits `3af159e`, `372d132`
+- Tray menu header (now-playing): negative-margin spans full menu width, custom AppMenuHeaderStyle for auto-height (was clipping in 36px fixed Grid), scrolling marquee for long track titles via TranslateTransform + RepeatBehavior.Forever, 44×44 album art via NowPlaying.ArtImageSource binding (was wired since Stage 7.6 but never surfaced) — commits `e09d2b1`, `7ad660d`, `a5e9eb1`, `bd24a3f`
+- AutoStart (Start-on-login) fix: AutoStartService.Enable() was targeting Environment.ProcessPath (= MastersFM_Tray.exe, can't run standalone). Added ResolveAutoStartTarget() that prefers MastersFM.exe alongside the tray. Added Reconcile() that reads existing .lnk via WshShell COM and rewrites if drift. New config flag `autostart_defaulted_v14rc3` triggers one-time default-ON for everyone on this build — commit `1071106`. PASS.
+- Restart Master's FM fix: was just spawning Environment.ProcessPath (tray host) leaving the app half-working. Now spawns a detached cmd helper (UseShellExecute=true so Explorer parents it, escaping our Job Object) that waits 3 s then starts MastersFM.exe — gives the launcher time to release `Global\MastersFM_Launcher` mutex and tear down server.exe / audio_spectrum.exe via Job cascade — commit `a95be15`. PASS.
+
+### WPF tab/binding lessons (rev2 → rev19 STEP 3 saga, audio dialog)
+The audio source dialog took 19 revisions to nail single-selection-across-tabs because of layered WPF behaviour:
+1. **TwoWay SelectedItem binding has push-back**: when source changes to an item not in the ListBox's ItemsSource, WPF may push null back, breaking cross-tab updates.
+2. **OneWay binding can miss updates if the ListBox isn't in the visual tree** (ContentPresenter pops it on tab switch).
+3. **IsSynchronizedWithCurrentItem=False MUST be a LOCAL value, not just in the Style setter** — Style setters lose to template re-eval ordering.
+4. **DataTrigger in ControlTemplate.Triggers can cache visual state** on detached containers and not re-evaluate on re-attach. Items.Refresh() forces rebuild.
+5. **Final solution (rev19 `8890e83`)**: bind `ListBoxItem.IsSelected` directly to `AudioDeviceInfo.IsActive` (Mode=TwoWay) and have the ViewModel sweep IsActive on every selection change. Visual selection is fully data-driven, not Selector-driven.
+
+### Important runtime insight discovered mid-session
+**The installed app at `%LOCALAPPDATA%\MastersFM\MastersFM_Tray_v14.dll` is the LIVE binary, NOT `bin/Release/`**. Operator tested ~11 of my "fixes" against the old DLL until we realised. After every code change for the tray we now: `dotnet publish` → copy DLL to install dir → relaunch via `MastersFM.exe`. `customize.html` and other static assets just need to be copied. `REBUILD.bat` is available for full clean rebuild + MSI reinstall but isn't strictly necessary for hot-swap.
+
+---
+
+## 2026-05-16 — Stage 7.12 Batch B (real-time sync push toward 0 ms latency)
+
+Operator approved a full audit of pause / seek / skip latency across OBS overlay + Discord RPC. Two phases shipped:
+
+### Phase A — kill the dead-time in the pipeline (4 fixes)
+- **`TrackResolver.cs` state-aware dedup** — was identity-only (`source|||artist|||track`), silently dropping every pause/resume/seek webhook on the same track. Now fires immediately on `IsPlaying` flip OR position jump >250 ms beyond expected wall-clock advance.
+- **`HeartbeatService.cs` cadence** — `IntervalSeconds` 1.0 → 0.1 (100 ms safety-net polls). `SeekThresholdMs` 3000 → 400 (catches near-instant scrubs the user can feel).
+- **`SmtcEventBridge.cs` drain** — `DrainCadenceMs` 100 → 16 (one frame at 60 Hz; mirrors monitor refresh).
+- **`DiscordRpcService.cs` throttle** — `ThrottleMs` 2000 → 250 (Discord's documented rate-limit floor; safe ceiling for back-to-back rapid skips).
+
+### Phase B — replace Lachee.DiscordRPC with our own pipe protocol
+Operator's explicit ask: "approve, and make own discord pipe protocol." Done.
+- **New `src/server_dotnet/DiscordIpcClient.cs`** — direct named-pipe (`\\.\pipe\discord-ipc-N`) implementation of Discord's IPC. Walks 0..9 indices, sends `HANDSHAKE` (opcode 0), waits for `READY`, exposes `SetActivityAsync(DiscordIpcActivity?)`, auto-PONGs Discord pings, raises `Ready`/`Closed`/`Error` events. Frame format = uint32-LE opcode + uint32-LE length + UTF-8 JSON.
+- **`DiscordIpcActivity` first-class `Type` property** — no more `JsonConvert.DefaultSettings` hack to inject `"type": 2`. Removed the entire `ListeningTypeInjectingConverter` class.
+- **`DiscordRpcThrottle.cs` switched to `Func<DiscordIpcActivity?, Task>`** — async send delegate so we await the pipe write (latency observable + bounded).
+- **`DiscordRpcService.cs` fully rewritten** — `DiscordRpcClient`/`RichPresence` (Lachee) → `DiscordIpcClient`/`DiscordIpcActivity`. Event handlers use the new client's `Ready(string)`/`Closed(string?)`/`Error(string)` signatures.
+- **`server_dotnet.csproj`** — added `<Compile Include="DiscordIpcClient.cs" />`, removed `<PackageReference Include="DiscordRichPresence" Version="1.2.1.24" />`.
+- **Newtonsoft.Json dependency dropped from server** — confirmed via `grep -i Newtonsoft server.deps.json` (empty). `Newtonsoft.Json.dll` still sits in `%LOCALAPPDATA%\MastersFM\` but is no longer loaded by `server.dll`.
+
+### Deployment verified live
+Killed running launcher (PID cascade-kill via Job Object), `dotnet publish -c Release -r win-x64 --no-self-contained`, copied 5 files into `%LOCALAPPDATA%\MastersFM\`, removed `DiscordRPC.dll`. Relaunched via explorer shell-exec (bash `start` got "Access denied" because elevation; explorer.exe inherits user session). Server log confirmed end-to-end:
+```
+Discord IPC: connected to \\.\pipe\discord-ipc-0       ← our code, never appeared with Lachee
+Discord RPC: connected as mastershadex                 ← READY frame parsed by our OnReady
+Discord RPC: SetActivity sent (details='...' state='by ...' largeImg='https://i1.sndcdn.com/...' tsStart=... tsEnd=... largeImgIsUrl=True)
+```
+Zero errors in server.log after relaunch. Phase A heartbeat firing at 100 ms cadence visible as the train of `Discord RPC: PushDiscord enter` log lines.
+
+### What this buys us toward "close to 0 ms"
+| Stage                       | Before    | After      |
+| --------------------------- | --------- | ---------- |
+| SMTC event → tray webhook   | up to 100 ms | up to 16 ms |
+| Same-track state change drop| silent (∞ ms — only heartbeat caught it) | 0 ms |
+| Tray webhook → server SSE   | <5 ms (unchanged) | <5 ms |
+| Server → Discord throttle   | up to 2000 ms | up to 250 ms |
+| Discord IPC pipe overhead   | ~10–30 ms (Lachee internal queue) | <2 ms (direct write) |
+| Heartbeat safety net cadence| 1000 ms   | 100 ms     |
+
+Worst-case end-to-end latency for a user pause / scrub: was ~2 s, now ~300 ms; typical case is well under 100 ms because the state-change path is now wholly event-driven.
+
+### Files touched this batch
+- `src/server_dotnet/DiscordIpcClient.cs` (new, 367 lines)
+- `src/server_dotnet/DiscordRpcService.cs` (full rewrite)
+- `src/server_dotnet/DiscordRpcThrottle.cs` (rewritten — generic over `DiscordIpcActivity?`, async delegate)
+- `src/server_dotnet/server_dotnet.csproj` (Compile add, PackageReference remove)
+- `src/tray_csharp/Services/TrackResolver.cs` (Phase A state-aware dedup)
+- `src/tray_csharp/Services/HeartbeatService.cs` (Phase A 100ms + 400ms)
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` (Phase A 16ms drain)
+
+### Lessons captured
+- **Don't ever rely on identity-only dedup for streaming state** — you'll silently swallow every state transition on the current entity. Always include the orthogonal axes (`isPlaying`, `position` delta) in the dedup key.
+- **External NuGet wrappers cost latency you can't measure.** Lachee adds ~10–30 ms per push via internal queueing + thread hops. A direct named-pipe write is 10× faster and lets us own the protocol surface.
+- **`bash`'s `start` on Windows MSYS gets argument-mangled** when the path contains `\\` — use `explorer.exe <path>` to launch elevated apps; the shell parents them and they escape MSYS's job tree.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

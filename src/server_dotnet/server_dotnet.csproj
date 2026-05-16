@@ -61,20 +61,21 @@
     <Compile Include="ArtCascade.cs" />
     <Compile Include="DurationResolver.cs" />
 
+    <Compile Include="DiscordIpcClient.cs" />
     <Compile Include="DiscordRpcThrottle.cs" />
     <Compile Include="DiscordRpcService.cs" />
     <Compile Include="SimpleFileLogger.cs" />
   </ItemGroup>
 
   <!--
-    Discord RPC integration (sub-stage 4.10).
-    This is the ONLY new runtime dependency added during V14 migration.
-    Justification: Discord IPC requires a managed library; .NET 8 has no built-in named-pipe
-    Discord IPC client. Lachee.DiscordRPC handles the handshake, framing, and pipe enumeration.
-    License: MIT (https://github.com/Lachee/discord-rpc-csharp/blob/master/LICENSE)
+    Discord RPC integration (sub-stage 4.10 — Stage 7.12 Batch B Phase B replacement).
+    Lachee.DiscordRPC 1.2.1.24 has been removed in favour of DiscordIpcClient.cs, a
+    direct named-pipe implementation of Discord's IPC protocol.  See DiscordIpcClient.cs
+    header comment for rationale (ActivityType field access + reduced per-push overhead
+    + full byte-level visibility for protocol changes).
   -->
   <ItemGroup>
-    <PackageReference Include="DiscordRichPresence" Version="1.2.1.24" />
+    <!-- (no Discord NuGet dependency — native pipe implementation) -->
   </ItemGroup>
 
   <!-- ASP.NET Core framework reference is implicit in Microsoft.NET.Sdk.Web -->
