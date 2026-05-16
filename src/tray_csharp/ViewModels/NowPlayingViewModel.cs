@@ -59,6 +59,22 @@ public sealed partial class NowPlayingViewModel : ObservableObject
     [ObservableProperty] private bool       _isPlaying;
 
     /// <summary>
+    /// True when a track is currently loaded (regardless of paused state).
+    /// Used by the Platforms dialog's "Now Playing" card to switch between
+    /// empty-state and track-card visuals; the tray menu binds directly to
+    /// individual fields and doesn't need this.
+    ///
+    /// Phase L rev2: before this, the Platforms dialog gated on IsPlaying
+    /// and so it showed "Nothing playing right now." for any paused track
+    /// — even though the tray menu (which has no IsPlaying gate) was
+    /// happily showing the track + thumbnail at the same time.
+    /// </summary>
+    public bool HasTrack => !string.IsNullOrEmpty(Track);
+
+    // CommunityToolkit.Mvvm partial — fires whenever Track is set.
+    partial void OnTrackChanged(string? value) => OnPropertyChanged(nameof(HasTrack));
+
+    /// <summary>
     /// Decoded thumbnail, ready for WPF Image.Source binding.  Null when no
     /// art is available.  Updated automatically via OnArtUriChanged whenever
     /// ArtUri changes — supports `data:image/...;base64,` URIs (decoded

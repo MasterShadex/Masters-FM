@@ -227,7 +227,10 @@
                 <!-- Content: track card OR empty state -->
                 <Grid Grid.Row="1" Margin="16,0,16,16">
 
-                    <!-- Empty state: visible when IsPlaying=false -->
+                    <!-- Empty state: visible when no track is loaded at all.
+                         Phase L rev2: gated on NowPlaying.HasTrack (not
+                         IsPlaying) so a PAUSED track still shows in the
+                         card below — matches what the tray menu does. -->
                     <Border x:Name="EmptyState"
                             Padding="16"
                             VerticalAlignment="Center">
@@ -235,7 +238,7 @@
                             <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
                                 <Setter Property="Visibility" Value="Visible"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding NowPlaying.IsPlaying,
+                                    <DataTrigger Binding="{Binding NowPlaying.HasTrack,
                                                  RelativeSource={RelativeSource AncestorType=Window},
                                                  FallbackValue=False}"
                                                  Value="True">
@@ -251,14 +254,15 @@
                                    TextWrapping="Wrap"/>
                     </Border>
 
-                    <!-- Track card: shown when IsPlaying=true -->
+                    <!-- Track card: shown whenever a track is loaded
+                         (playing OR paused). -->
                     <Border VerticalAlignment="Top"
                             Padding="16">
                         <Border.Style>
                             <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding NowPlaying.IsPlaying,
+                                    <DataTrigger Binding="{Binding NowPlaying.HasTrack,
                                                  RelativeSource={RelativeSource AncestorType=Window},
                                                  FallbackValue=False}"
                                                  Value="True">
