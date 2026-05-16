@@ -49,12 +49,18 @@ internal sealed class DiscordRpcService : BackgroundService
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
     private const int    ActivityTypeListening = 2;      // Discord ActivityType.Listening
-    // Stage 7.12 Batch B Phase J: how often to refresh Discord's frozen-paused
-    // timestamps.  Each refresh resets the bar to the actual pause position;
-    // between refreshes Discord's client interpolates, so the bar drifts up
-    // to this many ms before snapping back.  10 s = visually acceptable,
-    // 6 pushes/min well below Discord's 5/20-s sliding limit + our throttle.
-    private const long   PauseBucketMs       = 10_000;
+    // Stage 7.12 Batch B Phase J rev2: tightened from 10 s to 5 s drift.
+    // Discord interpolates the progress bar client-side from (now - start)
+    // between our pushes, so the bar visually advances; each refresh snaps
+    // it back to the actual pause position.  5 s is the floor — at 4 s
+    // we'd hit Discord's 5-per-20-s rate limit ceiling when other pauses,
+    // resumes, or seeks share the window.  5 s = 4 pushes per 20 s,
+    // leaving headroom for one state-change push without triggering Phase
+    // E's rate-limit deferral.  The explicit "⏸ M:SS / M:SS" indicator
+    // baked into the activity's State line (BuildActivity below) is the
+    // authoritative source of the pause time, so even mid-drift the user
+    // sees a frozen "Paused at 2:30 / 5:00" in plain text.
+    private const long   PauseBucketMs       = 5_000;
 
     // ── DI ────────────────────────────────────────────────────────────────────
     private readonly ServerState             _state;
@@ -488,9 +494,34 @@ internal sealed class DiscordRpcService : BackgroundService
         var details   = Clamp(track, 128);
         if (string.IsNullOrEmpty(details)) details = "Unknown track";
 
-        var stateText = !string.IsNullOrEmpty(artist)
-            ? $"by {artist}"
-            : srcName;
+        // ── Compute the paused progress upfront (used by both the State text
+        //    and the timestamps below, so we only do it once) ─────────────────
+        long pausedProgressMs = 0;
+        long nowWallMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (isPaused && startedAtMs > 0)
+        {
+            var refMs = pausedAtMs > 0 ? pausedAtMs : nowWallMs;
+            pausedProgressMs = refMs - startedAtMs;
+            if (pausedProgressMs < 0) pausedProgressMs = 0;
+            if (durationMs > 0 && pausedProgressMs > durationMs) pausedProgressMs = durationMs;
+        }
+
+        // ── State (second line) ───────────────────────────────────────────────
+        // Phase J rev2: when paused, the State text now embeds the frozen
+        // "⏸ M:SS / M:SS" string.  Discord's progress bar interpolates client-
+        // side between our pushes (so visually it advances by up to ~5 s
+        // before our next push snaps it back), but the State text is plain
+        // and doesn't move at all — that's the authoritative "we are paused
+        // at exactly here" indicator the user sees, even mid-drift.
+        var stateText = !string.IsNullOrEmpty(artist) ? $"by {artist}" : srcName;
+        if (isPaused)
+        {
+            var posStr = FormatMmSs(pausedProgressMs);
+            var durStr = durationMs > 0 ? $" / {FormatMmSs(durationMs)}" : string.Empty;
+            stateText = !string.IsNullOrEmpty(artist)
+                ? $"by {artist}  •  ⏸ {posStr}{durStr}"
+                : $"⏸ {posStr}{durStr}";
+        }
         stateText = Clamp(stateText, 128);
         if (stateText.Length < 2) stateText = "Master's FM";
 
@@ -502,17 +533,10 @@ internal sealed class DiscordRpcService : BackgroundService
         };
 
         // ── Timestamps ────────────────────────────────────────────────────────
-        // Playing: straight forward — start = original track-start wall-clock,
-        // end = start + duration.  Discord's bar advances client-side.
-        //
-        // Paused (Phase J): we want Discord's bar to show the FROZEN position
-        // at the pause point, not Discord's default "elapsed since activity
-        // was created" fallback (which is what made the bar look like
-        // "how long Master's FM has been running").  Discord renders progress
-        // as (now − start) / (end − start), so we pin start such that
-        // (now − start) == (pausedAt − startedAt).  Between our refreshes
-        // (every PauseBucketMs in PushDiscord) Discord interpolates and the
-        // bar drifts slightly forward; the next push snaps it back.
+        // Playing: start = original track-start wall-clock, end = start + duration.
+        // Paused (Phase J): pin start so (now − start) == pausedProgressMs.
+        // Bar shows the frozen pause position (with Discord's client
+        // interpolating between our 5-s pushes — see PauseBucketMs).
         if (!isPaused && startedAtMs > 0)
         {
             activity.StartUnixMs = startedAtMs;
@@ -521,17 +545,7 @@ internal sealed class DiscordRpcService : BackgroundService
         }
         else if (isPaused && startedAtMs > 0)
         {
-            // Compute progress-at-pause.  Fall back to "now − startedAt" if
-            // pausedAt is missing (rare — would only happen if the track was
-            // already paused when MFM started AND no pause event has fired
-            // since).  Clamp to [0, duration] so we never emit nonsense.
-            var nowWallMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var refMs     = pausedAtMs > 0 ? pausedAtMs : nowWallMs;
-            var progressMs = refMs - startedAtMs;
-            if (progressMs < 0) progressMs = 0;
-            if (durationMs > 0 && progressMs > durationMs) progressMs = durationMs;
-
-            activity.StartUnixMs = nowWallMs - progressMs;
+            activity.StartUnixMs = nowWallMs - pausedProgressMs;
             if (durationMs > 0)
                 activity.EndUnixMs = activity.StartUnixMs + durationMs;
         }
@@ -557,6 +571,16 @@ internal sealed class DiscordRpcService : BackgroundService
 
     private static string Clamp(string s, int maxLen)
         => s.Length <= maxLen ? s : s[..maxLen];
+
+    /// <summary>Format a millisecond duration as "M:SS" (e.g. 154321 → "2:34").</summary>
+    private static string FormatMmSs(long ms)
+    {
+        if (ms < 0) ms = 0;
+        var totalSec = ms / 1000;
+        var min = totalSec / 60;
+        var sec = totalSec % 60;
+        return $"{min}:{sec:D2}";
+    }
 
     private static bool IsHttpUrl(string? s)
         => !string.IsNullOrEmpty(s)

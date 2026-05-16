@@ -483,6 +483,18 @@ If `pausedAt == 0` (track was already paused when MFM started AND no pause event
 - **Discord IPC activities with no timestamps don't show "nothing" — they show app-open time.** Always send timestamps if you want a meaningful UI; "omit to hide" is wrong.
 - **Periodic refreshes for "frozen" client-rendered UI need a sig-changing input.** Dedup that hashes only the underlying state will suppress them.  Bucketing wall-clock by the desired refresh interval is the simplest correct trigger.
 
+### Phase J rev2 — same day fix to the pause UX
+Operator: "The progress bar stays, but video is paused and it doesn't pause on Discord RPC."
+
+Phase J's bar was visible at the pause position, but with the 10-s bucket Discord's client-side interpolation visibly advanced the bar between refreshes — looked like it was still playing.  Two fixes:
+
+1. **`PauseBucketMs` 10 s → 5 s.** Discord's 5/20-s sliding rate limit is the floor — 5 s gives 4 pushes per 20 s with headroom for one state-change push during the same window before Phase E's limiter would defer.
+2. **`State` text now embeds the frozen pause time** as plain text on the activity card's always-visible second line: `"by RemK  •  ⏸ 2:30 / 5:00"`.  Discord cannot interpolate text, so this is the authoritative pause indicator the user sees even mid-bar-drift.  When the artist is empty, it's just `"⏸ M:SS / M:SS"`.  When duration is unknown, it's `"⏸ M:SS"`.
+
+A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
+
+Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
+
 ---
 
 ## CURRENT STATE
