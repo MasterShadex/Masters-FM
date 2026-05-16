@@ -1,9 +1,11 @@
 using DiscordRPC;
 using DiscordRPC.Message;
+using Newtonsoft.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -58,6 +60,63 @@ internal sealed class DiscordRpcService : BackgroundService
     {
         _state  = state;
         _logger = logger;
+    }
+
+    // Stage 7.12 Batch B (DIAG-10 enhancement): inject "type": 2 (Listening)
+    // into the SET_ACTIVITY JSON Lachee.DiscordRPC sends to Discord IPC.
+    // RichPresence is sealed and BaseRichPresence has no Type property, so we
+    // hook the global JsonConvert.DefaultSettings to add a converter that
+    // wraps the standard RichPresence serialization with an extra "type" key.
+    // Discord's IPC SET_ACTIVITY activity object DOES accept type per the
+    // RPC docs even though Lachee never exposed it.
+    static DiscordRpcService()
+    {
+        var previous = JsonConvert.DefaultSettings;
+        JsonConvert.DefaultSettings = () =>
+        {
+            var settings = previous?.Invoke() ?? new JsonSerializerSettings();
+            // Add only once even if DefaultSettings is invoked many times.
+            if (!settings.Converters.Any(c => c is ListeningTypeInjectingConverter))
+                settings.Converters.Add(new ListeningTypeInjectingConverter());
+            return settings;
+        };
+    }
+
+    // Custom JsonConverter that intercepts RichPresence serialization and
+    // injects "type": 2 alongside the standard fields, so Discord renders
+    // the activity as "Listening to ..." with a real progress bar.
+    private sealed class ListeningTypeInjectingConverter : JsonConverter
+    {
+        public override bool CanConvert(Type objectType) =>
+            objectType == typeof(RichPresence);
+
+        public override bool CanWrite => true;
+        public override bool CanRead  => false;
+
+        public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
+        {
+            if (value == null) { writer.WriteNull(); return; }
+
+            // Re-enter serialization with this converter temporarily removed,
+            // so the standard RichPresence serializer runs to produce the JSON
+            // object we want to augment.
+            serializer.Converters.Remove(this);
+            try
+            {
+                var token = Newtonsoft.Json.Linq.JToken.FromObject(value, serializer);
+                if (token is Newtonsoft.Json.Linq.JObject obj)
+                    obj["type"] = 2;        // 2 = ActivityType.Listening
+                token.WriteTo(writer);
+            }
+            finally
+            {
+                serializer.Converters.Add(this);
+            }
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType,
+            object? existingValue, JsonSerializer serializer) =>
+            throw new NotSupportedException();
     }
 
     // ── IHostedService ────────────────────────────────────────────────────────
