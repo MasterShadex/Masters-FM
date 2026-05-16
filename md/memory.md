@@ -378,6 +378,17 @@ Real human seeks are typically multi-second so we don't lose meaningful events.
 - **`GetForegroundWindow` is a "good-enough" website detector but not reliable** — only works when the user is on the playing tab. For higher reliability we'd need a browser extension or DevTools Protocol connection. Phase H's heuristic covers the most common case (user is watching YouTube actively).
 - **One helper, three call sites.** When the same "seek threshold" rule lives in three files that already shared 100/200 ms logic, extracting a single `IsBrowserLikeSource` predicate and reaching it from all three keeps the rule in one place. Worth a small cross-namespace `using` rather than copying the predicate three times.
 
+### Phase H rev2 — same day fix to the YouTube label
+Operator: "I see the bar paused and says browser. IDK what you changed but it did not work."
+
+Real story: the "bar paused" was correct — the operator had actually paused the YouTube video.  But the "says browser" was real: Phase H's `GetForegroundWindow`-only check failed because the operator wasn't on the YouTube tab when SMTC fired `MediaPropertiesChanged`, AND the cache was locking in "browser" forever after the first miss.
+
+Two changes:
+1. **Replaced `GetForegroundWindow` with `EnumWindows`** — sweep ALL visible top-level windows, not just the focused one.  Catches YouTube whenever it's the active tab of any visible Chrome window (foreground or background).  ~50-200 windows on a typical desktop, <0.5 ms cost per call.
+2. **Cache logic flipped: only POSITIVE detections lock in.** When the resolved source is `"browser"`, we DON'T cache — every subsequent event retries.  When it's anything specific (`youtube` / `twitch` / `spotify` / `soundcloud`), THAT gets cached.  On `MediaPropertiesChanged` (track change) we evict the cache so a YouTube → Spotify-Web switch within the same Chrome instance re-detects.
+
+Verified live: `/current` endpoint now returns `source: youtube` for the operator's YouTube tab.
+
 ---
 
 ## CURRENT STATE

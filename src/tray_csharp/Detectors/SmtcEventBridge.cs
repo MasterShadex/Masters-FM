@@ -229,19 +229,28 @@ public sealed class SmtcEventBridge : IDisposable
         var snap = _watcher!.GetSnapshot(saumid);
         if (snap == null || !snap.HasMediaProps) return;
 
-        // Stage 7.12 Batch B Phase H #1: source mapping is normally cached,
-        // but we MUST re-evaluate it on MediaPropertiesChanged because that's
-        // when the user might have switched from a YouTube tab to a Spotify
-        // tab (same saumid = chrome.exe, but different real source).  Also
-        // cleared on SessionRemoved further up.
+        // Stage 7.12 Batch B Phase H rev2: cache logic redesigned so "browser"
+        // is NEVER locked in.  We only cache POSITIVE detections (youtube /
+        // twitch / spotify / soundcloud / etc.) — every event re-runs
+        // MapSaumidToSource until we get a positive hit.  Once positive, we
+        // lock in until track change.  On MediaPropertiesChanged the cache
+        // gets evicted so we re-detect from scratch (covers user switching
+        // from YouTube tab to a Spotify-Web tab without closing Chrome).
         string sourceName;
         lock (_cacheLock)
         {
-            if (ev.Kind == SMTCEventKind.MediaPropertiesChanged ||
-                !_sourceCache.TryGetValue(saumid, out sourceName!))
+            bool trackChange = ev.Kind == SMTCEventKind.MediaPropertiesChanged;
+            if (trackChange) _sourceCache.Remove(saumid);
+
+            if (_sourceCache.TryGetValue(saumid, out var cached) && cached != "browser")
+            {
+                sourceName = cached;   // positive lock-in — skip the window scan
+            }
+            else
             {
                 sourceName = MapSaumidToSource(saumid);
-                _sourceCache[saumid] = sourceName;
+                if (sourceName != "browser")
+                    _sourceCache[saumid] = sourceName;   // lock in only positive hits
             }
         }
         if (!IsSourceEnabled(sourceName))
@@ -373,27 +382,25 @@ public sealed class SmtcEventBridge : IDisposable
         if (s.Contains("zenmedia") || s.Contains("media.player")) return "wmpSMTC";
         if (s.Contains("chrome") || s.Contains("edge") || s.Contains("firefox") || s.Contains("brave"))
         {
-            // Stage 7.12 Batch B Phase H #1: Chrome / Edge / Firefox publish
-            // SMTC with their executable AUMID — the BROWSER, not the page.
-            // To distinguish "YouTube in Chrome" from "Spotify Web in Chrome"
-            // we sniff the foreground window's title (the active browser
-            // tab's title shows up in the window caption).  This is a best
-            // effort: works when the user has the playing tab focused;
-            // falls back to "browser" otherwise.
-            var t = GetForegroundWindowTitle().ToLowerInvariant();
-            if (t.Length > 0)
-            {
-                if (t.Contains("youtube") || t.Contains("youtu.be"))  return "youtube";
-                if (t.Contains("twitch"))                              return "twitch";
-                if (t.Contains("spotify"))                             return "spotify";
-                if (t.Contains("soundcloud"))                          return "soundcloud";
-            }
-            return "browser";
+            // Phase H rev2: sweep ALL visible top-level windows (not just the
+            // foreground one).  Catches YouTube even when the user has alt-tabbed
+            // to OBS or another app — as long as YouTube is the active tab of
+            // SOME visible Chrome window we'll see its title in that window's
+            // caption.  Falls back to "browser" only when no known site appears
+            // in any visible window's title.
+            return DetectSiteFromAllWindows() ?? "browser";
         }
         return "smtc-generic";
     }
 
-    // ── Win32 helpers (Phase H #1: detect YouTube via active window title) ────
+    // ── Win32 helpers (Phase H rev2: detect site via ALL visible windows) ────
+    //
+    // Originally Phase H used only `GetForegroundWindow`, which fails any time
+    // the user isn't actively on the playing tab.  Replaced with a full sweep
+    // of every visible top-level window — catches YouTube whenever it's the
+    // active tab of ANY Chrome window (foreground or background) AND when the
+    // user is on another app entirely (we still pick it up from the Chrome
+    // window's caption, which shows the active tab title).
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -401,17 +408,45 @@ public sealed class SmtcEventBridge : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
-    private static string GetForegroundWindowTitle()
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    /// <summary>
+    /// Sweep every visible top-level window's title; return the first known
+    /// site match (youtube / twitch / spotify / soundcloud) or <c>null</c>.
+    /// Cheap — typical desktop has 50-200 top-level windows; this is <0.5 ms.
+    /// </summary>
+    private static string? DetectSiteFromAllWindows()
     {
+        string? found = null;
         try
         {
-            var hwnd = GetForegroundWindow();
-            if (hwnd == IntPtr.Zero) return string.Empty;
             var sb = new StringBuilder(512);
-            var n  = GetWindowText(hwnd, sb, sb.Capacity);
-            return n > 0 ? sb.ToString() : string.Empty;
+            EnumWindows((hWnd, _) =>
+            {
+                if (!IsWindowVisible(hWnd)) return true;
+                sb.Clear();
+                if (GetWindowText(hWnd, sb, sb.Capacity) <= 0) return true;
+                var t = sb.ToString().ToLowerInvariant();
+                if (t.Contains("youtube") || t.Contains("youtu.be"))
+                { found = "youtube";    return false; }
+                if (t.Contains("twitch"))
+                { found = "twitch";     return false; }
+                if (t.Contains("spotify"))
+                { found = "spotify";    return false; }
+                if (t.Contains("soundcloud"))
+                { found = "soundcloud"; return false; }
+                return true;
+            }, IntPtr.Zero);
         }
-        catch { return string.Empty; }
+        catch { /* Win32 enum failed — accept the null and fall back to "browser" */ }
+        return found;
     }
 
     // Stage 7.12 Batch B Phase H #2: browser sources (Chrome / Edge / etc.)
