@@ -495,6 +495,20 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase K (DIAG 04) — real KS + ASIO enumeration in the audio device dialog
+Operator: "next thing was KS and ASIO right?" → "approve"
+
+Background: the Audio Source dialog already had WASAPI and MME working.  KS and ASIO tabs existed but only showed static placeholder text; the comment in `AudioApi.cs` said "ASIO remains deferred to a future brief per INTERRUPT #3 absolute constraint."  This session is that future brief.
+
+Discovery during research: `audio_spectrum.cs` already implements all four backends.  The HTTP `set-device` endpoint accepts `backend` ∈ `{wasapi_loopback, wasapi_input, wasapi_exclusive, wdm_ks, wdmks, ks, mme, wavein, asio}` and the `OpenCaptureForBackend` switch already opens KS via WASAPI exclusive mode (same MMDevice IDs as WASAPI capture endpoints) and ASIO via `driverName|channelOffset` IDs.  So the tray just needed to enumerate them and offer the lists to the user — no audio-engine changes required.
+
+Changes:
+- **`AudioApi.cs`** — added `EnumerateAsioDrivers()` reading `HKLM\SOFTWARE\ASIO\<DriverName>` from BOTH `Registry64` and `Registry32` (WOW6432Node).  Each subkey is one driver; we read `CLSID` and optional `Description` values.  64-bit hive wins over 32-bit on name collisions.  Returns an empty list if no drivers are installed — which on a normal Windows desktop is the common case.
+- **`AudioDeviceViewModel.cs`** — added `KsDevices` (populated from the same `DeviceInformation.FindAllAsync(DeviceClass.AudioCapture)` call we already make for `InputDevices`, but tagged `Backend="KS"`) and populated `AsioDevices` from the new registry helper (tagged `Backend="ASIO"`, `DeviceId` = registry subkey name so it matches `audio_spectrum`'s driver-name lookup).  Added `HasKs` flag.  Cross-tab `IsActive` sweep + `Selected{Wasapi,Mme,Ks,Asio}Device` computed properties extended to the new lists.  `Cancel`/Reset's default-device fallback walks through the four collections.  Status string now reports `"N WASAPI, M MME, K KS, L ASIO"`.
+- **`AudioDeviceWindow.xaml`** — KS and ASIO tabs replaced static `StackPanel` placeholders with `Grid` containing a `ScrollViewer`+`ListBox` (visible when `HasKs`/`HasAsio` is true) overlaid with an empty-state `StackPanel` (visible when false).  Empty states use the existing speaker icon + tertiary text — "No Kernel Streaming devices…" / "No ASIO drivers detected.  Install one (ASIO4ALL, FL Studio ASIO, your interface's driver, …) and Master's FM will pick it up on the next refresh."
+
+Verified on the dev box (operator hasn't opened the dialog yet at commit time): registry enumeration picks up 10 ASIO drivers (Ableton Move, Ableton Push, Audient USB Audio ASIO, VB-Matrix VASIO-32/64A/64B/128/256A/256B/512).  All in `Registry32` (WOW6432Node) — typical, since most ASIO installers are 32-bit.
+
 ### Phase J rev3 — operator-proposed simplification
 Operator: "We could just use that feature [the State text] and put the progress bar away that shows how long people have Master's FM open. That solves the issue as well :)"
 
@@ -623,7 +637,7 @@ operator-verified PASS in this session.  See the dated entries above for each ph
 
 ## DEFERRED ITEMS
 
-- **DIAG 04 — KS / ASIO audio backend tabs** (Stage 7.11 diagnosis, deferred at end of Batch B 2026-05-16).  KS tab is in XAML but only a static placeholder; ASIO tab is hidden because `HasAsio` is always false (`AsioDevices` never populated).  Fix: remove `HasAsio` gating + actually populate ASIO devices.  Trivial-to-small fix, just needs a slot.
+- **DIAG 04 — KS / ASIO audio backend tabs**: SHIPPED 2026-05-16 as Phase K.  See the Phase K entry above for full notes.  Both tabs now enumerate real devices (KS from WinRT capture endpoints, ASIO from `HKLM\SOFTWARE\ASIO\` registry incl. WOW6432Node).  Empty states for when nothing's installed.
 - **DIAG 05 — Customize Overlay redesign** (Stage 7.11 diagnosis, deferred at end of Batch B 2026-05-16).  `customize.html` still on pre-v14 design.  Batch D scope, requires operator decision (rebuild for rc.4 or defer to v14.1.0).
 - **P2-SMTC-3: SHIPPED in v11.2.2 as rate-limiting wrapper** — Rate-limiting approach used instead of full async (Start-ThreadJob unavailable on PS 5.1; Runspace-based async would require passing all globals). `Get-SMTCNowPlayingCached` wrapper at tray.ps1:7039 runs Get-SMTCNowPlaying at most every 300ms. CPU: 79% of 1 core → 1.5% of 1 core. NOT fully async, but achieves CPU reduction goal. See V1122_FINAL_REPORT.md.
 

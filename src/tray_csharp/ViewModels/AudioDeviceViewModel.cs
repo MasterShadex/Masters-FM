@@ -37,6 +37,12 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> inputDevices = new();
 
+    // Stage 7.12 Batch B Phase K (DIAG 04): KS = same capture endpoints as
+    // InputDevices but tagged with Backend="KS" so the audio_spectrum opens
+    // them in exclusive (WDM-KS) mode.
+    [ObservableProperty]
+    private ObservableCollection<AudioDeviceInfo> ksDevices = new();
+
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> asioDevices = new();
 
@@ -59,6 +65,13 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     public AudioDeviceInfo? SelectedMmeDevice =>
         _selectedDevice?.Backend == "MME" ? _selectedDevice : null;
 
+    // Stage 7.12 Batch B Phase K (DIAG 04): KS and ASIO list-box bindings.
+    public AudioDeviceInfo? SelectedKsDevice =>
+        _selectedDevice?.Backend == "KS" ? _selectedDevice : null;
+
+    public AudioDeviceInfo? SelectedAsioDevice =>
+        _selectedDevice?.Backend == "ASIO" ? _selectedDevice : null;
+
     [ObservableProperty]
     private bool stereoMixEnabled;
 
@@ -70,6 +83,12 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     [ObservableProperty]
     private bool hasAsio;
+
+    // Phase K (DIAG 04): real KS enumeration. HasKs is true when at least one
+    // WinRT capture endpoint exists (every WASAPI input can be opened in
+    // WDM-KS exclusive mode by audio_spectrum).
+    [ObservableProperty]
+    private bool hasKs;
 
     // INTERRUPT #3 STEP 7 (Issue 2): MME output device collection.
     [ObservableProperty]
@@ -115,15 +134,17 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     {
         // Update each device's IsActive flag so the data-driven DataTrigger
         // in the ListBoxItem template can show the highlight on the single
-        // active item across both tabs.
-        foreach (var d in OutputDevices)
-            d.IsActive = ReferenceEquals(d, _selectedDevice);
-        foreach (var d in MmeDevices)
-            d.IsActive = ReferenceEquals(d, _selectedDevice);
+        // active item across ALL four tabs.
+        foreach (var d in OutputDevices) d.IsActive = ReferenceEquals(d, _selectedDevice);
+        foreach (var d in MmeDevices)    d.IsActive = ReferenceEquals(d, _selectedDevice);
+        foreach (var d in KsDevices)     d.IsActive = ReferenceEquals(d, _selectedDevice);
+        foreach (var d in AsioDevices)   d.IsActive = ReferenceEquals(d, _selectedDevice);
 
         OnPropertyChanged(nameof(SelectedDevice));
         OnPropertyChanged(nameof(SelectedWasapiDevice));
         OnPropertyChanged(nameof(SelectedMmeDevice));
+        OnPropertyChanged(nameof(SelectedKsDevice));
+        OnPropertyChanged(nameof(SelectedAsioDevice));
     }
 
     // -----------------------------------------------------------------------
@@ -139,6 +160,7 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
             InputDevices.Clear();
             AsioDevices.Clear();
             MmeDevices.Clear();
+            KsDevices.Clear();
             StereoMixDevicePresent = false;
             StereoMixEnabled = false;
 
@@ -163,7 +185,8 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 });
             }
 
-            // Input devices via WinRT
+            // Input devices via WinRT — used internally; not currently surfaced
+            // in the dialog UI but populated for parity with output devices.
             var captureClass = await DeviceInformation.FindAllAsync(DeviceClass.AudioCapture).AsTask().ConfigureAwait(true);
             foreach (var d in captureClass)
             {
@@ -175,6 +198,20 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                     IsEnabled = d.IsEnabled,
                     IsStereoMix = false,
                     Backend = "WASAPI"
+                });
+                // Stage 7.12 Batch B Phase K (DIAG 04): KS list mirrors the
+                // same WinRT capture endpoints but is tagged Backend="KS" so
+                // ApplyDevice persists selectedBackend="KS" and the
+                // audio_spectrum opens this endpoint in WDM-KS exclusive mode
+                // (case "wdm_ks" / "ks" in audio_spectrum.cs).
+                KsDevices.Add(new AudioDeviceInfo
+                {
+                    DeviceId = d.Id,
+                    Name = d.Name,
+                    IsDefault = d.IsDefault,
+                    IsEnabled = d.IsEnabled,
+                    IsStereoMix = false,
+                    Backend = "KS"
                 });
             }
 
@@ -192,11 +229,30 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                     Backend = "MME"
                 });
             }
-            HasMme = MmeDevices.Count > 0;
+            // Stage 7.12 Batch B Phase K (DIAG 04): ASIO drivers from registry.
+            // Audio_spectrum's "asio" backend opens a driver by name (registry
+            // subkey under HKLM\SOFTWARE\ASIO), optionally suffixed with
+            // "|channelOffset" — we omit the offset here, defaulting to 0.
+            var asioList = AudioApi.EnumerateAsioDrivers();
+            foreach (var drv in asioList)
+            {
+                AsioDevices.Add(new AudioDeviceInfo
+                {
+                    DeviceId = drv.Name,                    // bare driver name; audio_spectrum.cs:580-592
+                    Name     = string.IsNullOrWhiteSpace(drv.Description) ? drv.Name : drv.Description,
+                    IsDefault   = false,
+                    IsEnabled   = !string.IsNullOrEmpty(drv.Clsid),
+                    IsStereoMix = false,
+                    Backend     = "ASIO"
+                });
+            }
+
+            HasMme  = MmeDevices.Count  > 0;
+            HasKs   = KsDevices.Count   > 0;
             HasAsio = AsioDevices.Count > 0;
 
             // Restore previously-selected device from config.
-            // Priority: saved device → WASAPI default → MME default.
+            // Priority: saved device (any backend) → WASAPI default → MME default.
             try
             {
                 var savedId = _config.GetValue<string>("audio.outputDeviceId");
@@ -208,6 +264,10 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                         string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
                     toSelect ??= MmeDevices.FirstOrDefault(d =>
                         string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
+                    toSelect ??= KsDevices.FirstOrDefault(d =>
+                        string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
+                    toSelect ??= AsioDevices.FirstOrDefault(d =>
+                        string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
                 }
                 toSelect ??= OutputDevices.FirstOrDefault(d => d.IsDefault);
 
@@ -218,8 +278,11 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 _logger.LogWarn("config read for audio selection: " + ex.Message, Component);
             }
 
-            StatusText = $"{OutputDevices.Count} WASAPI output, {InputDevices.Count} input, {MmeDevices.Count} MME device(s).";
-            _logger.Log("enumerated " + OutputDevices.Count + " WASAPI output, " + InputDevices.Count + " input, " + MmeDevices.Count + " MME devices",
+            StatusText = $"{OutputDevices.Count} WASAPI, {MmeDevices.Count} MME, " +
+                         $"{KsDevices.Count} KS, {AsioDevices.Count} ASIO.";
+            _logger.Log(
+                $"enumerated {OutputDevices.Count} WASAPI output, {InputDevices.Count} WASAPI input, " +
+                $"{MmeDevices.Count} MME, {KsDevices.Count} KS, {AsioDevices.Count} ASIO",
                 Component);
         }
         catch (Exception ex)
@@ -270,12 +333,15 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
         };
     }
 
-    // Reset: select the system default (WASAPI preferred; MME fallback).
+    // Reset: select the system default (WASAPI preferred; falls back through
+    // MME / KS / ASIO if no WASAPI default is known).
     [RelayCommand]
     private void Cancel()
     {
         var active = OutputDevices.FirstOrDefault(d => d.IsDefault)
-                     ?? (AudioDeviceInfo?)MmeDevices.FirstOrDefault(d => d.IsDefault);
+                     ?? (AudioDeviceInfo?)MmeDevices.FirstOrDefault(d => d.IsDefault)
+                     ?? KsDevices.FirstOrDefault(d => d.IsDefault)
+                     ?? AsioDevices.FirstOrDefault();
 
         SetSelectedDeviceSilent(active);
 

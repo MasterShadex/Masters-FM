@@ -339,50 +339,99 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- KS tab: deferred / empty state -->
+            <!-- KS (Kernel Streaming) tab: WinRT capture endpoints opened
+                 in WDM-KS exclusive mode by audio_spectrum.cs.
+                 Stage 7.12 Batch B Phase K (DIAG 04). -->
             <TabItem Header="KS">
-                <StackPanel VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Margin="48">
-                    <Path Data="{StaticResource IconSpeaker}"
-                          Fill="{StaticResource BrandPurpleGlow}"
-                          Opacity="0.3"
-                          Width="40" Height="40"
-                          Stretch="Uniform"
-                          HorizontalAlignment="Center"
-                          Margin="0,0,0,16"/>
-                    <TextBlock Text="Kernel Streaming devices appear here when available."
-                               Style="{StaticResource BodyTextStyle}"
-                               Foreground="{StaticResource TextTertiary}"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
+                <Grid>
+                    <!-- Device list when KS endpoints exist -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding HasKs, Converter={StaticResource BoolToVis},
+                                                       FallbackValue=Collapsed}">
+                        <ListBox ItemsSource="{Binding KsDevices}"
+                                 IsSynchronizedWithCurrentItem="False"
+                                 SelectionChanged="OnDeviceSelectionChanged"
+                                 Style="{StaticResource DeviceListBoxStyle}"
+                                 ItemTemplate="{StaticResource DeviceRowTemplate}"/>
+                    </ScrollViewer>
+                    <!-- Empty state when no capture endpoints exist (rare) -->
+                    <StackPanel VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Margin="48">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasKs}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Path Data="{StaticResource IconSpeaker}"
+                              Fill="{StaticResource BrandPurpleGlow}"
+                              Opacity="0.3"
+                              Width="40" Height="40"
+                              Stretch="Uniform"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,16"/>
+                        <TextBlock Text="No Kernel Streaming devices are available right now."
+                                   Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextTertiary}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
             </TabItem>
 
-            <!-- ASIO tab: static informational content.
-                 Stage 7.12 Issue 4: always visible (HasAsio was always false since
-                 no ASIO enumeration exists; tab shows informational message). -->
-            <TabItem Header="ASIO"
-                     Visibility="Visible">
-                <StackPanel VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Margin="48">
-                    <Path Data="{StaticResource IconSpeaker}"
-                          Fill="{StaticResource BrandPurpleGlow}"
-                          Opacity="0.3"
-                          Width="40" Height="40"
-                          Stretch="Uniform"
-                          HorizontalAlignment="Center"
-                          Margin="0,0,0,16"/>
-                    <TextBlock Style="{StaticResource BodyTextStyle}"
-                               Foreground="{StaticResource TextSecondary}"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"
-                               MaxWidth="360">
-                        ASIO devices are configured directly in your DAW.
-                        Master's FM doesn't need a separate ASIO selection.
-                    </TextBlock>
-                </StackPanel>
+            <!-- ASIO tab: drivers enumerated from HKLM\SOFTWARE\ASIO\ registry
+                 (Phase K).  Empty state shows when no ASIO drivers are
+                 installed — the common case for most users. -->
+            <TabItem Header="ASIO">
+                <Grid>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding HasAsio, Converter={StaticResource BoolToVis},
+                                                       FallbackValue=Collapsed}">
+                        <ListBox ItemsSource="{Binding AsioDevices}"
+                                 IsSynchronizedWithCurrentItem="False"
+                                 SelectionChanged="OnDeviceSelectionChanged"
+                                 Style="{StaticResource DeviceListBoxStyle}"
+                                 ItemTemplate="{StaticResource DeviceRowTemplate}"/>
+                    </ScrollViewer>
+                    <!-- Empty state: no ASIO drivers installed -->
+                    <StackPanel VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Margin="48">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasAsio}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Path Data="{StaticResource IconSpeaker}"
+                              Fill="{StaticResource BrandPurpleGlow}"
+                              Opacity="0.3"
+                              Width="40" Height="40"
+                              Stretch="Uniform"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,16"/>
+                        <TextBlock Style="{StaticResource BodyTextStyle}"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="360">
+                            No ASIO drivers detected.
+                            Install one (ASIO4ALL, FL Studio ASIO, your interface's driver, …)
+                            and Master's FM will pick it up on the next refresh.
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
             </TabItem>
         </TabControl>
 

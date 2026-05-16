@@ -2,10 +2,14 @@
 // P/Invoke.  Provides the MME backend device list that the WinRT path cannot
 // surface (DeviceClass.AudioRender returns WASAPI devices only).
 //
-// KS devices are surfaced by the existing WinRT enumeration path in
-// AudioDeviceViewModel; no separate KS P/Invoke is needed for rc.3 scope.
-// ASIO remains deferred to a future brief per INTERRUPT #3 absolute constraint.
+// Stage 7.12 Batch B Phase K (DIAG 04): added ASIO driver enumeration via
+// registry (HKLM\SOFTWARE\ASIO\<DriverName>) and the WOW6432Node mirror.
+// KS devices share the same WinRT capture-endpoint enumeration as WASAPI
+// inputs (audio_spectrum.cs treats backend="wdm_ks" and "wasapi_exclusive"
+// identically — same MMDevice IDs, just opened in exclusive mode) — so the
+// KS list lives in AudioDeviceViewModel where the WinRT call already runs.
 
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 
 namespace MastersFM.Tray.Services;
@@ -85,5 +89,83 @@ public static class AudioApi
             // winmm.dll unavailable on very restricted environments; return empty.
         }
         return result;
+    }
+
+    // ------------------------------------------------------------------
+    // ASIO driver enumeration (Stage 7.12 Batch B Phase K / DIAG 04)
+    // ------------------------------------------------------------------
+    //
+    // ASIO drivers register themselves under HKEY_LOCAL_MACHINE\SOFTWARE\ASIO\
+    // (the canonical 64-bit hive).  A 32-bit installer on 64-bit Windows
+    // ends up under HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\ASIO\, so we
+    // enumerate BOTH and deduplicate by driver-name.
+    //
+    // Each subkey is one driver, named after the human-readable driver name
+    // (e.g. "ASIO4ALL v2", "FL Studio ASIO", "VB-Audio Matrix VASIO").
+    // Inside the subkey:
+    //   CLSID        = "{xxxx-xxxx-…}"     -- required, the COM ID
+    //   Description  = string (often)      -- prettier name; falls back to subkey
+    //
+    // We don't ACTIVATE the COM object here — that's the audio_spectrum's
+    // job when the user picks one.  All we do is list what's installed.
+
+    public readonly struct AsioDriver
+    {
+        public string Name        { get; init; }   // registry subkey name (used as the ID)
+        public string Description { get; init; }   // optional pretty name
+        public string Clsid       { get; init; }   // GUID string, empty if unreadable
+    }
+
+    /// <summary>
+    /// Enumerate installed ASIO drivers from the system registry.
+    /// Reads HKLM\SOFTWARE\ASIO (native 64-bit) AND HKLM\SOFTWARE\WOW6432Node\ASIO
+    /// (32-bit mirror), deduplicates by driver name, sorted alphabetically.
+    /// Returns an empty list if no drivers are installed or the registry is
+    /// inaccessible (which on a normal Windows install effectively means
+    /// "no ASIO drivers" — the key only exists when an ASIO host or driver
+    /// has been installed).
+    /// </summary>
+    public static IReadOnlyList<AsioDriver> EnumerateAsioDrivers()
+    {
+        var byName = new Dictionary<string, AsioDriver>(StringComparer.OrdinalIgnoreCase);
+        ReadAsioHive(RegistryView.Registry64, byName);
+        ReadAsioHive(RegistryView.Registry32, byName);
+        var list = new List<AsioDriver>(byName.Values);
+        list.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
+        return list;
+    }
+
+    private static void ReadAsioHive(RegistryView view, Dictionary<string, AsioDriver> sink)
+    {
+        try
+        {
+            using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var asio = hklm.OpenSubKey(@"SOFTWARE\ASIO");
+            if (asio == null) return;
+            foreach (var subKeyName in asio.GetSubKeyNames())
+            {
+                if (string.IsNullOrWhiteSpace(subKeyName)) continue;
+                try
+                {
+                    using var sub = asio.OpenSubKey(subKeyName);
+                    if (sub == null) continue;
+                    var clsid       = (sub.GetValue("CLSID") as string) ?? string.Empty;
+                    var description = (sub.GetValue("Description") as string) ?? string.Empty;
+                    if (sink.ContainsKey(subKeyName)) continue; // 64-bit wins over 32-bit
+                    sink[subKeyName] = new AsioDriver
+                    {
+                        Name        = subKeyName,
+                        Description = description,
+                        Clsid       = clsid,
+                    };
+                }
+                catch { /* one bad subkey shouldn't kill the whole enum */ }
+            }
+        }
+        catch
+        {
+            // Registry hive unavailable (rare; mostly locked-down enterprise).
+            // Empty enumeration = "no ASIO drivers", which is the correct UX.
+        }
     }
 }
