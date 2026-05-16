@@ -310,6 +310,35 @@ Restarted Master's FM mid-song (SoundCloud-RPC source).  Server log shows "Seek 
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase G (tray-menu marquee timing)
+
+Operator: "In the tray menu, it slides text left to right. But not on menu tray click, pause 2 sec, slide text, pause 2 sec and reset and pause 2 sec and slide text and pause 2 sec and reset. It just keeps going and going and it's unreadable going so fast."
+
+The Batch A marquee was a single `DoubleAnimation` with `From=0 To=-distance` and `RepeatBehavior.Forever` — continuous slide-snap-slide-snap with no pauses, so the text was always in motion (or being snapped) and never readable.
+
+### Fix
+Replaced with `DoubleAnimationUsingKeyFrames` (`MainWindow.xaml.cs` `UpdateNowPlayingMarquee`):
+
+| KeyTime | Value | Meaning |
+|---|---|---|
+| `0:00` | `0` | start (text flush left) |
+| `0:02` | `0` | end of 2-second start-hold (LinearDoubleKeyFrame between two `0` values = no motion) |
+| `0:02 + slide` | `-distance` | linear slide complete |
+| `0:02 + slide + 0:02` | `-distance` | end of 2-second end-hold |
+
+`RepeatBehavior.Forever` wraps the cycle back to t=0 (Value=0) instantly — that's the "snap back to start" the operator described. Then the next cycle's first 2-second hold gives the start-pause before the slide.
+
+Side cleanup: removed the prior `gap=40` (an off-right-edge buffer that was the previous attempt at a "pause" — no longer needed). Slide now ends with the last character flush against the right edge of the viewport so the 2-second end-pause is meaningful (you can actually read the end of the title).
+
+### Files touched this batch
+- `src/tray_csharp/MainWindow.xaml.cs` (UpdateNowPlayingMarquee — keyframes)
+
+### Lessons captured
+- **`RepeatBehavior.Forever` snaps the value at cycle boundaries.** When the animation duration ends with value V_end and the first keyframe is V_start, the value jumps from V_end → V_start instantly. This gives a "free" snap-back without needing an explicit snap-back keyframe.
+- **For "hold N seconds at value X", use two `LinearDoubleKeyFrame` keyframes at the same value, N seconds apart.** Linear interp from X→X is constant X, so the value is held. No need for `DiscreteDoubleKeyFrame` unless you genuinely want an instant jump.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

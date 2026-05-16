@@ -184,18 +184,37 @@ public partial class MainWindow : Window
                 var viewportWidth = NowPlayingMarqueeViewport.ActualWidth;
                 if (textWidth <= viewportWidth || viewportWidth <= 0) return;
 
-                const double gap      = 40;   // pause-equivalent off the right edge
-                const double pxPerSec = 40;   // scrolling speed
-                var distance = textWidth - viewportWidth + gap;
-                var duration = TimeSpan.FromSeconds(distance / pxPerSec);
+                // Stage 7.12 Batch B Phase G (marquee timing fix):
+                // Operator: "It just keeps going and going and it's unreadable
+                // going so fast."  Previous animation was a single DoubleAnimation
+                // with RepeatBehavior.Forever — slide, snap, slide, snap, no
+                // pauses.  Replaced with a 4-stop key-framed animation:
+                //   t=0       hold @ start  (text visible at left)
+                //   t=2s      hold @ start  (end of 2-second read pause)
+                //   t=2+slide reach end     (linear slide left)
+                //   t=2+slide+2  hold @ end (2-second read pause at end)
+                // RepeatBehavior.Forever wraps t=end → t=0 instantly (snap-back
+                // to the start without animating), then the next cycle's
+                // initial hold gives the second 2-second start-pause.
+                const double pauseSeconds = 2.0;
+                const double pxPerSec     = 40;   // slide speed
+                var distance      = textWidth - viewportWidth;
+                var slideDuration = TimeSpan.FromSeconds(distance / pxPerSec);
+                var pause         = TimeSpan.FromSeconds(pauseSeconds);
 
-                var anim = new DoubleAnimation
+                var anim = new DoubleAnimationUsingKeyFrames
                 {
-                    From           = 0,
-                    To             = -distance,
-                    Duration       = duration,
                     RepeatBehavior = RepeatBehavior.Forever
                 };
+                anim.KeyFrames.Add(new LinearDoubleKeyFrame(0,
+                    KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                anim.KeyFrames.Add(new LinearDoubleKeyFrame(0,
+                    KeyTime.FromTimeSpan(pause)));
+                anim.KeyFrames.Add(new LinearDoubleKeyFrame(-distance,
+                    KeyTime.FromTimeSpan(pause + slideDuration)));
+                anim.KeyFrames.Add(new LinearDoubleKeyFrame(-distance,
+                    KeyTime.FromTimeSpan(pause + slideDuration + pause)));
+
                 NowPlayingMarqueeTransform.BeginAnimation(TranslateTransform.XProperty, anim);
             }
             catch (Exception ex)
