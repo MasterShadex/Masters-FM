@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -10,11 +11,24 @@ namespace MastersFM.Server;
 // Source order matches server.js:resolveArtwork (678-796) exactly.
 // 4.9d: full 11-source cascade including scraping sources.
 // Intentional difference (ID-20): LRU cache added (not in server.js) per V14 port plan.
+//
+// Stage 7.12 Batch B post DIAG-10: split into two phases:
+//   Phase 1 (sequential, instant) — local data-URI-producing sources.
+//     Walks SMTC / SoundCloudDirect / WebhookArt / SmtcFallback in priority
+//     order so the primary art slot is filled with the cheapest source
+//     that has art for this track (typically SMTC's thumbnail in <10 ms).
+//   Phase 2 (parallel, ~500 ms-2 s) — remote HTTPS-providing sources.
+//     Fans out the 7 HTTP sources concurrently and races them for the
+//     trackArtHttps slot.  First non-empty HTTPS URL wins; the rest are
+//     cancelled.  Replaces the previous sequential walk that could take
+//     5-10 s when MusicBrainz/iTunes/Deezer all had to be tried in turn
+//     before the cascade gave up.
 internal sealed class ArtCascade
 {
-    private readonly IReadOnlyList<IArtSource> _sources;
-    private readonly LruCache<string, string> _cache;
-    private readonly ILogger<ArtCascade> _logger;
+    private readonly IReadOnlyList<IArtSource> _localSources;
+    private readonly IReadOnlyList<IArtSource> _remoteSources;
+    private readonly LruCache<string, string>  _cache;
+    private readonly ILogger<ArtCascade>       _logger;
 
     public ArtCascade(
         SmtcSource smtc,
@@ -31,27 +45,24 @@ internal sealed class ArtCascade
         LruCache<string, string> cache,
         ILogger<ArtCascade> logger)
     {
-        // 11-source cascade order per server.js:678-796:
-        // 1.  SmtcSource           -- smtcThumb + isBrowserPlatform (server.js:686-696)
-        // 2.  SoundCloudDirect     -- source=='soundcloud' + SC CDN webhookArt placeholder (server.js:700-703)
-        // 3.  OsuScraperSource     -- source.includes('osu'), full beatmapset search (server.js:707-710)
-        // 4.  WebhookArtSource     -- isValidArt + t500x500 upgrade + isUrlAccessible (server.js:713-718)
-        // 5.  SoundCloudOembed     -- originUrl.includes('soundcloud.com') (server.js:722-731)
-        // 6.  DeezerSource         -- api.deezer.com search, cover_xl (server.js:734-743)
-        // 7.  ItunesSource         -- itunes search, 500x500bb (server.js:746-757)
-        // 8.  MusicBrainzSource    -- MB recording search + coverartarchive (server.js:760-770)
-        // 9.  SmtcFallbackSource   -- data: URI last-resort fallback (server.js:772-776)
-        // 10. YouTubeSource        -- source.includes('youtube'), videoId scrape (server.js:783-786)
-        // 11. BingImageSource      -- always fires, 1.2s deadline (server.js:793-794)
-        _sources = new IArtSource[]
+        // Local sources (return webhookArt-derived data URIs or string.Empty;
+        // no outbound HTTP — they all complete synchronously or within a few
+        // ms). Walked sequentially in priority order to preserve the
+        // server.js:678-796 semantics for the primary slot.
+        _localSources = new IArtSource[]
         {
-            smtc, scDirect, osuScraper, webhookArt,
-            scOembed,
-            deezer, itunes, mb,
-            smtcFallback,
-            youTube,
-            bingImage,
+            smtc, scDirect, webhookArt, smtcFallback,
         };
+
+        // Remote sources (do an outbound HTTP request, each takes anywhere
+        // from ~200 ms (Deezer cached) to several seconds (MusicBrainz on a
+        // cold lookup)). Raced in parallel — any HTTPS URL the operator can
+        // get is better than a slower-but-prettier one.
+        _remoteSources = new IArtSource[]
+        {
+            osuScraper, scOembed, deezer, itunes, mb, youTube, bingImage,
+        };
+
         _cache  = cache;
         _logger = logger;
     }
@@ -60,13 +71,8 @@ internal sealed class ArtCascade
     /// Resolve art for the given track. Returns (primary, https) where:
     ///   - primary  = first non-empty result the cascade produced (data: URI or HTTPS URL)
     ///   - https    = first HTTPS URL the cascade produced (skips data: URI results)
-    /// Both fields default to string.Empty.  Single pass through sources;
-    /// caches both results under separate LRU keys.
-    ///
-    /// Stage 7.12 Batch B (post DIAG-10): a separate HTTPS-only art field is
-    /// needed for Discord Rich Presence (Discord's CDN rejects data: URIs),
-    /// while the overlay uses the primary art directly (data URIs are fine
-    /// for the local WPF/WebView2 renderers).
+    /// Both fields default to string.Empty.  LRU-cached under separate keys
+    /// so the next play of the same track skips both phases entirely.
     /// </summary>
     public async Task<(string art, string artHttps)> ResolveAsync(
         string rawArtist, string rawTrack,
@@ -82,19 +88,16 @@ internal sealed class ArtCascade
         bool gotHttps   = _cache.TryGet(keyHttps, out var cachedHttps);
         if (gotPrimary && gotHttps)
         {
-            if (string.IsNullOrEmpty(cachedPrimary))
-                _logger.LogDebug("ArtCascade cache: known no-art for {Key}", key);
-            else
-                _logger.LogDebug("ArtCascade cache hit for {Key}", key);
+            _logger.LogDebug("ArtCascade cache hit for {Key}", key);
             return (cachedPrimary ?? string.Empty, cachedHttps ?? string.Empty);
         }
 
         string primaryArt = gotPrimary ? (cachedPrimary ?? string.Empty) : string.Empty;
         string httpsArt   = gotHttps   ? (cachedHttps   ?? string.Empty) : string.Empty;
 
-        foreach (var src in _sources)
+        // ── Phase 1: sequential locals ────────────────────────────────────────
+        foreach (var src in _localSources)
         {
-            // Early-out: both already found.
             if (!string.IsNullOrEmpty(primaryArt) && !string.IsNullOrEmpty(httpsArt))
                 break;
 
@@ -105,13 +108,12 @@ internal sealed class ArtCascade
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "ArtCascade: source {Source} threw unexpectedly", src.Name);
-                result = string.Empty;
+                _logger.LogWarning(ex, "ArtCascade (local): {Source} threw", src.Name);
+                continue;
             }
 
             if (string.IsNullOrEmpty(result)) continue;
 
-            // First non-empty wins the primary slot.
             if (string.IsNullOrEmpty(primaryArt))
             {
                 primaryArt = result;
@@ -119,8 +121,6 @@ internal sealed class ArtCascade
                     "ArtCascade resolved via {Source} for {Artist} - {Track}",
                     src.Name, artist, track);
             }
-
-            // First HTTPS URL (skips data: URI results) wins the https slot.
             if (string.IsNullOrEmpty(httpsArt)
                 && !result.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
             {
@@ -131,11 +131,70 @@ internal sealed class ArtCascade
             }
         }
 
+        // ── Phase 2: parallel remotes, race for HTTPS ─────────────────────────
+        if (string.IsNullOrEmpty(httpsArt))
+        {
+            using var phaseCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var pending = _remoteSources
+                .Select(src => (src, task: SafeInvoke(src, artist, track, webhookArt, originUrl, source, phaseCts.Token)))
+                .ToList();
+
+            while (pending.Count > 0)
+            {
+                var completed = await Task.WhenAny(pending.Select(p => p.task));
+                var winner    = pending.First(p => p.task == completed);
+                pending.Remove(winner);
+
+                var result = await completed; // SafeInvoke never throws
+                if (string.IsNullOrEmpty(result)) continue;
+
+                if (string.IsNullOrEmpty(primaryArt))
+                {
+                    primaryArt = result;
+                    _logger.LogInformation(
+                        "ArtCascade resolved via {Source} for {Artist} - {Track}",
+                        winner.src.Name, artist, track);
+                }
+
+                if (string.IsNullOrEmpty(httpsArt)
+                    && !result.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    httpsArt = result;
+                    _logger.LogInformation(
+                        "ArtCascade-HTTPS resolved via {Source} for {Artist} - {Track}",
+                        winner.src.Name, artist, track);
+                    // Cancel the rest — first HTTPS wins.
+                    try { phaseCts.Cancel(); } catch { }
+                    break;
+                }
+            }
+        }
+
         if (string.IsNullOrEmpty(primaryArt))
             _logger.LogInformation("ArtCascade: no art found for {Artist} - {Track}", artist, track);
 
         _cache.Set(key,      primaryArt);
         _cache.Set(keyHttps, httpsArt);
         return (primaryArt, httpsArt);
+    }
+
+    // Belt-and-suspenders wrapper: sources MUST NOT throw but if one does, the
+    // parallel phase shouldn't crash everyone else with it.  Returns empty
+    // string for any failure path.
+    private async Task<string> SafeInvoke(
+        IArtSource src, string artist, string track,
+        string? webhookArt, string? originUrl, string? source,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await src.TryGetArtAsync(artist, track, webhookArt, originUrl, source, ct);
+        }
+        catch (OperationCanceledException) { return string.Empty; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ArtCascade (remote): {Source} threw", src.Name);
+            return string.Empty;
+        }
     }
 }
