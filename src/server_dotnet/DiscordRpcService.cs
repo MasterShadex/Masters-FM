@@ -49,6 +49,12 @@ internal sealed class DiscordRpcService : BackgroundService
     private const int    ReconnectIntervalMs = 30_000;   // loop interval for reconnect attempts
     private const long   DedupMaxAgeMs       = 30_000;   // 30 s max dedup age -- self-heal window
     private const int    ActivityTypeListening = 2;      // Discord ActivityType.Listening
+    // Stage 7.12 Batch B Phase J: how often to refresh Discord's frozen-paused
+    // timestamps.  Each refresh resets the bar to the actual pause position;
+    // between refreshes Discord's client interpolates, so the bar drifts up
+    // to this many ms before snapping back.  10 s = visually acceptable,
+    // 6 pushes/min well below Discord's 5/20-s sliding limit + our throttle.
+    private const long   PauseBucketMs       = 10_000;
 
     // ── DI ────────────────────────────────────────────────────────────────────
     private readonly ServerState             _state;
@@ -257,6 +263,12 @@ internal sealed class DiscordRpcService : BackgroundService
         long startedAt = (long?)currentTrack["startedAt"]?.GetValue<long>() ?? 0L;
         long duration  = (long?)currentTrack["duration"]?.GetValue<long>()  ?? 0L;
         bool isPaused  = currentTrack["isPaused"]?.GetValue<bool>() == true;
+        // Stage 7.12 Batch B Phase J: pausedAt is the wall-clock ms when the
+        // server's B5 pause handler ran.  Used to compute "progress at pause"
+        // = pausedAt − startedAt, which we then bake into Discord's
+        // timestamps.start so the progress bar shows the frozen position
+        // instead of Discord falling back to "elapsed since app open".
+        long pausedAt  = (long?)currentTrack["pausedAt"]?.GetValue<long>()  ?? 0L;
         var  artRaw      = (string?)currentTrack["trackArt"]      ?? string.Empty;
         var  artHttpsRaw = (string?)currentTrack["trackArtHttps"] ?? string.Empty;
         var  originUrl   = (string?)currentTrack["originUrl"]     ?? string.Empty;
@@ -269,10 +281,19 @@ internal sealed class DiscordRpcService : BackgroundService
             ? artHttpsRaw
             : (IsHttpUrl(artRaw) ? artRaw : string.Empty);
 
-        // ── Dedup (mirrors server.js _lastDiscordSig, lines 315-322) ─────────
+        // ── Dedup ─────────────────────────────────────────────────────────────
         // Includes startedAt so seeks re-push the activity (shifted end time).
-        var  sig   = string.Join("|", artist, track, source, startedAt, duration, isPaused ? 1 : 0, safeArt, originUrl);
+        //
+        // Phase J: when paused, add a 10-second "pause bucket" to the sig.
+        // Discord's progress bar is rendered client-side from the timestamps
+        // we send, so the bar visually advances during the interval between
+        // our pushes — we periodically re-push fresh start/end values to
+        // re-pin the displayed position at the pause point.  Bucket flips
+        // every 10 s while paused → push fires every 10 s → ~10 s max drift.
         var  nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long pauseBucket = isPaused ? (nowMs / PauseBucketMs) : 0L;
+        var  sig   = string.Join("|", artist, track, source, startedAt, duration,
+                                      isPaused ? 1 : 0, safeArt, originUrl, pauseBucket);
 
         lock (_lock)
         {
@@ -283,7 +304,8 @@ internal sealed class DiscordRpcService : BackgroundService
         }
 
         // ── Build activity ────────────────────────────────────────────────────
-        var activity = BuildActivity(artist, track, source, startedAt, duration, isPaused, safeArt, originUrl);
+        var activity = BuildActivity(artist, track, source, startedAt, duration, isPaused,
+                                     pausedAt, safeArt, originUrl);
         if (activity == null) return;
 
         // ── Queue through throttle (or hold as pending if disconnected) ───────
@@ -440,7 +462,11 @@ internal sealed class DiscordRpcService : BackgroundService
     ///   type             = 2 (Listening) — shows progress bar in Discord UI
     ///   details          = track (clamp 128) || "Unknown track"
     ///   state            = "by {artist}" || source (clamp 128, min 2)
-    ///   start_ms / end_ms = startedAt and startedAt+duration (only when !isPaused)
+    ///   start/end (playing) = startedAt and startedAt+duration
+    ///   start/end (paused)  = pinned so (now − start) = (pausedAt − startedAt),
+    ///                         so the progress bar shows the frozen pause position
+    ///                         (Phase J — was: no timestamps, Discord defaulted
+    ///                         to "app-open time" which made the bar disappear)
     ///   large_image      = trackArt (https) || "mastersfm_logo"
     ///   large_text       = srcName (clamp 128)
     ///   small_image      = "mastersfm_logo"
@@ -450,6 +476,7 @@ internal sealed class DiscordRpcService : BackgroundService
     private static DiscordIpcActivity? BuildActivity(
         string artist, string track, string source,
         long startedAtMs, long durationMs, bool isPaused,
+        long pausedAtMs,
         string trackArt, string originUrl)
     {
         if (string.IsNullOrEmpty(track)) return null;
@@ -474,12 +501,39 @@ internal sealed class DiscordRpcService : BackgroundService
             State   = stateText,
         };
 
-        // Timestamps -- only while playing; paused tracks show no timer.
+        // ── Timestamps ────────────────────────────────────────────────────────
+        // Playing: straight forward — start = original track-start wall-clock,
+        // end = start + duration.  Discord's bar advances client-side.
+        //
+        // Paused (Phase J): we want Discord's bar to show the FROZEN position
+        // at the pause point, not Discord's default "elapsed since activity
+        // was created" fallback (which is what made the bar look like
+        // "how long Master's FM has been running").  Discord renders progress
+        // as (now − start) / (end − start), so we pin start such that
+        // (now − start) == (pausedAt − startedAt).  Between our refreshes
+        // (every PauseBucketMs in PushDiscord) Discord interpolates and the
+        // bar drifts slightly forward; the next push snaps it back.
         if (!isPaused && startedAtMs > 0)
         {
             activity.StartUnixMs = startedAtMs;
             if (durationMs > 0 && startedAtMs + durationMs > startedAtMs)
                 activity.EndUnixMs = startedAtMs + durationMs;
+        }
+        else if (isPaused && startedAtMs > 0)
+        {
+            // Compute progress-at-pause.  Fall back to "now − startedAt" if
+            // pausedAt is missing (rare — would only happen if the track was
+            // already paused when MFM started AND no pause event has fired
+            // since).  Clamp to [0, duration] so we never emit nonsense.
+            var nowWallMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var refMs     = pausedAtMs > 0 ? pausedAtMs : nowWallMs;
+            var progressMs = refMs - startedAtMs;
+            if (progressMs < 0) progressMs = 0;
+            if (durationMs > 0 && progressMs > durationMs) progressMs = durationMs;
+
+            activity.StartUnixMs = nowWallMs - progressMs;
+            if (durationMs > 0)
+                activity.EndUnixMs = activity.StartUnixMs + durationMs;
         }
 
         // Images

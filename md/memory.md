@@ -455,6 +455,36 @@ Track: YouTube video "I Tried the $10,000/Month Side Hustle" by viyaura.
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase J (Discord progress bar visible while paused)
+
+Operator: "when I pause tracks on any platform, keep the progress bar on Discord RPC visible on the last time it got paused. Now it disappears and shows how long a user plays Master's FM as application instead which is weird."
+
+### Root cause
+`DiscordRpcService.BuildActivity` deliberately omitted `timestamps.start` / `timestamps.end` when `isPaused == true` (comment: "paused tracks show no timer").  Without timestamps, Discord's client falls back to displaying the time elapsed since the activity was first SET — i.e., when Master's FM connected.  That's the "Master's FM has been open for X minutes" Discord shows, which from the user's perspective looks like the progress bar "disappeared" into a totally unrelated elapsed-time counter.
+
+### Fix
+When paused, emit a SHIFTED `start`/`end` pair so Discord's client-side rendering shows `(now − start) = pause_progress` (frozen at the pause point) instead of falling back:
+- `pauseProgressMs = pausedAt − startedAt`
+- `activity.StartUnixMs = nowMs − pauseProgressMs`
+- `activity.EndUnixMs   = StartUnixMs + durationMs`
+
+Discord renders progress as `(now − start) / (end − start)`.  With `start` set this way, the bar reads `pauseProgressMs / durationMs` at the moment of the push.  Between pushes Discord interpolates, so the bar slowly drifts forward — we re-push every ~10 s to snap it back.
+
+### Periodic-refresh via "pause bucket" in the dedup signature
+The existing PushDiscord dedup wouldn't allow periodic refreshes (signature stays constant while paused → all pushes blocked).  Added `pauseBucket = isPaused ? (nowMs / 10_000) : 0` to the signature.  While paused, the bucket increments every 10 s, sig changes, push fires with fresh `start`/`end` timestamps.  Up to 10 s of forward drift between refreshes (visually acceptable), 6 pushes/min — well below Discord's 5/20-s sliding rate-limit ceiling, and well below our Phase E burst-mode threshold.
+
+### Fallback for missing `pausedAt`
+If `pausedAt == 0` (track was already paused when MFM started AND no pause event has fired since), we fall back to `progressMs = nowMs − startedAt` — uses the current wall-clock-elapsed as the approximated pause position.  Better than the old behavior of showing no bar.
+
+### Files touched this batch
+- `src/server_dotnet/DiscordRpcService.cs` (PushDiscord pausedAt extraction + sig bucket, BuildActivity signature + paused-branch)
+
+### Lessons captured
+- **Discord IPC activities with no timestamps don't show "nothing" — they show app-open time.** Always send timestamps if you want a meaningful UI; "omit to hide" is wrong.
+- **Periodic refreshes for "frozen" client-rendered UI need a sig-changing input.** Dedup that hashes only the underlying state will suppress them.  Bucketing wall-clock by the desired refresh interval is the simplest correct trigger.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)
