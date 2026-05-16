@@ -21,13 +21,15 @@ namespace MastersFM.Tray.Services;
 public sealed class HeartbeatService : IHeartbeatService
 {
     private const string Component = "Heartbeat";
-    // Stage 7.12 Batch B (real-time sync): 1.0 s → 0.1 s.  With TrackResolver
-    // now state-aware (sends immediately on pause/resume/seek), the heartbeat
-    // is mostly a safety net for SMTC events that miss — keep it tight so any
-    // miss is corrected within ~100 ms.  Local POSTs are free.
-    private const double IntervalSeconds = 0.1;
-    // 3000 ms → 400 ms.  Catches near-instantaneous scrubs the user can feel.
-    private const double SeekThresholdMs = 400.0;
+    // Stage 7.12 Batch B Phase D #3: 100 ms → 50 ms.  With timeBeginPeriod(1)
+    // raising the OS timer resolution to 1 ms (App.xaml.cs), 50 ms is the
+    // sweet spot — half the prior worst-case miss latency while still under
+    // 0.2 % CPU.  TrackResolver is state-aware so most ticks dedup away at
+    // the server's BroadcastIfChanged.
+    private const double IntervalSeconds = 0.05;
+    // Stage 7.12 Batch B Phase D #4: 400 ms → 200 ms.  Tighter scrub
+    // detection — the smallest seek the user can feel is ~150 ms.
+    private const double SeekThresholdMs = 200.0;
 
     private readonly ITrackResolver _trackResolver;
     // Stage 7.8B: _webhook removed; heartbeat now routes through _trackResolver.OnTrackChanged

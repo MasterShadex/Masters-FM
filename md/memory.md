@@ -160,6 +160,62 @@ Realistic worst case to Discord: **~50-100 ms** typical (Discord's own render ca
 
 ---
 
+## 2026-05-16 — Stage 7.12 Batch B Phase D (push the last 10-30 ms out the door)
+
+Operator after Phase C: "this works well, on 0.1 % cpu usage. Make it even more close to 0ms please." Four more fixes, attacking the remaining platform-floor sources: WM_TIMER granularity, dispatcher priority, system timer resolution, and the safety-net heartbeat cadence.
+
+### #1 — SMTC drain: DispatcherTimer (16 ms) → background `Task.Run` (1 ms)
+The Phase C 16 ms drain was bounded by `DispatcherTimer`'s WM_TIMER granularity (~15.6 ms on default Windows) AND ran at `DispatcherPriority.Background`, meaning every render frame could push it back to ~30-50 ms under load. Replaced with a dedicated background task:
+- `Task.Run(() => DrainLoopAsync(...))` polls `_watcher.DrainEvents()` every 1 ms via `Task.Delay(1)`.
+- When events appear, each is marshaled to the WPF dispatcher via `Dispatcher.InvokeAsync(..., DispatcherPriority.Normal, ct)` — Normal so we don't preempt the render loop and cause judder during rapid scrub bursts, but well above the prior Background priority.
+- Cancellation honored via the bridge's lifecycle (`Stop()`/`Dispose()`).
+- New worst case: ~1-3 ms drain + ~1-2 ms marshal.
+
+### #2 — `timeBeginPeriod(1)` for 1 ms OS timer resolution
+Windows default timer is 15.6 ms — `Task.Delay(1)` would round up to ~16 ms without this. P/Invoke into `winmm.dll` from `App.xaml.cs` `OnStartup` (first call), paired with `timeEndPeriod(1)` in `OnExit`. Lifts the whole process's timer resolution to 1 ms. Cost: <0.05 % CPU (one of the reasons Discord/Spotify/browsers do this).
+
+### #3 — Heartbeat 100 ms → 50 ms
+With the new 1 ms-resolution timers in place, halving the safety-net cadence costs nothing (well, ~0.1 % CPU). Cuts the worst-case missed-event recovery from 100 ms to 50 ms.
+
+### #4 — All three seek thresholds tightened
+| File | Constant | Before | After |
+|------|----------|-------:|------:|
+| `SmtcEventBridge` IsSeek detection | jump | 250 ms | 100 ms |
+| `TrackResolver` state-change gate | jump | 250 ms | 100 ms |
+| `HeartbeatService` IsSeek flag | SeekThresholdMs | 400 ms | 200 ms |
+
+Catches the small in-bar scrubs the 250 ms gate was rejecting as normal drift. The 100 ms threshold is safe because the new 50 ms heartbeat narrows the wall-clock delta between adjacent updates, so 100 ms of unexplained position drift IS genuinely a seek.
+
+### Files touched this batch
+- `src/tray_csharp/App.xaml.cs` (timeBeginPeriod/timeEndPeriod)
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` (Task.Run drain, Normal-priority marshal, IsSeek threshold)
+- `src/tray_csharp/Services/HeartbeatService.cs` (50 ms interval, 200 ms seek)
+- `src/tray_csharp/Services/TrackResolver.cs` (100 ms state-change threshold)
+
+### Measured CPU after Phase D
+Sampled idle (no music actively playing): `tray=0.29 %  server=0.19 %  launcher=0 %  combined=0.48 %`. The Phase-C-measured 0.1 % was under deeper idle (no SSE clients connected, etc.); 0.48 % under realistic load is still single-digit-percent of one core.
+
+### Latency budget post-Phase D (pause on a good source)
+| Hop | After Phase C | After Phase D |
+| --- | ---: | ---: |
+| Spotify → SMTC                       | 20–50 ms (platform) | 20–50 ms (platform) |
+| SMTC queue → drain                   | 0–16 ms             | **0–2 ms** |
+| Drain → dispatcher (priority)        | Background-queued   | **Normal-queued, immediate** |
+| TryExtractThumbnail (cached)         | <1 ms               | <1 ms |
+| Webhook + handler                    | 1–3 ms              | 1–3 ms |
+| SSE broadcast                        | 1–3 ms              | 1–3 ms |
+| Discord IPC throttle                 | 0–50 ms             | 0–50 ms |
+| Pipe write                           | <2 ms               | <2 ms |
+
+Worst case to OBS: **~5-10 ms** typical, ~30 ms peak. Discord: **~10-60 ms** typical (Discord render dominates), ~80 ms peak. The user-side floor is now the platform itself (SMTC + Discord), not our pipeline.
+
+### Lessons captured
+- **DispatcherTimer is bounded by WM_TIMER (15-16 ms on default Windows).** No matter what `Interval` you set, you won't get below that without calling `timeBeginPeriod(1)`. For real-time work, prefer a dedicated `Task.Run` polling loop and marshal back to dispatcher only at event boundaries.
+- **`DispatcherPriority.Send` is too aggressive for high-frequency event marshaling.** It preempts the render loop and can cause UI judder during a burst. `Normal` is the right default; it's "as fast as anything else the dispatcher is doing" without fighting the renderer.
+- **The Windows system timer is per-process on Win10+ (was global pre-1803).** `timeBeginPeriod(1)` only affects your own process now, so the security/battery cost concerns from old advice no longer apply. Media apps routinely do this; we should too.
+
+---
+
 ## CURRENT STATE
 
 **Project:** Master's FM -- Windows OBS overlay app (now-playing widget + spectrum visualizer)

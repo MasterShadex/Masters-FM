@@ -3,21 +3,31 @@
 // Reuses v12.0.0's MasterFM.SMTC.SMTCWatcher from tray_native.dll AS-IS
 // (per absolute rule 10). The watcher coalesces WinRT events into an
 // internal queue (see tray_native.cs:DrainEvents at line 729). This bridge
-// drains that queue on a 250ms timer (matches the watcher's BurstWindowMs
-// internal coalescing window) and dispatches each event into a
-// TrackUpdate via ITrackResolver.OnTrackChanged.
+// drains that queue and dispatches each event into a TrackUpdate via
+// ITrackResolver.OnTrackChanged.
 //
-// Manager acquisition uses reflection because the project's net8.0-windows
-// TFM does not include WinRT type projection (csproj is outside this
-// brief's locked-list edit set). Pattern matches PS S13 reflection-based
-// approach (tray.ps1:5301-5333).
+// Stage 7.12 Batch B Phase D #1 (deferred from Phase C #4): the original
+// drain mechanism was a `DispatcherTimer` at 16 ms cadence — but Windows
+// WM_TIMER has 15-16 ms granularity, AND DispatcherPriority.Background
+// yields to all UI work, so the actual cadence under load could stretch
+// to 30-50 ms.  Worst-case SMTC-event-to-webhook latency was 16 ms.
 //
-// CANARY re-probe every 30s closes B-022 (mid-session subscription gap):
+// Replaced with a dedicated background `Task.Run` loop that polls the
+// watcher queue at 1 ms cadence (via `Task.Delay(1)` + timeBeginPeriod(1)
+// for true 1 ms resolution).  When events are present, marshals each one
+// to the WPF dispatcher at `DispatcherPriority.Send` (highest interactive
+// priority) so thumbnail extraction on cache-miss can still run on the
+// STA-friendly thread without contending with normal Background work.
+// New worst case: ~1-3 ms drain → marshal → ProcessEvent.
+//
+// Manager acquisition uses WinRT projection (TFM net8.0-windows10.0.19041.0).
+// CANARY re-probe every 30 s closes B-022 (mid-session subscription gap):
 // if SMTCWatcher.SessionCount drops to 0 while Watch.LastEventUtc is
-// stale (>30s), re-fetch sessions to force re-subscription.
+// stale (>30 s), re-fetch sessions to force re-subscription.
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Windows;
 using System.Windows.Threading;
 using MasterFM.SMTC;
 using MastersFM.Tray.Services;
@@ -28,10 +38,11 @@ namespace MastersFM.Tray.Detectors;
 
 public sealed class SmtcEventBridge : IDisposable
 {
-    // Stage 7.12 Batch B (real-time sync): 100 ms → 16 ms (~one frame at 60 Hz,
-    // the practical floor for WPF DispatcherTimer).  Drain cost is negligible
-    // (one TryDequeue + a few field reads) so running it every frame is fine.
-    private const int DrainCadenceMs = 16;
+    // Stage 7.12 Batch B Phase D #1: drain at 1 ms via background Task (was
+    // 16 ms DispatcherTimer).  Real cadence depends on Windows timer
+    // resolution — see App.xaml.cs which calls timeBeginPeriod(1) on startup
+    // to lower it from the default 15.6 ms to 1 ms.
+    private const int DrainDelayMs = 1;
     private const int CanaryCadenceMs = 30000;
     private const string Component = "Detect-SMTC";
 
@@ -41,7 +52,8 @@ public sealed class SmtcEventBridge : IDisposable
     private readonly ITrackResolver _resolver;
 
     private SMTCWatcher? _watcher;
-    private DispatcherTimer? _drainTimer;
+    private CancellationTokenSource? _drainCts;
+    private Task? _drainTask;
     private DispatcherTimer? _canaryTimer;
     private object? _manager;
     private bool _started;
@@ -102,13 +114,13 @@ public sealed class SmtcEventBridge : IDisposable
             return;
         }
 
-        // Drain timer (100ms cadence; was 250ms, halved at Stage 7.8B for latency reduction)
-        _drainTimer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(DrainCadenceMs)
-        };
-        _drainTimer.Tick += OnDrainTick;
-        _drainTimer.Start();
+        // Stage 7.12 Batch B Phase D #1: background drain at 1 ms cadence
+        // (was a DispatcherTimer at 16 ms, capped by WM_TIMER granularity).
+        // Snapshot the dispatcher off the calling thread so the background
+        // loop can marshal each event back to STA via InvokeAsync.
+        _drainCts  = new CancellationTokenSource();
+        var dispatcher = Application.Current?.Dispatcher;
+        _drainTask = Task.Run(() => DrainLoopAsync(dispatcher, _drainCts.Token));
 
         // CANARY re-probe (30s cadence; B-022 closure)
         _canaryTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -118,35 +130,70 @@ public sealed class SmtcEventBridge : IDisposable
         _canaryTimer.Tick += OnCanaryTick;
         _canaryTimer.Start();
 
-        _logger.Log("started; drain=250ms canary=30s", Component);
+        _logger.Log($"started; drain={DrainDelayMs}ms (bg-task) canary={CanaryCadenceMs / 1000}s", Component);
     }
 
-    private void OnDrainTick(object? sender, EventArgs e)
+    private async Task DrainLoopAsync(Dispatcher? dispatcher, CancellationToken ct)
     {
-        if (_watcher == null) return;
-        // Stage 7.6 STEP 4.3: time the drain+dispatch cycle for smtc_dispatch_ms P99.
-        var sw = Stopwatch.StartNew();
-        try
+        // Stage 7.12 Batch B Phase D #1: dedicated drain loop.  Polls the
+        // SMTCWatcher's lock-free ConcurrentQueue at 1 ms cadence.  When
+        // events arrive, marshals each to the WPF dispatcher at Send priority
+        // — the STA jump is needed because thumbnail extraction on cache miss
+        // calls into WinRT APIs that have COM affinity, and `ProcessEvent`
+        // also fires events (`ITrackResolver.OnTrackChanged`) whose subscribers
+        // may touch UI.
+        while (!ct.IsCancellationRequested)
         {
-            var events = _watcher.DrainEvents();
-            if (events != null && events.Length > 0)
+            try
             {
-                foreach (var ev in events)
+                var watcher = _watcher;
+                if (watcher == null)
                 {
-                    _telemetry.IncrementCounter("smtc_events");
-                    ProcessEvent(ev);
+                    await Task.Delay(50, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                var events = watcher.DrainEvents();
+                if (events != null && events.Length > 0 && dispatcher != null)
+                {
+                    var sw = Stopwatch.StartNew();
+                    foreach (var ev in events)
+                    {
+                        var local = ev;
+                        _telemetry.IncrementCounter("smtc_events");
+                        // DispatcherPriority.Send = highest interactive priority;
+                        // jumps the queue ahead of normal UI work so a pause
+                        // doesn't wait behind a render frame.
+                        // DispatcherPriority.Normal: same priority as the
+                        // dispatcher's default application work — higher than
+                        // the old Background timer (which yielded to every
+                        // render frame) but below Send so it won't preempt
+                        // an in-flight render and cause UI judder during a
+                        // rapid-scrub event burst.  Net effect: events run
+                        // within ~1 ms of arrival on a normally-idle WPF app.
+                        await dispatcher.InvokeAsync(() =>
+                        {
+                            try { ProcessEvent(local); }
+                            catch (Exception ex)
+                            {
+                                _logger.LogErr("process event", ex, Component);
+                                _telemetry.IncrementCounter("smtc_event_errors");
+                            }
+                        }, DispatcherPriority.Normal, ct);
+                    }
+                    sw.Stop();
+                    _telemetry.RecordTimingMs("smtc_dispatch_ms", sw.Elapsed.TotalMilliseconds);
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogErr("drain tick", ex, Component);
-            _telemetry.IncrementCounter("smtc_event_errors");
-        }
-        finally
-        {
-            sw.Stop();
-            _telemetry.RecordTimingMs("smtc_dispatch_ms", sw.Elapsed.TotalMilliseconds);
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex)
+            {
+                _logger.LogErr("drain loop", ex, Component);
+                _telemetry.IncrementCounter("smtc_event_errors");
+            }
+
+            try { await Task.Delay(DrainDelayMs, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
         }
     }
 
@@ -231,7 +278,9 @@ public sealed class SmtcEventBridge : IDisposable
                 var wallDeltaMs = (nowUtc - prev.ObservedUtc).TotalMilliseconds;
                 var expectedMs  = isPlaying ? wallDeltaMs : 0.0;
                 var jump        = Math.Abs(posDeltaMs - expectedMs);
-                if (jump > 250.0) isSeek = true;
+                // Stage 7.12 Batch B Phase D #4: 250 ms → 100 ms (paired with
+                // TrackResolver's same change — see comments there).
+                if (jump > 100.0) isSeek = true;
             }
             // Always update so the next event has a fresh baseline (even when
             // the current event was a seek — otherwise we'd flag the corrected
@@ -383,7 +432,7 @@ public sealed class SmtcEventBridge : IDisposable
 
     public void Stop()
     {
-        try { _drainTimer?.Stop(); } catch { }
+        try { _drainCts?.Cancel(); } catch { }
         try { _canaryTimer?.Stop(); } catch { }
         _logger.Log("stopped", Component);
     }
@@ -393,6 +442,12 @@ public sealed class SmtcEventBridge : IDisposable
         if (_disposed) return;
         _disposed = true;
         Stop();
+        // Best-effort wait for the background drain to settle; don't block
+        // dispose indefinitely if something hangs (it shouldn't, but defensive).
+        try { _drainTask?.Wait(TimeSpan.FromMilliseconds(500)); } catch { }
+        try { _drainCts?.Dispose(); } catch { }
+        _drainCts = null;
+        _drainTask = null;
         try { _watcher?.Dispose(); } catch { }
         _watcher = null;
         _manager = null;

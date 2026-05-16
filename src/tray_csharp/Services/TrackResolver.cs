@@ -86,11 +86,13 @@ public sealed class TrackResolver : ITrackResolver
                         var posDeltaMs  = (update.Position.Value - prev.Position.Value).TotalMilliseconds;
                         var wallDeltaMs = (update.ObservedUtc - prev.ObservedUtc).TotalMilliseconds;
                         var expectedMs  = update.IsPlaying ? wallDeltaMs : 0.0;
-                        // Seek = position jumped > 250 ms in either direction relative
-                        // to what wall-clock advance would predict (250 ms tolerates
-                        // normal poll jitter; a real human scrub overshoots by seconds).
+                        // Stage 7.12 Batch B Phase D #4: 250 ms → 100 ms.  With
+                        // the 50 ms heartbeat (Phase D #3) the wall-clock delta
+                        // between adjacent updates is small enough that 100 ms
+                        // of unexplained drift is genuinely a scrub.  Catches
+                        // 100-200 ms in-bar scrubs that 250 ms missed.
                         var jump = Math.Abs(posDeltaMs - expectedMs);
-                        if (jump > 250.0) stateChanged = true;
+                        if (jump > 100.0) stateChanged = true;
                     }
                 }
                 _current = update;

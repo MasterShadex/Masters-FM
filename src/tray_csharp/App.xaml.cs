@@ -5,6 +5,7 @@
 
 using System.Net.Http;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -21,6 +22,23 @@ namespace MastersFM.Tray;
 public partial class App : Application
 {
     private const string MutexName = @"Global\MastersFM_SingleInstance";
+
+    // Stage 7.12 Batch B Phase D #2: lift Windows system timer resolution
+    // from the default 15.6 ms down to 1 ms.  Without this, `Task.Delay(1)`
+    // in the SMTC bridge (Phase D #1) and the 50 ms heartbeat (Phase D #3)
+    // would actually fire every 15.6 ms — the SMTC drain would be no better
+    // than before.  Modern media apps (Discord, Spotify, web browsers) all
+    // call timeBeginPeriod(1) for the same reason.  Cost is ~0.05 % extra
+    // OS interrupts; we already idle at 0.1 % CPU.
+    //
+    // Always paired with timeEndPeriod(1) in OnExit so we don't leave the
+    // system timer raised after process death (Win10+ auto-cleans on
+    // process exit anyway, but be explicit).
+    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint uPeriod);
+    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint uPeriod);
+    private bool _highResTimerSet;
 
     private IServiceProvider? _services;
     private Mutex? _singleInstanceMutex;
@@ -47,6 +65,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Stage 7.12 Batch B Phase D #2: high-resolution OS timer.  MUST be
+        // the first thing in OnStartup so all downstream timer-based code
+        // (DispatcherTimer, Task.Delay, Thread.Sleep) gets 1 ms granularity.
+        try
+        {
+            if (TimeBeginPeriod(1) == 0) _highResTimerSet = true;
+        }
+        catch { /* winmm.dll unavailable — fall back to default 15.6 ms */ }
+
         // Pre-DI bootstrap logging via static fallback (Logger.EarlyLog).
         Logger.EarlyLog("Application.OnStartup begin");
         Logger.EarlyLog($"PID={Environment.ProcessId} OS={Environment.OSVersion.VersionString} CLR={Environment.Version}");
@@ -502,6 +529,15 @@ public partial class App : Application
         catch (Exception ex)
         {
             _logger?.LogErr("Single-instance mutex release", ex, "Bootstrap");
+        }
+
+        // Stage 7.12 Batch B Phase D #2: undo high-resolution timer.  Windows 10+
+        // auto-cleans on process exit, but be explicit so we don't leave the
+        // global timer raised if the process somehow lingers.
+        if (_highResTimerSet)
+        {
+            try { TimeEndPeriod(1); } catch { }
+            _highResTimerSet = false;
         }
 
         _logger?.Log($"Application.OnExit completed; exit code = {e.ApplicationExitCode}", "Bootstrap");
