@@ -495,6 +495,37 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase Q — B10 backward correction disabled for ALL sources (was browser-only)
+Operator: "the youtube progress bar is fixed now, but now i have the same issue on soundcloud. so most likely all other platforms as well. fix that for me"
+
+Phase M #3A scoped the disable of B10 backward correction to browser-like sources only (youtube / youtubemusic / browser / twitch) under the assumption that desktop sources reliably reported position.  Empirically wrong: SoundCloud-RPC is an Electron/Chromium wrapper around the SoundCloud web player, so it has the **exact same stale-MediaSession bug** Chrome has on YouTube — its MediaSession integration stops calling `setPositionState` after the initial publication, and Chrome forwards the frozen `TimelineProperties.Position` to SMTC for the rest of the track.
+
+Confirmed in the log before the fix:
+```
+[04:02:37] Sync bwd [soundcloud]: overlay 30s ahead (extreme) -> resynced to 169s
+[04:03:07] Sync bwd [soundcloud]: overlay 30s ahead (extreme) -> resynced to 169s
+[04:03:37] Sync bwd [soundcloud]: overlay 30s ahead (extreme) -> resynced to 169s
+[04:04:07] Sync bwd [soundcloud]: overlay 30s ahead (extreme) -> resynced to 169s
+```
+
+Identical 30-second sawtooth, identical "frozen at 169s, snap back, advance 30s, snap back" pattern.
+
+#### Fix
+Deleted the B10 backward branch entirely (was `else if (signedDrift < -30000 && !IsBrowserLikeSource(source))` in WebhookHandler).  The whole branch is gone — replaced by a comment explaining why the safety net was removed.
+
+The branch was originally a defensive snap-back for cases where the overlay had "somehow gotten 30+ seconds ahead of the source's reported position".  Empirically the dominant cause of that situation is the source itself reporting a stale position (not the overlay being wrong) — and the snap-back made things visibly worse.  Real user-driven backward seeks still work via the B7 path (IsSeek flag from bridge or heartbeat, magnitude-agnostic).
+
+#### Why globally and not just adding SoundCloud
+The operator's instinct was right: "most likely all other platforms as well".  Any MediaSession-via-SMTC integration that stops calling setPositionState mid-track will exhibit the same bug.  That covers a huge surface area: every Electron app that wraps a web player, every browser tab on a website that doesn't keep its MediaSession metadata fresh, every desktop app that hands off to a web view.  Whack-a-moling per-platform leaves us chasing each new wrapper as it appears.
+
+#### Forward correction unchanged
+`signedDrift > 4000` (overlay BEHIND the reported position) still fires — that's the legitimate "source resumed from a long pause" case where the reported position is genuinely the source of truth.  Different problem, kept.
+
+#### Verified live
+35-second window post-redeploy with SoundCloud playing: **zero `Sync bwd` events**.  Operator's currently-playing PlayTime / BURNOUT track advances cleanly via wall-clock without the 30-second snap-back.
+
+Files: `src/server_dotnet/WebhookHandler.cs` (deleted backward branch + comment).
+
 ### Phase P — Spectrum visualizer data freshness (8 ms → 1 ms FFT floor)
 Operator: "the visualizer should just be close to 0ms when i hear beats that have to match for the visualizer."
 

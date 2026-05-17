@@ -385,34 +385,34 @@ internal static class WebhookHandler
                                 "Sync fwd [{Source}]: overlay {DriftS}s behind -> resynced to {PosS}s",
                                 source, Math.Round(signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
                         }
-                        else if (signedDrift < -30000 && !IsBrowserLikeSource(source))
-                        {
-                            // Phase M #3A: backward correction disabled for
-                            // browser sources.  Chrome's SMTC TimelineProperties.
-                            // Position freezes on some YouTube videos (the
-                            // player stops calling setPositionState while
-                            // playback continues), so the WEBHOOK keeps
-                            // reporting a stale positionMs while the overlay
-                            // legitimately advances via (now − startedAt).
-                            // signedDrift hits −30 000 exactly every 30 s and
-                            // the previous code snapped the overlay back to
-                            // the stale value — a visible 30-second sawtooth.
-                            //
-                            // Real user-driven backward seeks still get
-                            // detected through the bridge / heartbeat IsSeek
-                            // flag (B7 path) which doesn't care about
-                            // signedDrift magnitude — so we don't lose
-                            // legitimate seek handling.  For desktop sources
-                            // (Spotify, SoundCloud-RPC, etc.) where position
-                            // reporting is reliable, B10 backward stays
-                            // enabled exactly as before.
-                            ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
-                            ct2Dirty = true;
-                            state.LastStartedAtUpdateMs = nowMs;
-                            logger.LogInformation(
-                                "Sync bwd [{Source}]: overlay {DriftS}s ahead (extreme) -> resynced to {PosS}s",
-                                source, Math.Round(-signedDrift / 1000.0), Math.Round(positionMs / 1000.0));
-                        }
+                        // Phase Q (2026-05-17): B10 backward correction
+                        // disabled for ALL sources, not just browser-like.
+                        // Phase M #3A originally scoped this to
+                        // youtube/youtubemusic/browser/twitch with the
+                        // assumption that desktop sources (Spotify desktop,
+                        // SoundCloud-RPC, Apple Music, etc.) reliably
+                        // reported position.  Empirically wrong:
+                        // SoundCloud-RPC is an Electron/Chromium wrapper
+                        // around the SoundCloud web player; it has the
+                        // exact same stale-MediaSession bug Chrome has on
+                        // certain YouTube videos.  Confirmed in the log
+                        // with `Sync bwd [soundcloud]` events firing every
+                        // 30 s, identical sawtooth pattern.
+                        //
+                        // Real user-driven backward seeks are detected via
+                        // the bridge / heartbeat IsSeek flag (B7 path)
+                        // which doesn't care about signedDrift magnitude.
+                        // So legitimate backward seeks still resync
+                        // startedAt — we just don't snap the overlay back
+                        // to a stale reported position any more.
+                        //
+                        // The branch is deleted entirely rather than kept
+                        // with a "never fires" guard so future readers
+                        // don't think the safety net still exists.
+                        // (Forward correction `signedDrift > 4000` stays —
+                        // that handles legitimate "source resumed from a
+                        // long pause" cases where the reported position is
+                        // genuinely ahead of the overlay's compute.)
                     }
                 }
 
