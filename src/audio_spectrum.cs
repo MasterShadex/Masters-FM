@@ -1,4 +1,4 @@
-// audio_spectrum.cs - Master's FM multi-backend spectrum server (v5.3.0)
+// audio_spectrum.cs - Master's FM multi-backend spectrum server (v7.5.0)
 // Compiles to audio_spectrum.exe.  Captures audio via the user's choice
 // of WASAPI Loopback / WASAPI Input / MME / ASIO, runs a 2048-point FFT,
 // groups bins into 120 log-spaced bands, and serves them as Server-Sent
@@ -51,8 +51,8 @@ using NAudio.Wave;
 [assembly: AssemblyDescription("Master's FM multi-backend spectrum provider (WASAPI/MME/KS/ASIO)")]
 [assembly: AssemblyProduct("Master's FM")]
 [assembly: AssemblyCompany("MasterShadex")]
-[assembly: AssemblyVersion("5.3.0.0")]
-[assembly: AssemblyFileVersion("5.3.0.0")]
+[assembly: AssemblyVersion("7.5.0.0")]
+[assembly: AssemblyFileVersion("7.5.0.0")]
 
 class AudioSpectrum
 {
@@ -86,7 +86,18 @@ class AudioSpectrum
     // the most recent "this is great" moment per the user. Pairs
     // with HOP_SIZE=8 (default) for a 42 ms integration window and
     // 0.17 ms cadence. v6.7.1's FFT=8192 was too big a jump back.
-    const int FFT_SIZE = 2048;
+    // Stage 7.12 Batch B Phase S Finding A1: FFT_SIZE 2048 → 1024.
+    // Halves the Hann window's wall-clock center latency from ~21 ms
+    // (FFT_SIZE/2/SR @ 48 kHz) to ~10.7 ms. Bin spacing doubles
+    // from 23.4 Hz to 46.9 Hz — sub-bin band interpolation at
+    // line ~1810 handles low-frequency bands cleanly so the visible
+    // effect is minor. REF_MAG is bumped from 112 → 158 below
+    // (multiplied by ~sqrt(2)) to compensate for the per-bin
+    // energy doubling when binning into log-spaced bands; sqrt(2)
+    // because magnitude scales with sqrt(bin_width) for broadband
+    // content. Per-FFT compute drops ~2x (1024-pt RFFT is ~half
+    // the work of 2048-pt) so this is net negative CPU cost.
+    const int FFT_SIZE = 1024;
     // v8.2.8: FFT_SIZE - 1, used as a bitmask for circular-buffer wraparound.
     // Was a const local in DoFftAndPublish; promoted to class scope so the
     // OnData per-sample loop can also use it (`writePos = (writePos + 1) & FFT_MASK`
@@ -275,6 +286,19 @@ class AudioSpectrum
     // bars. The compressor + clamp downstream prevents loud audio from
     // blowing past 100 %, so the slider can be cranked safely.
     static float s_sensitivity = 1.0f;
+
+    // Stage 7.12 Batch B Phase R: MME (waveIn) buffer parameters used by
+    // OpenCaptureForBackend's "mme" case. Defaults are the low-latency
+    // 10 ms x 4 buffers config. If the StartCapture watchdog sees the
+    // MME backend stop unexpectedly within 30 s of starting, it bumps
+    // these to 25 ms x 3 (75 ms total) for the rest of the session so
+    // the user gets degraded-but-functional audio instead of a cold
+    // fallback to a different backend they didn't pick.
+    static volatile int s_mmeBufferMs       = 10;
+    static volatile int s_mmeBufferCount    = 4;
+    // Watchdog state: timestamp of last MME backend start. Used by the
+    // capture thread to detect "started, but died within 30 s" failures.
+    static System.DateTime s_mmeStartedAt   = System.DateTime.MinValue;
 
     // Device-selection state. When the user picks a different audio device
     // via the tray dialog, the tray POSTs /set-device with the endpoint ID
@@ -504,7 +528,12 @@ class AudioSpectrum
                     catch (Exception exDef) { Log("wasapi_input: default-endpoint lookup failed: " + exDef.Message); }
                 }
                 if (dev == null) throw new Exception("No active input endpoint available for WASAPI capture.");
-                var cap = new WasapiCapture(dev, true, 50);  // shared mode, 50ms buffer
+                // Stage 7.12 Batch B Phase R: 50 ms → 5 ms requested. The
+                // engine clamps to its real shared period (~7-10 ms on
+                // Win10/11) but we get the floor instead of paying 50 ms.
+                // useEventSync=true → AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                // tighter jitter than the polling default.
+                var cap = new WasapiCapture(dev, true, 5);
                 return new CaptureOpen {
                     Capture    = cap,
                     Display    = dev.FriendlyName + " (WASAPI Input)",
@@ -568,13 +597,28 @@ class AudioSpectrum
                 }
                 // Prefer 48 kHz 16-bit stereo - widely supported and
                 // matches the native format most virtual cables emit.
-                // 50 ms buffer is small enough to feel responsive without
-                // shredding CPU with tiny wave headers.
+                //
+                // Stage 7.12 Batch B Phase R: BufferMilliseconds 50 → 10
+                // and NumberOfBuffers default(3) → 4. That cuts the
+                // typical MME latency from ~50 ms to ~10 ms while keeping
+                // 40 ms of buffer headroom for OS scheduling jitter
+                // (a single ~16 ms thread-tick stall on a 2-buffer config
+                // = guaranteed underrun → silence; 4 buffers absorbs it).
+                // If the runtime watchdog in StartCapture sees repeated
+                // RecordingStopped events on MME within 30 s, it bumps us
+                // to 25 ms x 3 buffers (75 ms total) for resilience.
                 var mme = new WaveInEvent {
-                    DeviceNumber      = idx,
-                    WaveFormat        = new WaveFormat(48000, 16, 2),
-                    BufferMilliseconds = 50
+                    DeviceNumber       = idx,
+                    WaveFormat         = new WaveFormat(48000, 16, 2),
+                    BufferMilliseconds = s_mmeBufferMs,
+                    NumberOfBuffers    = s_mmeBufferCount
                 };
+                // Watchdog tracking — note when this MME session armed.
+                // The capture loop uses this to detect "started fine,
+                // died within 30 s" patterns that indicate underrun.
+                s_mmeStartedAt = System.DateTime.UtcNow;
+                Log(string.Format("MME open: BufferMilliseconds={0} NumberOfBuffers={1} (worst-case {2} ms latency)",
+                    s_mmeBufferMs, s_mmeBufferCount, s_mmeBufferMs * s_mmeBufferCount));
                 string devName;
                 try { devName = idx >= 0 ? WaveInEvent.GetCapabilities(idx).ProductName : "Wave Mapper (default MME input)"; }
                 catch { devName = "MME device #" + idx; }
@@ -637,17 +681,29 @@ class AudioSpectrum
                 // Default path - captures the output mix of any render
                 // endpoint via AUDCLNT_STREAMFLAGS_LOOPBACK.
                 MMDevice dev = ResolveTargetDevice(DataFlow.Render);
-                // v6.6.4: reverted to 1-arg WasapiLoopbackCapture
-                // constructor. The (dev, true, N) overload doesn't
-                // exist in our bundled NAudio.Wasapi.dll — the build
-                // silently failed since v6.5.7, so every latency win
-                // we shipped between then and now was a LIE (old
-                // audio_spectrum.exe kept running). WasapiLoopback in
-                // shared mode has a fixed ~10 ms engine period on
-                // Windows anyway; the buffer arg was only going to
-                // shave 0-5 ms at best.
+                // Stage 7.12 Batch B Phase R (2026-05-17): use the
+                // FastLoopbackCapture subclass (defined at end of file)
+                // because NAudio's stock WasapiLoopbackCapture only has
+                // 1-arg / 0-arg constructors — its 3-arg form (which
+                // would let us pass useEventSync and a small buffer
+                // request) was never inherited. FastLoopbackCapture is
+                // a 10-line WasapiCapture subclass that re-adds the
+                // AUDCLNT_STREAMFLAGS_LOOPBACK flag and forwards the
+                // buffer-ms request to the engine.
+                //
+                // The 5 ms request gets clamped by the engine to its
+                // actual shared period (~7-10 ms on Win10/11). With
+                // useEventSync=true we use AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                // instead of polling, eliminating the ~5-15 ms timer-
+                // driven wake-up jitter the old 1-arg ctor had.
+                //
+                // Net: ~10 ms → ~7-8 ms typical, with much tighter
+                // jitter floor. Loopback can't go lower in user mode
+                // because IAudioClient3::InitializeSharedAudioStream
+                // does not support AUDCLNT_STREAMFLAGS_LOOPBACK (Microsoft
+                // confirmed — see md/research_1_naudio_low_level.md).
                 IWaveIn cap = dev != null
-                    ? (IWaveIn)new WasapiLoopbackCapture(dev)
+                    ? (IWaveIn)new FastLoopbackCapture(dev, 5)
                     : new WasapiLoopbackCapture();
                 return new CaptureOpen {
                     Capture    = cap,
@@ -659,6 +715,20 @@ class AudioSpectrum
             }
         }
     }
+
+    // Stage 7.12 Batch B Phase R: MMCSS Pro Audio attach. Bumps the
+    // capture thread's scheduling priority via the AvRT subsystem so
+    // its wake-up jitter drops from ~16 ms (default thread tick) to
+    // ~1 ms guaranteed. This matters most for shared-mode WASAPI
+    // where the engine signals us via AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+    // at the engine period (~10 ms) — if we sleep past that signal
+    // we miss frames. Pro Audio task class is what Steinberg / FL /
+    // Reaper use for their audio threads.
+    [System.Runtime.InteropServices.DllImport("avrt.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    static extern System.IntPtr AvSetMmThreadCharacteristicsW(string taskName, ref uint taskIndex);
+    [System.Runtime.InteropServices.DllImport("avrt.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    static extern bool AvRevertMmThreadCharacteristics(System.IntPtr handle);
 
     static void StartCapture()
     {
@@ -672,6 +742,27 @@ class AudioSpectrum
         const int FAIL_THRESHOLD = 3;
         Thread t = new Thread(() =>
         {
+            // Stage 7.12 Batch B Phase R: attach this thread to the
+            // MMCSS "Pro Audio" task class. Tighter scheduling = lower
+            // tail-latency jitter on every backend that uses event-
+            // driven WASAPI or callback-driven waveIn. ASIO threads
+            // are owned by the driver and are MMCSS-elevated by it
+            // already, so this attach mainly benefits WASAPI / MME.
+            System.IntPtr mmcss = System.IntPtr.Zero;
+            try
+            {
+                uint taskIdx = 0;
+                mmcss = AvSetMmThreadCharacteristicsW("Pro Audio", ref taskIdx);
+                if (mmcss != System.IntPtr.Zero)
+                    Log(string.Format("capture thread attached to MMCSS Pro Audio (taskIndex={0})", taskIdx));
+                else
+                    Log("MMCSS Pro Audio attach returned null (non-fatal; running at normal priority)");
+            }
+            catch (System.Exception mmEx)
+            {
+                Log("MMCSS attach threw: " + mmEx.Message + " (non-fatal)");
+            }
+
             string lastBackend = "";
             int failCountOnBackend = 0;
             while (true)
@@ -841,6 +932,31 @@ class AudioSpectrum
                         if (stopEx != null && !s_deviceChangeEvent.IsSet)
                         {
                             failCountOnBackend++;
+
+                            // Stage 7.12 Batch B Phase R: MME watchdog.
+                            // If MME just died < 30 s after starting AND we're
+                            // still on the aggressive low-latency 10×4 config,
+                            // bump to a defensive 25×3 (75 ms worst-case) for
+                            // the rest of the process lifetime. That keeps
+                            // the user on MME (their choice) but in a stable
+                            // mode instead of cold-falling to loopback.
+                            if (s_currentBackend == "mme"
+                                && s_mmeBufferMs <= 10
+                                && s_mmeStartedAt != System.DateTime.MinValue
+                                && (System.DateTime.UtcNow - s_mmeStartedAt).TotalSeconds < 30.0)
+                            {
+                                Log(string.Format(
+                                    "MME watchdog: died after {0:F1}s on {1} ms × {2} buffers → bumping to 25 ms × 3 for resilience",
+                                    (System.DateTime.UtcNow - s_mmeStartedAt).TotalSeconds,
+                                    s_mmeBufferMs, s_mmeBufferCount));
+                                s_mmeBufferMs    = 25;
+                                s_mmeBufferCount = 3;
+                                // Don't tally this as a fail strike — we're
+                                // going to retry the same backend with safer
+                                // params, not give up.
+                                failCountOnBackend = System.Math.Max(0, failCountOnBackend - 1);
+                            }
+
                             if (s_currentBackend != "wasapi_loopback" && failCountOnBackend >= FAIL_THRESHOLD)
                             {
                                 Log(string.Format(
@@ -896,14 +1012,20 @@ class AudioSpectrum
         // v9.1.0: boost capture thread priority. The audio capture loop is
         // latency-sensitive — when other processes peg the CPU (game
         // launches, browser warmup, etc.), the OS can preempt this thread
-        // and the spectrum stutters. AboveNormal priority asks the Windows
-        // scheduler to favor it, reducing variance under load. Not
-        // Highest — that would risk starving normal-priority work on
-        // single-core scenarios. AboveNormal is the safe, well-known
-        // answer for "audio thread that must keep up with sample timing".
+        // and the spectrum stutters.
+        //
+        // Stage 7.12 Batch B Phase R: bumped AboveNormal → Highest. The
+        // capture thread is now MMCSS Pro Audio attached as well, so the
+        // managed priority and the AvRT scheduling class compose — both
+        // are needed because MMCSS controls SCHEDULING but not preemption
+        // by same-priority threads, and managed Highest controls
+        // preemption ordering inside the .NET runtime.
+        // Real-time priority is still avoided (it can starve OS audio
+        // service threads on single-core machines — verified painful in
+        // earlier audio_spectrum experiments).
         try {
-            t.Priority = ThreadPriority.AboveNormal;
-            Log("capture thread: priority=AboveNormal (v9.1.0)");
+            t.Priority = ThreadPriority.Highest;
+            Log("capture thread: priority=Highest + MMCSS Pro Audio (Stage 7.12 Phase R)");
         } catch (Exception exPri) {
             Log("capture thread: failed to set priority: " + exPri.Message);
         }
@@ -1058,6 +1180,17 @@ class AudioSpectrum
                             s_peakRollupAt   = System.DateTime.Now.AddSeconds(3);
                         }
 
+                        // Stage 7.12 Batch B Phase S Finding M REVERTED (2026-05-17):
+                        // the burst-skip optimization caused 0 frames to be
+                        // published in production. The math checked out in
+                        // analysis but something in the per-OnData state
+                        // didn't behave as expected (likely samplesSinceFft
+                        // carry-over from previous OnData putting the LAST
+                        // trigger position somewhere my framesRemaining
+                        // calculation didn't catch). Reverted to publishing
+                        // on every trigger. CPU "savings" not worth the
+                        // visualizer being broken. Will revisit with proper
+                        // instrumentation if CPU becomes a concern.
                         if (s_activeClients > 0)
                         {
                             // DoFftAndPublish reads s_writePos directly (start =
@@ -1413,13 +1546,28 @@ class AudioSpectrum
         if (s_bandGammaLut != null) return;
         // Mirrors the per-band gamma computation in DoFftAndPublish:
         //   const int    GAMMA_RAMP_END = 150;
-        //   const double LOW_GAMMA  = 1.3;
-        //   const double HIGH_GAMMA = 0.8;        // = OUTPUT_GAMMA
+        //   const double LOW_GAMMA  = 0.5;   // Phase T.5 (was 1.3)
+        //   const double HIGH_GAMMA = 0.5;   // Phase T.5 (was 0.8 = OUTPUT_GAMMA)
         //   gamma_b = HIGH_GAMMA;
         //   if (b < GAMMA_RAMP_END) gamma_b = LOW_GAMMA + (HIGH_GAMMA - LOW_GAMMA) * (b / GAMMA_RAMP_END);
+        //
+        // Phase T.5 (2026-05-17 — operator: "default not vulnerable enough
+        // to quiet audio; friends play games with music low in background
+        // and visualizer detects almost nothing"). The old 1.3 LOW_GAMMA
+        // COMPRESSED bass at low magnitudes — pow(x, 1.3) maps 0.10 → 0.05,
+        // 0.20 → 0.13. Quiet bass got SHRUNK to near-zero on top of the
+        // bass transient expander's separate 25% sustained-shrink. Net at
+        // low volume + band 0: bar at ~1% (invisible).
+        //
+        // New: 0.5 (sqrt curve) EXPANDS small values aggressively:
+        //   0.10 → 0.32, 0.20 → 0.45, 0.50 → 0.71, 0.95 → 0.97
+        // Quiet audio gets ~3-5x boost. Loud audio mostly unchanged
+        // (already near 1.0). Kick punch at high volume preserved
+        // because the bass transient expander excess term scales the
+        // same way regardless of gamma shape.
         const int    GAMMA_RAMP_END = 150;
-        const double LOW_GAMMA      = 1.3;
-        const double HIGH_GAMMA     = 0.8;
+        const double LOW_GAMMA      = 1.3;   // Phase T.10 REVERT — back to pre-Phase-T.5 original
+        const double HIGH_GAMMA     = 0.8;   // Phase T.10 REVERT — back to pre-Phase-T.5 original
         var lut = new float[BAND_COUNT * 256];
         for (int b = 0; b < BAND_COUNT; b++)
         {
@@ -1489,8 +1637,11 @@ class AudioSpectrum
             s_bandFCenter[b] = fC;
             s_bandTiltLin[b] = Math.Pow(10.0, tiltDb / 20.0);
             // v8.3.7: precomputed combined factor for the per-FFT hot loop.
-            // REF_MAG must match the constant in DoFftAndPublish (112.0).
-            s_bandScaleOverRef[b] = s_bandTiltLin[b] / 112.0;
+            // REF_MAG must match the constant in DoFftAndPublish.
+            // Phase S A1: 112 → 158 (sqrt(2) scaling for FFT_SIZE 2048→1024).
+            // Phase T.14 REVERT (2026-05-17 — operator: revert to Phase T.1 state):
+            //   200 → 158. Back to original sqrt(2) scaling.
+            s_bandScaleOverRef[b] = s_bandTiltLin[b] / 158.0;
             bool subBin = (f1 - f0) < binHz * 1.2;
             s_bandIsSubBin[b] = subBin;
             if (subBin)
@@ -1524,7 +1675,19 @@ class AudioSpectrum
     // felt subtly different — user said "too fast at current lowest
     // speed" after the slider didn't propagate. Fixed constants were
     // what users approved at v6.6.8.
-    const float ENV_ATTACK = 0.85f;
+    //
+    // Stage 7.12 Batch B Phase S (2026-05-17) — Finding G: ENV_ATTACK
+    // bumped 0.85 → 1.0 (truly instant rise). The 0.85 constant was
+    // tuned for the OLD HOP_SIZE=512 (~10.7 ms) cadence where 0.85
+    // attack meant ~57% in 10 ms. At our current 1-ms FFT cadence
+    // (Phase P), the same constant just lopped 15% off the first
+    // peak frame then converged in 3 ms — essentially dead weight.
+    // The CLIENT (overlay.html:3438) already has rise-instant logic
+    // — `(tgt >= cur) ? tgt : ...` — so the server smoother was
+    // doing nothing useful on rise. Fall path stays at 0.28 (with
+    // 1.6x bass scaling) because the client only does exponential
+    // decay on fall.
+    const float ENV_ATTACK = 1.0f;   // instant rise (Phase S Finding G)
     const float ENV_DECAY  = 0.28f;
 
     // Called when the silence gate fires — pulls the envelope toward zero
@@ -1604,7 +1767,7 @@ class AudioSpectrum
             bool allZero = true;
             for (int b = 0; b < BAND_COUNT; b++)
             {
-                s_baseline[b] *= 0.96f;       // matches BASELINE_DECAY
+                s_baseline[b] *= 0.99744f;    // matches BASELINE_DECAY (Phase T fix)
                 s_env[b]      *= 0.72f;       // matches the typical fall α at silence
                 if (s_env[b] < 0.5f) s_env[b] = 0f;
                 int v = (int)s_env[b];
@@ -1825,7 +1988,7 @@ class AudioSpectrum
             // the knee starts (sustained content stays unaffected — that lives
             // below KNEE_T in the linear range).
             const double KNEE_R      = 1.6;
-            const double OUTPUT_GAMMA = 0.8;
+            const double OUTPUT_GAMMA = 0.8;   // Phase T.10 REVERT — back to pre-Phase-T.5 original
             // v8.3.7: precomputed `s_bandScaleOverRef[b] = tiltLin[b] / REF_MAG`
             // collapses the previous 3-op chain (mul + mul + div) into 2 muls.
             // v6.9.3 sensitivity slider behaviour preserved exactly — applied
@@ -1863,7 +2026,7 @@ class AudioSpectrum
                 s_targets[b] = s_bandGammaLut[b * 256 + q];
             } else {
                 const int    GAMMA_RAMP_END = 150;
-                const double LOW_GAMMA      = 1.3;
+                const double LOW_GAMMA      = 1.3;   // Phase T.10 REVERT — back to pre-Phase-T.5 original
                 const double HIGH_GAMMA     = OUTPUT_GAMMA;
                 double gamma_b = HIGH_GAMMA;
                 if (b < GAMMA_RAMP_END) {
@@ -1887,6 +2050,7 @@ class AudioSpectrum
         // tapers from MAX_SHARPNESS at band 0 to 0 at LOW_SHARP_END
         // so the transition into the mid-band region is invisible.
         const int   LOW_SHARP_END = 150;
+        // Phase T.10 REVERT (2026-05-17): 0.4 → 0.7. Original Phase T.2 value.
         const float MAX_SHARPNESS = 0.7f;
         for (int b = 0; b < LOW_SHARP_END; b++)
         {
@@ -1919,14 +2083,32 @@ class AudioSpectrum
         // Effect tapers from full at band 0 to 0 by band 100 so it
         // doesn't disturb the rest of the spectrum.
         const int   TX_END           = 100;
-        const float BASELINE_DECAY   = 0.96f;   // ~25 FFT half-life @ 93 Hz = ~270 ms
+        // Stage 7.12 Batch B Phase T (2026-05-17 Research #4 Issue 1):
+        // 0.96 → 0.99744. The 0.96 constant was tuned when FFT cadence
+        // was ~93 Hz (HOP_SIZE=512) — that gave a ~270 ms baseline
+        // half-life, the design intent for the bass transient expander.
+        // Phase P (earlier this week) cut FFT cadence to ~1000 Hz
+        // (FFT_MIN_STRIDE=48 → 1 ms/FFT). With the OLD 0.96 constant at
+        // 1000 FFT/sec the baseline half-life collapsed to ~17 ms —
+        // less than half a kick's duration. The EMA absorbed kicks
+        // INTO the baseline before they finished, so `excess =
+        // s_targets[b] - s_baseline[b] ≈ 0`, `TRANSIENT_BOOST × 0 = 0`,
+        // and `reshaped = s_baseline × 0.25` — actively suppressing
+        // kicks below the raw target. Result: basslines stayed at
+        // 40-60% (correct) but kicks lost their visible punch.
+        //
+        // New value: log(0.5) / log(0.99744) ≈ 270 FFTs @ 1 kHz = ~270 ms
+        // half-life. Restores original design intent at current cadence.
+        const float BASELINE_DECAY   = 0.99744f; // ~270 FFT half-life @ 1000 Hz = ~270 ms (Phase T fix)
         // v7.0.7: SUSTAINED_KEEP 0.20 → 0.25 (+2 dB on sustained basslines).
         // v7.0.6 dropped the original 0.35 by 5 dB to 0.20 — user said that
         // pushed sustained content too low, so adding 2 dB back puts the net
         // change at −3 dB from the v7.0.5 baseline. Linear factor 10^(2/20)
         // = 1.26 applied to 0.20 gives 0.25. Kicks/punches above the
         // baseline are unaffected — those go through TRANSIENT_BOOST.
+        // Phase T.10 REVERT (2026-05-17): 0.35 → 0.25. Original Phase T.2 value.
         const float SUSTAINED_KEEP   = 0.25f;
+        // Phase T.14 REVERT (2026-05-17): 5.0 → 2.0. Back to Phase T.1 value.
         const float TRANSIENT_BOOST  = 2.0f;
         for (int b = 0; b < TX_END; b++)
         {
@@ -2610,6 +2792,34 @@ class AudioSpectrum
                 ctx.Response.Headers["Cache-Control"]      = "no-cache, no-transform";
                 ctx.Response.Headers["Connection"]         = "keep-alive";
                 ctx.Response.Headers["X-Accel-Buffering"]  = "no";
+                // Stage 7.12 Batch B Phase S Finding C REVERTED (2026-05-17):
+                // ctx.Response.SendChunked = false caused HttpListener to
+                // hang waiting for a Content-Length that never gets set
+                // on a streaming SSE response. Headers never went out →
+                // no frames delivered. The ~1 ms localhost-coalescing
+                // saving wasn't worth the visualizer being broken. The
+                // default chunked-transfer behavior is correct for SSE.
+                // Stage 7.12 Batch B Phase S Finding J: MMCSS-attach this
+                // SSE serving thread to "Pro Audio". Default HttpListener
+                // worker priority can be preempted ~16 ms under heavy
+                // CPU load (game / encoder / etc.). Capture thread is
+                // already Pro Audio attached (Phase R) — without this
+                // SSE thread also being Pro Audio, the audio path is
+                // fast but the delivery thread starves when a stream
+                // encoder is running. This protects the OPERATOR'S
+                // primary use case (live streaming).
+                uint sseTaskIdx = 0;
+                System.IntPtr sseMmcss = System.IntPtr.Zero;
+                try
+                {
+                    sseMmcss = AvSetMmThreadCharacteristicsW("Pro Audio", ref sseTaskIdx);
+                    if (sseMmcss != System.IntPtr.Zero)
+                        Log(string.Format("SSE thread attached to MMCSS Pro Audio (taskIndex={0})", sseTaskIdx));
+                }
+                catch (System.Exception mmEx)
+                {
+                    Log("SSE MMCSS attach threw: " + mmEx.Message + " (non-fatal)");
+                }
                 // Fire frames at ~30 fps — the overlay interpolates every
                 // rAF tick so visually it's 60 fps, and halving the SSE
                 // rate cuts our HTTP serve cost in half.
@@ -2763,6 +2973,13 @@ class AudioSpectrum
                     lock (s_sseClientEventsLock) { s_sseClientEvents.Remove(mySignal); }
                     try { mySignal.Dispose(); } catch { }
                     System.Threading.Interlocked.Decrement(ref s_activeClients);
+                    // Stage 7.12 Batch B Phase S Finding J: release MMCSS attachment
+                    // back to the system before this HttpListener worker is
+                    // recycled to the pool.
+                    if (sseMmcss != System.IntPtr.Zero)
+                    {
+                        try { AvRevertMmThreadCharacteristics(sseMmcss); } catch { }
+                    }
                 }
             }
             else if (path == "/health")
@@ -2975,7 +3192,23 @@ class AudioSpectrum
         InitLog();
         try { timeBeginPeriod(1); Log("timeBeginPeriod(1) applied (1 ms scheduler resolution)"); }
         catch (Exception ex) { Log("timeBeginPeriod failed: " + ex.Message); }
-        Log("=== audio_spectrum v7.0.0 starting (multi-backend: WASAPI / WDM-KS / MME / ASIO) ===");
+        // Stage 7.12 Batch B Phase R: bump the whole process to High
+        // priority. Combined with MMCSS attach + Highest managed
+        // priority on the capture thread, this is the safe upper limit
+        // for an audio path. NOT RealTime — RealTime can starve the
+        // OS audio service threads on single-core machines and lock
+        // up the system.
+        try
+        {
+            System.Diagnostics.Process.GetCurrentProcess().PriorityClass
+                = System.Diagnostics.ProcessPriorityClass.High;
+            Log("process priority bumped to High (Stage 7.12 Phase R)");
+        }
+        catch (System.Exception exPri)
+        {
+            Log("process priority bump failed (non-fatal): " + exPri.Message);
+        }
+        Log("=== audio_spectrum v7.5.0 starting — Stage 7.12 Batch B Phase T.14 REVERT TO T.1: REF_MAG=158, TRANSIENT_BOOST=2.0, client fall 12-72ms ===");
         // Install the AssemblyResolve handler BEFORE anything else touches
         // NAudio.Asio types - otherwise the loader will short-circuit on
         // first use with a FileNotFoundException that the handler never
@@ -3043,6 +3276,92 @@ public class AsioCaptureAdapter : NAudio.Wave.IWaveIn
     public event EventHandler<NAudio.Wave.WaveInEventArgs>  DataAvailable;
     public event EventHandler<NAudio.Wave.StoppedEventArgs> RecordingStopped;
 
+    // Stage 7.12 Batch B Phase R: ASIO buffer-size override.
+    // NAudio's AsioOut → AsioDriverExt path is hard-wired to ASK the driver
+    // for the PREFERRED buffer size (typically 256-1024 samples → 5-21 ms
+    // @ 48 kHz). The driver also reports MIN (typically 32-128 samples →
+    // 0.7-2.7 ms). We want MIN. There's no public NAudio API to override
+    // the choice, but AsioDriverExt caches its capability struct as a
+    // private field that we can mutate via reflection BEFORE
+    // InitRecordAndPlayback runs. Setting BufferPreferredSize = BufferMinSize
+    // makes the next CreateBuffers call pass min to the driver.
+    //
+    // Per-instance fallback: if a rate retry fails 2+ times, _useMinBufferSize
+    // flips off and the next attempt uses the genuine preferred size — so
+    // misbehaving drivers degrade to today's behaviour instead of failing
+    // outright.
+    bool _useMinBufferSize = true;
+    int  _minBufferRetryCount = 0;
+
+    // Reflection cache. Resolved lazily on first call; null if NAudio's
+    // internal layout has changed (treat as "skip override, log, continue").
+    static System.Reflection.FieldInfo s_asioOutDriverField;
+    static System.Reflection.FieldInfo s_extCapabilityField;
+    static System.Reflection.FieldInfo s_capMinField;
+    static System.Reflection.FieldInfo s_capPrefField;
+
+    static void ResolveAsioReflection()
+    {
+        if (s_asioOutDriverField != null) return; // already cached or already failed
+        try
+        {
+            var asioOutType  = typeof(NAudio.Wave.AsioOut);
+            s_asioOutDriverField = asioOutType.GetField("driver",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (s_asioOutDriverField == null) return;
+
+            var extType = s_asioOutDriverField.FieldType;   // NAudio.Wave.Asio.AsioDriverExt
+            s_extCapabilityField = extType.GetField("capability",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (s_extCapabilityField == null) return;
+
+            var capType = s_extCapabilityField.FieldType;   // NAudio.Wave.Asio.AsioDriverCapability
+            // Field naming varies slightly across NAudio versions — try
+            // both the documented and a defensive alternate spelling.
+            s_capMinField  = capType.GetField("BufferMinSize") ?? capType.GetField("InputLatency");
+            s_capPrefField = capType.GetField("BufferPreferredSize");
+            if (s_capMinField == null || s_capPrefField == null)
+            {
+                s_capMinField = null; s_capPrefField = null;
+                return;
+            }
+        }
+        catch
+        {
+            s_asioOutDriverField = null;
+        }
+    }
+
+    // Returns the buffer size in samples that the driver will actually use
+    // after this call, or -1 if the override didn't apply.
+    int ForceMinBufferSize()
+    {
+        if (!_useMinBufferSize) return -1;
+        ResolveAsioReflection();
+        if (s_asioOutDriverField == null || s_extCapabilityField == null
+            || s_capMinField == null || s_capPrefField == null)
+            return -1;
+        try
+        {
+            object driverExt = s_asioOutDriverField.GetValue(_asio);
+            if (driverExt == null) return -1;
+            object cap = s_extCapabilityField.GetValue(driverExt);
+            if (cap == null) return -1;
+            int minSize  = (int)s_capMinField.GetValue(cap);
+            int prefSize = (int)s_capPrefField.GetValue(cap);
+            if (minSize > 0 && minSize < prefSize)
+            {
+                s_capPrefField.SetValue(cap, minSize);
+                return minSize;
+            }
+            return prefSize;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     public AsioCaptureAdapter(string driverName, int inputChannelOffset = 0)
     {
         _driverName         = driverName;
@@ -3077,7 +3396,18 @@ public class AsioCaptureAdapter : NAudio.Wave.IWaveIn
         // retry fully recreates the AsioOut. Iterates a wide range of
         // rates; the first one that BOTH passes IsSampleRateSupported
         // AND actually Init+Play's wins.
-        int[] rates = new[] { 48000, 44100, 96000, 88200, 192000, 32000, 22050, 16000 };
+        // Stage 7.12 Batch B Phase S Finding H: prefer 96 kHz first. At
+        // higher sample rates the Hann window's wall-clock latency
+        // shrinks proportionally (96k halves the 48k Hann center latency
+        // from 21.3 ms to 10.7 ms). FFT_SIZE per-FFT compute stays
+        // constant; only sample-decode work scales linearly, which is
+        // already not CPU-bound. Bin spacing doubles (23.4 Hz → 46.9 Hz)
+        // — same trade-off as halving FFT_SIZE, but using up the
+        // sample-rate axis instead of the window-size axis. The
+        // sub-bin band interpolation at line ~1810 handles low-freq
+        // bands gracefully regardless. If 96k isn't supported by the
+        // driver, falls through to 88.2 → 48 → 44.1 etc. as before.
+        int[] rates = new[] { 96000, 88200, 48000, 44100, 192000, 32000, 22050, 16000 };
         System.Exception lastEx = null;
         foreach (int r in rates)
         {
@@ -3086,18 +3416,28 @@ public class AsioCaptureAdapter : NAudio.Wave.IWaveIn
                 if (!_asio.IsSampleRateSupported(r)) continue;
                 _sampleRate = r;
                 WaveFormat = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(_sampleRate, _channels);
+                // Stage 7.12 Batch B Phase R: force min buffer size before
+                // CreateBuffers runs inside InitRecordAndPlayback. Returns
+                // the size actually applied, or -1 if the reflection
+                // override couldn't run (NAudio internals changed or
+                // _useMinBufferSize already turned off after prior fails).
+                int forcedSize = ForceMinBufferSize();
                 _asio.InitRecordAndPlayback(null, _channels, _sampleRate);
                 _asio.Play();
                 // Success - log the rate we landed on so the user / diag
                 // stream can see which one the driver actually accepted.
                 try
                 {
+                    string sizeNote = forcedSize > 0
+                        ? string.Format(", buffer={0} samples ({1:F2} ms — min override)",
+                            forcedSize, forcedSize * 1000.0 / _sampleRate)
+                        : ", buffer=driver-preferred (min override unavailable)";
                     System.IO.File.AppendAllText(
                         System.IO.Path.Combine(
                             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
                             "MastersFM", "audio_spectrum.log"),
-                        string.Format("[{0:HH:mm:ss.fff}] ASIO '{1}' opened at {2} Hz, {3} ch{4}",
-                            System.DateTime.Now, _driverName, _sampleRate, _channels, System.Environment.NewLine));
+                        string.Format("[{0:HH:mm:ss.fff}] ASIO '{1}' opened at {2} Hz, {3} ch{4}{5}",
+                            System.DateTime.Now, _driverName, _sampleRate, _channels, sizeNote, System.Environment.NewLine));
                 }
                 catch { }
                 return;
@@ -3105,6 +3445,26 @@ public class AsioCaptureAdapter : NAudio.Wave.IWaveIn
             catch (System.Exception ex)
             {
                 lastEx = ex;
+                // After 2 failures with min-buffer override on, turn it off
+                // so the next retry uses the driver's preferred size.
+                // This is the per-driver fallback: if min isn't accepted,
+                // we degrade to today's behaviour (preferred = 5-21 ms)
+                // rather than refusing to open the driver.
+                _minBufferRetryCount++;
+                if (_minBufferRetryCount >= 2 && _useMinBufferSize)
+                {
+                    _useMinBufferSize = false;
+                    try
+                    {
+                        System.IO.File.AppendAllText(
+                            System.IO.Path.Combine(
+                                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                                "MastersFM", "audio_spectrum.log"),
+                            string.Format("[{0:HH:mm:ss.fff}] ASIO '{1}' rejected min buffer size after {2} attempts ({3}); falling back to driver-preferred size{4}",
+                                System.DateTime.Now, _driverName, _minBufferRetryCount, ex.Message, System.Environment.NewLine));
+                    }
+                    catch { }
+                }
                 // AsioOut is now in an unusable "already initialised"
                 // state after a failed SetSampleRate. Dispose + recreate
                 // so the next iteration gets a clean driver handle.
@@ -3232,7 +3592,37 @@ public class WdmKsCaptureAdapter : NAudio.Wave.IWaveIn
     // cleanly between attempts.
     NAudio.CoreAudioApi.WasapiCapture MakeInner(NAudio.CoreAudioApi.AudioClientShareMode mode)
     {
-        var cap = new NAudio.CoreAudioApi.WasapiCapture(_device, true, 20);
+        // Stage 7.12 Batch B Phase R: derive the buffer-size request from
+        // the device's reported minimum period instead of hard-coding 20 ms.
+        // NAudio.AudioClient exposes DefaultDevicePeriod / MinimumDevicePeriod
+        // in 100-ns units. On hardware interfaces, MinimumDevicePeriod is
+        // typically 30000 (3 ms); on virtual endpoints / Realtek codecs it
+        // can be 100000 (10 ms). For shared mode we just ask for 5 ms — the
+        // engine clamps to its real shared period anyway, so the value
+        // mostly affects how snug the request is.
+        //
+        // Floor at 3 ms regardless of what the device claims; some drivers
+        // misreport 1-2 ms and then reject the buffer with E_INVALIDARG.
+        // Cap at 20 ms (the prior hard-coded value) so a misbehaving device
+        // never makes us worse than today.
+        int reqMs;
+        try
+        {
+            long minPeriod100ns = _device.AudioClient.MinimumDevicePeriod;
+            int  candidateMs    = (int)(minPeriod100ns / 10000); // 100-ns → ms
+            if (mode == NAudio.CoreAudioApi.AudioClientShareMode.Exclusive)
+                reqMs = System.Math.Max(3, System.Math.Min(candidateMs, 20));
+            else
+                reqMs = 5;                                       // shared engine clamps anyway
+        }
+        catch
+        {
+            // Property access on AudioClient can throw on uninitialized devices.
+            // Fall back to the old 20 ms safety value rather than crash.
+            reqMs = mode == NAudio.CoreAudioApi.AudioClientShareMode.Exclusive ? 5 : 5;
+        }
+
+        var cap = new NAudio.CoreAudioApi.WasapiCapture(_device, true, reqMs);
         cap.ShareMode = mode;
         cap.DataAvailable += (s, a) => {
             var h = DataAvailable;
@@ -3318,5 +3708,41 @@ public class WdmKsCaptureAdapter : NAudio.Wave.IWaveIn
             try { _inner.Dispose(); } catch { }
             _inner = null;
         }
+    }
+}
+
+// ===========================================================================
+//  FastLoopbackCapture
+// ===========================================================================
+// Stage 7.12 Batch B Phase R: lower-latency WASAPI Loopback adapter.
+// NAudio.CoreAudioApi.WasapiLoopbackCapture only exposes 0/1-arg ctors; it
+// never inherits the 3-arg (MMDevice, useEventSync, bufferMs) form from
+// WasapiCapture. That meant we had no way to ask the engine for a small
+// buffer or to use event-driven (vs polled) capture from the public NAudio
+// surface. This subclass closes the gap in ~15 lines: takes the 3-arg
+// constructor we want, re-adds AUDCLNT_STREAMFLAGS_LOOPBACK by overriding
+// GetAudioClientStreamFlags(), and lets the engine clamp the buffer ms to
+// its actual shared period (~7-10 ms on Win10/11). useEventSync=true is
+// passed to the base class, so the underlying IAudioClient is initialised
+// with AUDCLNT_STREAMFLAGS_EVENTCALLBACK — the engine signals us at the
+// period boundary instead of us polling on a timer, killing 5-15 ms of
+// scheduling jitter the stock 1-arg WasapiLoopbackCapture was paying.
+public class FastLoopbackCapture : NAudio.CoreAudioApi.WasapiCapture
+{
+    public FastLoopbackCapture(NAudio.CoreAudioApi.MMDevice captureDevice, int bufferMilliseconds)
+        : base(captureDevice, useEventSync: true, audioBufferMillisecondsLength: bufferMilliseconds)
+    {
+        ShareMode = NAudio.CoreAudioApi.AudioClientShareMode.Shared;
+    }
+
+    public override NAudio.Wave.WaveFormat WaveFormat
+    {
+        get { return base.WaveFormat; }
+        set { /* Loopback uses the render device's mix format; ignore overrides. */ }
+    }
+
+    protected override NAudio.CoreAudioApi.AudioClientStreamFlags GetAudioClientStreamFlags()
+    {
+        return NAudio.CoreAudioApi.AudioClientStreamFlags.Loopback;
     }
 }

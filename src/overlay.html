@@ -2655,6 +2655,7 @@ let analyser = null, freqData = null, audioReady = false;
 // needing OBS to route audio into the browser source.
 let _loopbackBands     = null;   // Uint8Array | null — raw from SSE
 let _renderedBands     = null;   // Float32Array | null — per-rAF lerp target
+let _peakHoldEnd       = null;   // Float64Array | null — Phase T.6 per-band peak-hold expiry timestamps (performance.now() ms)
 let _decimatedBands    = null;   // Float32Array | null — barCount-decimated view of _renderedBands
 let _decimatedLen      = 0;      // cached length so we only reallocate when barCount changes
 let _normPeak          = 20;     // rolling max band value (for spectrum.autoGain)
@@ -2674,6 +2675,16 @@ let _loopbackLatestRaw = null;   // v6.5.3: raw SSE event data, parsed at rAF
 let _spectrumParseFails = 0;     // rolling count of malformed SSE frames
 let _spectrumParseLastLog = 0;   // perf.now() of last flush-to-log
 let _spectrumDisconnectLogged = false; // only log the first disconnect per outage
+// Stage 7.12 Batch B Phase S Finding B: eager-decode throttle. v8.3.4
+// deferred decode to rAF for CPU reasons but cost ~0-16.67 ms (avg ~8 ms
+// on 60 Hz) of latency — SSE arrives, sits as a raw string, decoded
+// only when the next rAF fires. Phase S: decode on arrival IF >=5 ms
+// have passed since the last decode. Preserves CPU savings against
+// bursty arrivals (each OnData fires up to 10 SSE signals in <1 ms),
+// while ensuring the bands array is already-decoded by the time rAF
+// reads it. Effective: ~4-8 ms cut from the latency budget on 60 Hz.
+let _lastLoopbackDecodeAt = 0;
+const LOOPBACK_DECODE_MIN_GAP_MS = 5;
 
 // v8.3.4: decode the most recently STASHED SSE frame into _loopbackBands.
 // Called by drawSpectrum right before it reads bands, so we only ever parse
@@ -2755,24 +2766,25 @@ function connectSpectrumSSE() {
     };
     _loopbackSSE.onmessage = e => {
       // v6.6.6: reverted to on-arrival parsing. The v6.5.3 'stash +
-      // parse at rAF' scheme was bottlenecking bar updates — if SSE
-      // arrived 0.5 ms after a rAF tick, we'd wait 16.5 ms before
-      // the bar reflected it, and in the interim cached an older
-      // target. Parsing directly keeps _loopbackBands perfectly
-      // fresh for whenever the next rAF draws.
-      // v8.3.4: STASH-AND-DECODE-AT-RAF. Previously this handler ran atob +
-      // 480-element charCodeAt loop on EVERY SSE arrival — at SSE rate 1000
-      // (the slider's default) that's ~25 % of one core just for SSE work.
-      // During hardcore drops the canvas redraw also goes full-tilt and the
-      // JS thread saturates → user-perceived lag. Now: just stash e.data
-      // (a single reference assignment, ~free) and let drawSpectrum decode
-      // the LATEST stashed payload at rAF cadence (typically monitor refresh
-      // = 60-360 Hz). Same visual output because the canvas can only display
-      // monitor-refresh frames anyway, and the stash always reflects the
-      // newest server frame at decode time.
+      // parse at rAF' scheme was bottlenecking bar updates.
+      // v8.3.4: STASH-AND-DECODE-AT-RAF. CPU-saving optimization that
+      // cost ~0-16.67 ms (avg ~8 ms on 60 Hz) of latency.
+      // Stage 7.12 Batch B Phase S Finding B: hybrid eager-decode.
+      // Stash first (so the rAF code path that reads _loopbackLatestRaw
+      // still works as a fallback). If >=5 ms have passed since the last
+      // decode, also decode RIGHT NOW so _loopbackBands is fresh by the
+      // time the next rAF fires. Preserves the CPU win against bursty
+      // arrivals (server fires ~10 SSE signals per OnData in <1 ms; the
+      // 5 ms gate collapses those into one decode) while ensuring the
+      // rAF doesn't pay an additional ~8 ms wait for the decode.
       if (typeof e.data !== 'string' || !e.data) return;
-      _loopbackLatestRaw  = e.data;          // stash; decoded by drawSpectrum
-      _loopbackUpdatedAt  = performance.now();   // freshness gate still works
+      _loopbackLatestRaw  = e.data;          // stash (kept for rAF fallback path)
+      const _now = performance.now();
+      _loopbackUpdatedAt  = _now;            // freshness gate still works
+      if ((_now - _lastLoopbackDecodeAt) >= LOOPBACK_DECODE_MIN_GAP_MS) {
+        _lastLoopbackDecodeAt = _now;
+        _decodeLatestLoopback();              // bands now fresh for next rAF
+      }
     };
     _loopbackSSE.onerror = () => {
       try { _loopbackSSE.close(); } catch {}
@@ -3361,12 +3373,14 @@ function drawSpectrum() {
   if (document.hidden) return;
 
   // v6.1.8: preview honors the user's Render FPS slider again.
-  // v6.1.7's hard-cap at 60 in preview was masking the slider entirely
-  // — "1000 fps setting doesn't look like 1000 fps" because we were
-  // clamping it. rAF naturally caps at monitor refresh rate (60 / 120 /
-  // 240 Hz), so setting 1000 in practice runs at monitor rate with no
-  // extra CPU beyond that. User sees the true framerate everywhere.
-  const fpsCap = Math.max(30, Math.min(120, _cfg.spectrum?.fps ?? 120));
+  // Stage 7.12 Batch B Phase S Finding K: cap raised 120 → 480. rAF is
+  // naturally bounded by monitor refresh (60/120/144/240 Hz), so the
+  // cap at 120 was throttling 144/240 Hz displays to ~72/60 fps
+  // effective. WebGL render is sub-ms (texSubImage2D + 6-vertex
+  // drawArrays); per-frame CPU/GPU cost at 240+ fps stays trivial on
+  // modern hardware. The slider still goes to 120 by default; users
+  // who want their full monitor refresh can raise it in customize.
+  const fpsCap = Math.max(30, Math.min(480, _cfg.spectrum?.fps ?? 240));
   const minGap = 1000 / fpsCap;
   const now    = performance.now();
   // v6.5.4: the -0.5 ms fudge-factor handles rAF clock jitter. At
@@ -3424,18 +3438,49 @@ function drawSpectrum() {
     // v9.8.2: heartbeat mode — rise is always instant (true peak detector).
     // Bars snap to the audio peak in the SAME rAF tick the SSE data arrives.
     // No lerp or threshold on the up-path — maximum possible reaction speed.
-    // Fall is exponential decay: 15 ms half-life at smooth=0 (punchy heartbeat)
-    // → 350 ms at smooth=1 (floaty ambient). Default smooth=0 → heartbeat.
-    const smoothGL    = Math.max(0, Math.min(1, _cfg.spectrum.smoothing ?? 0));
-    const fallHalfGL  = 15 + smoothGL * 335;
-    const dtMsGL      = Math.min(100, now - (_prevRafTick || now));
-    const fallAlphaGL = 1 - Math.pow(0.5, dtMsGL / fallHalfGL);
+    //
+    // Stage 7.12 Batch B Phase T.1 (2026-05-17 — refined after operator
+    // reported "too smooth / delayed" feel on Phase T).
+    //
+    // Background:
+    // - Phase S Finding L set fall floor to 5 ms half-life → 200 BPM
+    //   hardcore looked like a 3.3 Hz square-wave strobe (Issue 2).
+    //   Sparse non-ASIO SSE arrivals + 5 ms fall → 10 fps perception
+    //   on WASAPI/MME/KS (Issue 3).
+    // - Phase T fixed strobing via a two-stage knee at 30% of CURRENT
+    //   bar value. But the slow phase (60ms half-life ABOVE knee) made
+    //   the bar TRAIL the audio: after a kick (100%) returning to bass
+    //   (50%), the bar took ~150 ms to settle at the bass level — looking
+    //   like the kick was sustaining. Operator: "feels delayed".
+    //
+    // Phase T.15 (2026-05-17 — operator: now go to T.2): one knob bump
+    // from T.1 — fallTrackHL 12+smoothGL*60 → 20+smoothGL*70. Slower
+    // than typical LCD response (4-16 ms) so the bar's motion is above
+    // the panel refresh — eliminates the ghosting / double-frame
+    // perception T.1 had at 12 ms — while still settling kick→bass
+    // within ~110 ms (no perceived lag).
+    let frameMaxIn = 0;
+    for (let k = 0; k < _loopbackBands.length; k++) {
+      if (_loopbackBands[k] > frameMaxIn) frameMaxIn = _loopbackBands[k];
+    }
+    const audioPresent   = frameMaxIn > Math.max(20, _normPeak * 0.20);
+    const smoothGL       = Math.max(0, Math.min(1, _cfg.spectrum.smoothing ?? 0));
+    const fallTrackHL    = 20 + smoothGL * 70;     // 20-90 ms half-life (Phase T.2 baseline)
+    const fallFadeHL     = 80 + smoothGL * 220;    // 80-300 ms silence fade (unchanged)
+    const dtMsGL         = Math.min(100, now - (_prevRafTick || now));
+    const fallAlphaTrack = 1 - Math.pow(0.5, dtMsGL / fallTrackHL);
+    const fallAlphaFade  = 1 - Math.pow(0.5, dtMsGL / fallFadeHL);
+    const fallA          = audioPresent ? fallAlphaTrack : fallAlphaFade;
     _prevRafTick = now;
     let frameMaxGL = 0;
     for (let k = 0; k < _renderedBands.length; k++) {
       const tgt = _loopbackBands[k];
       const cur = _renderedBands[k];
-      _renderedBands[k] = (tgt >= cur) ? tgt : cur + (tgt - cur) * fallAlphaGL;
+      if (tgt >= cur) {
+        _renderedBands[k] = tgt;                          // instant rise (heartbeat)
+      } else {
+        _renderedBands[k] = cur + (tgt - cur) * fallA;    // single-stage exponential decay
+      }
       if (_renderedBands[k] > frameMaxGL) frameMaxGL = _renderedBands[k];
     }
     _normPeak = Math.max(_normPeak * 0.995, frameMaxGL);
