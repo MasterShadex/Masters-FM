@@ -241,10 +241,25 @@ class AudioSpectrum
     // v9.9.3: effective stride used in the WASAPI hot loop.
     // = max(s_hopSize, FFT_MIN_STRIDE) so very small hop values
     // (e.g. HOP=1 from 0.01 ms slider) don't spin 48 000 FFTs/sec.
-    // FFT_MIN_STRIDE = 384 ≈ 8 ms matches SSE_INTERVAL_MS — going
-    // lower produces the same visible result (SSE is the bottleneck)
-    // but burns CPU for zero user benefit.
-    const int           FFT_MIN_STRIDE = 384;
+    //
+    // Stage 7.12 Batch B Phase P (2026-05-17): floor lowered 384 → 48
+    // (8 ms → 1 ms). The original 384 was set in v9.9.3 on the
+    // assumption that the SSE-publish cadence was the visible bottleneck
+    // — true at 60-fps OBS browser sources where 8 ms refreshes are
+    // invisible. At 120+ fps customize preview and especially with
+    // high-refresh monitors (240 Hz), 8 ms is two-to-three rendered
+    // frames of FFT-data staleness — operator-visible on transients
+    // like bass hits.
+    //
+    // At 48 samples / 1 ms cadence, the FFT publishes 1000 SSE frames/s
+    // (vs 125/s before). Each FFT is ~0.05 ms (mean) per PERF-ROLLUP, so
+    // total CPU ≈ 1000 × 0.05 = 50 ms/s = ~5 % of one core. Up from
+    // <1 % currently. Acceptable on any modern CPU.
+    //
+    // Going lower than 48 (e.g. 24 = 0.5 ms) doubles CPU for a
+    // sub-millisecond freshness improvement that's well below any
+    // visible monitor refresh cycle — diminishing returns.
+    const int           FFT_MIN_STRIDE = 48;
     static volatile int s_fftStride    = 512; // updated in HandleSetHop
     // Legacy alias — code below reads HOP_SIZE in a few places.
     // Old-style property getter for compatibility with the csc.exe

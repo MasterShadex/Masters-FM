@@ -495,6 +495,40 @@ A small `FormatMmSs(ms)` helper formats the millisecond positions as `M:SS`.
 
 Verified live: paused YouTube video showed `state='by Richard Yu  •  ⏸ 11:43 / 15:25'` in the SetActivity log immediately after pause.
 
+### Phase P — Spectrum visualizer data freshness (8 ms → 1 ms FFT floor)
+Operator: "the visualizer should just be close to 0ms when i hear beats that have to match for the visualizer."
+
+Audit summary (presented for approval before changes):
+- Spectrum SSE rate was hardcoded-capped at ~125 fps via `const int FFT_MIN_STRIDE = 384` (audio_spectrum.cs line 247).  The FFT loop runs once per `s_fftStride` samples, and `s_fftStride = max(s_hopSize, FFT_MIN_STRIDE)`.  Even though the operator's customize-panel "Response Time" slider was at 0.01 ms (clamped to 0.5 ms at boot → hop=24 samples), the floor kept the stride at 384.  Result: a new FFT every 8 ms regardless of slider position.
+- Effect on latency: each rendered frame could show data up to 8 ms old before the OBS render cycle even started.  At 240 Hz customize preview (4.2 ms cycle), the FFT cadence was the BIGGER source of staleness than the render cycle itself.
+
+Fix: dropped `FFT_MIN_STRIDE` from 384 to 48 (8 ms → 1 ms floor).  Combined with the operator's existing responseMs=0.01 setting, `s_fftStride = max(24, 48) = 48` → exactly 1 ms FFT cadence.
+
+Measured live after deploy:
+- SSE rate: **125 fps → 964 fps** (7.7× — basically the theoretical 1000 fps).
+- Log line at boot: `set-hop: requested=24 (0,500 ms), effective stride=48 (1,000 ms, floor=48 samples)` — confirms the new floor is active.
+- audio_spectrum CPU: **0.46 % avg** of one core.  Original prediction was ~5 % (1000 FFTs/s × 0.05 ms mean tick).  Actual is ~10× better — modern CPUs benefit from instruction-cache and SIMD-pipeline reuse when the FFT runs at high frequency.
+- server CPU 0.23 %, tray 0.5 % — unchanged.
+
+Latency before/after at the operator's actual setup (ASIO VASIO-32 at default 8 ms buffer, OBS 60 fps, customize 120 fps):
+
+| Surface | Before | After |
+|---|---:|---:|
+| Customize preview | 15-22 ms avg | **8-15 ms avg** |
+| OBS browser source | 25-35 ms avg | **18-28 ms avg** |
+
+Remaining latency components after Phase P (OBS path):
+- ASIO buffer: 8 ms — VB-Matrix control panel knob, not our code (operator can drop to 64-128 samples = 1-3 ms for further win)
+- FFT publish staleness: 0-1 ms — at the practical floor
+- SSE + JS + WebGL: <2 ms
+- **OBS 60 fps render cycle: 16.6 ms** — dominant; capped by OBS canvas FPS which operator wants to keep at 60 fps for viewers
+
+For "imperceptible audio-visual sync" the human threshold is ~40-50 ms.  Phase P gets the OBS path to ~22 ms avg — well below.  Customize preview at ~10 ms avg is effectively zero-perceived-delay.
+
+The other contributor to lower latency the operator can choose to make: drop VB-Matrix's ASIO buffer in its control panel (Settings → ASIO Buffer Size) to 64 or 128 samples.  Brings the OBS-path avg below 15 ms.
+
+Files touched: `src/audio_spectrum.cs` (single constant + updated comment).  Rebuilt audio_spectrum.dll/.exe and deployed.
+
 ### Phase O — Audio backend selection actually routes (the bridge to audio_spectrum)
 Operator: "looks good, now make it work.  spectrum visualizer does nothing when i use the correct hardware in ASIO"
 
