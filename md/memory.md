@@ -3063,3 +3063,105 @@ More visible kick presence across all volume levels without touching sustained b
 ## 2026-05-17 21:43 — v7.5.0 (Phase T.14): REVERT TO T.1. REF_MAG=158, TRANSIENT_BOOST=2.0, client fall 12+smoothGL*60.
 
 ## 2026-05-17 21:47 — overlay.html Phase T.15: fallTrackHL 12+smoothGL*60 → 20+smoothGL*70 (Phase T.2 client). Server v7.5.0 unchanged.
+
+---
+
+## 2026-05-18 15:25 — Stage 7.12 BATCH A + B + C (Issue 3 closure) state checkpoint
+
+Operator halted rc.4 ship-prep. No version bump, no tag, no GitHub push. Stage 7.12 work continues locally until v14 is fully done (v14.1.0+ work or any new operator-reported defects). The rc.3 GitHub draft stays untouched as the historical artifact.
+
+This session shipped the final pair of Batch C defects + a full rebuild
++ install to bake the entire Stage 7.12 work into the local install.
+
+### Stage 7.12 BATCH A — 6 P0 fixes (all PASS, ship-pending)
+- Issue 6 (Patch Notes wiring) — STEP 1 `0142eff` + patch-notes window
+  overhaul `39ebe68`+`66ea447`+`92b2907`+`05af04a`+`50d1229`. PASS.
+- Issue 7 (View Log opens file directly) — STEP 2 `226b82e`. PASS.
+- Issue 4-ASIO (ASIO tab always visible) — STEP 3 `08cb84f` then real
+  enumeration in Phase K `9d0b750`+`e31f492`. PASS.
+- Issue 8 (Check for Updates cursor monitor) — STEP 4 `0e90e0f`; later
+  flipped to primary monitor for all dialogs in `3a3de0a`+`4cc6cd7`. PASS.
+- Issue 1 (Left-click tray monitor) — STEP 5 `49664d4` + per-monitor
+  DPI rev2 `0aff057`. PASS.
+- Issue 2 (Tray menu missing icons) — STEP 6 `cfabc90`. PASS.
+
+### Stage 7.12 BATCH B — Issue 9 OBS state machine + heavy scope expansion
+- Issue 9 (OBS toggle re-add loop) — `287e676` (stop re-add while OBS
+  running) + `be87879` rev2 (react instantly to OBS exit). PASS.
+- Plus 19 phase-commits (A through Q) covering: native Discord IPC
+  client rewrite (`f245b92`), 14 latency / sync / album-art / marquee
+  improvements (Phases A, C, D, E, F, G, H, I, J, L, M), audio device
+  routing (`b486369`), FFT cadence floor 8 ms → 1 ms (`f29ec46`),
+  B10 backward sync disabled globally (`c2b98ea`), plus Phases R + T
+  (this Phase R/T session: close-to-0-ms backend latency + visualizer
+  smoothing + BASELINE_DECAY kick-punch fix in `31c49b7`, research
+  deliverables in `b3e95d9`).
+
+### Stage 7.12 BATCH C — done in this session
+- Issue 3 defect A (Audio Source tab truncation): done earlier under
+  STEP 3 cascade — MinWidth 80 → 96 → 120, indicator centred under
+  text (`875df16`, `de956b3`, `76f7f24`, then 14 more revs as the
+  binding architecture was rebuilt).
+- Issue 3 defect B (toast banner 45px row reservation): DONE this
+  session, commit `68322f7`. Default `Visibility="Collapsed"` on the
+  ToastBanner Border; ShowToast() sets Visible before fade-in, fadeOut
+  Completed handler sets Collapsed after fade-out reaches 0.
+- Issue 3 defect C (Reset button cramping against StatusText): DONE
+  this session, commit `5487b7f`. `Margin="12,0,0,0"` on the Reset
+  button in the footer Grid Col 2.
+- Issue 4-KS (real KS enumeration): DONE in Phase K (`9d0b750`).
+- Issue 10 (Discord RPC propagation): DONE — DIAG-10 series + native
+  IPC rewrite (`943653a`, `525aaed`, `6b824ec`, plus Phase B/E).
+
+### Stage 7.12 BATCH D — deferred to v14.1.0 / Stage 7.13
+- Issue 5 (Customize Overlay rebuild) — `customize.html` still on
+  pre-v14 design. Batch D scope decision: defer (per memory.md:868).
+  Only `customize.html` got the slim scrollbar style (`372d132`).
+
+### Build + install state
+- `_full_rebuild.ps1` ran clean at 15:14:54 → 15:25:31. Exit 0.
+  All five binaries (server, MastersFM, customize, MastersFM_Tray,
+  audio_spectrum) signed with MasterShadex cert. MSI signed too.
+- Fresh MSI on disk: `Master's FM Install/MastersFM_Setup.msi`
+  sha256 = `48c0db9dcdc80ed72dfbc63d8c3eb0f9b5359b2e12f707b0bb9cfe062a22edb3`
+  mtime = 2026-05-18 15:25.
+- `version.json` regenerated with the new sha256 by the build script.
+  Version string stays `14.0.0-rc.3` (NO bump per operator).
+- MSI installed locally via `_full_rebuild.ps1` (uninstall + install
+  cycle). MastersFM relaunched and is currently running.
+- **`MastersFM_Tray` ProductVersion = `14.0.0-rc.3+5487b7fd5284a9588a7247d618f352d914a5e626`**
+  — the `+<commit-sha>` suffix indicates dev state on top of rc.3.
+  Operator's intended versioning scheme confirmed working.
+
+### Protected files
+SHA256-verified against `V14_S7_REPLAN_PROTECTED_BASELINE.md`:
+- `src/tray.ps1` UNCHANGED
+- `src/tray_native/tray_native.cs` UNCHANGED
+- `src/launcher.cs` UNCHANGED
+- `src/server.js` UNCHANGED
+
+`md/memory.md` modified via APPEND only (rule respected).
+
+### Application stability
+Local install currently running cleanly. Phase R/T audio backend
+latency + visualizer smoothing live. Phase B native Discord IPC live.
+All Batch A UI fixes live (cursor-monitor placement, icons, marquee,
+album art, patch-notes overhaul, etc.).
+
+### Local-only state
+- HEAD = `5487b7f` (Stage 7.12 Batch C: Issue 3 defect C)
+- 97 commits ahead of `origin/main`
+- 0 commits behind `origin/main`
+- No new tag created. `v14.0.0-rc.3` tag on remote unchanged (annotated, points to `0a2ce62`).
+- No GitHub release created/updated.
+
+### Remaining for v14 GA
+- Issue 5 — Customize Overlay rebuild (Batch D / Stage 7.13). The
+  pre-v14 web UI is the only piece of the v14 surface still on the old
+  design language. Big scope (full HTML/CSS rebuild). Operator decides
+  when to start.
+- Any new operator-reported defects from extended use of this build.
+- Final pre-publish soak (e.g., 6-24 h with the running installed build)
+  before whatever future `rc.N` or `v14.0.0` final release goes out.
+
+### Status: HALT. Awaiting operator's next direction.
