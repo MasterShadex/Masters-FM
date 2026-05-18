@@ -79,6 +79,12 @@ public partial class AudioDeviceWindow : Window
 
         _toastTimer?.Stop();
 
+        // Stage 7.12 Batch C (Issue 3 defect B): make the banner participate
+        // in layout (Visibility=Visible) BEFORE animating opacity in, so the
+        // user sees it. Default state is Collapsed so the 45px row doesn't
+        // reserve space while the toast is idle.
+        ToastBanner.Visibility = Visibility.Visible;
+
         var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(150)));
         ToastBanner.BeginAnimation(OpacityProperty, fadeIn);
 
@@ -87,6 +93,13 @@ public partial class AudioDeviceWindow : Window
         {
             _toastTimer.Stop();
             var fadeOut = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(300)));
+            // After the fade-out completes, collapse the banner so the row
+            // it occupies vacates layout (footer reclaims the 45 px). The
+            // Completed handler fires after the animation reaches 0 opacity.
+            fadeOut.Completed += (_, _) =>
+            {
+                ToastBanner.Visibility = Visibility.Collapsed;
+            };
             ToastBanner.BeginAnimation(OpacityProperty, fadeOut);
         };
         _toastTimer.Start();

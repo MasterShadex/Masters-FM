@@ -440,7 +440,11 @@
         </TabControl>
 
         <!-- === AUTO-PERSIST TOAST (shown briefly after row click) === -->
-        <!-- Driven by code-behind ShowToast() method; Opacity animated in/out -->
+        <!-- Driven by code-behind ShowToast() method; Opacity animated in/out.
+             Stage 7.12 Batch C (Issue 3 defect B): default Visibility=Collapsed
+             so the 45px row reservation doesn't push the footer down while the
+             toast is idle. ShowToast() flips Visible before the fade-in and
+             back to Collapsed when the fade-out animation completes. -->
         <Border x:Name="ToastBanner"
                 Grid.Row="3"
                 Margin="24,4,24,4"
@@ -448,6 +452,7 @@
                 CornerRadius="8"
                 Background="{StaticResource BrandPurpleDeep}"
                 Opacity="0"
+                Visibility="Collapsed"
                 IsHitTestVisible="False">
             <TextBlock Text="Audio source updated."
                        Style="{StaticResource BodyTextStyle}"
