@@ -477,8 +477,13 @@
                            Style="{StaticResource CaptionTextStyle}"
                            Foreground="{StaticResource TextTertiary}"
                            VerticalAlignment="Center"/>
-                <!-- Reset button (reverts to original-on-open selection) -->
+                <!-- Reset button (reverts to original-on-open selection).
+                     Stage 7.12 Batch C (Issue 3 defect C): 12 px left margin
+                     so the Reset button never touches the StatusText in
+                     Col 0 when StatusText spans the spacer Col 1 entirely
+                     (long status messages on narrow window widths). -->
                 <Button Grid.Column="2"
+                        Margin="12,0,0,0"
                         Content="Reset"
                         Style="{StaticResource SecondaryButtonStyle}"
                         Click="OnResetClick"/>
