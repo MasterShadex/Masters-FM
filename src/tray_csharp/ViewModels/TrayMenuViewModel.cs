@@ -43,7 +43,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     [ObservableProperty] private string _updateLabel = "Check for updates";
     [ObservableProperty] private string _obsLabel    = "OBS overlay";
     [ObservableProperty] private string _obsTooltip  = "Click to enable OBS integration";
-    [ObservableProperty] private string _nowPlayingHeaderText = "v14.0.0-rc.3 - ready";
+    [ObservableProperty] private string _nowPlayingHeaderText = "v14.0.0 - ready";
 
     /// <summary>Stage 7.8D: computed from _obsToggleState; fires OnPropertyChanged explicitly.</summary>
     public bool IsObsEnabled =>
@@ -150,7 +150,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         var artist = NowPlaying.Artist;
         var track  = NowPlaying.Track;
         var text   = string.IsNullOrWhiteSpace(artist)
-            ? "v14.0.0-rc.3 - ready"
+            ? "v14.0.0 - ready"
             : string.IsNullOrWhiteSpace(track)
                 ? artist
                 : $"{artist} - {track}";

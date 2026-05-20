@@ -158,7 +158,7 @@ public partial class App : Application
         collection.AddSingleton<HttpClient>(_ =>
         {
             var hc = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            hc.DefaultRequestHeaders.UserAgent.ParseAdd("MastersFM/14.0.0-rc.3 (UpdateCheck)");
+            hc.DefaultRequestHeaders.UserAgent.ParseAdd("MastersFM/14.0.0 (UpdateCheck)");
             return hc;
         });
         collection.AddSingleton<IUpdateCheckService, UpdateCheckService>();

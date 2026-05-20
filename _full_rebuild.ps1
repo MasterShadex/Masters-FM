@@ -284,7 +284,7 @@ L "[2c/5] Generating version.json..."
 try {
     # Read version from version.json (single source of truth -- never from tray.ps1)
     $versionJsonPath = Join-Path $root 'version.json'
-    $appVer = '14.0.0-rc.3'
+    $appVer = '14.0.0'
     if (Test-Path $versionJsonPath) {
         try { $appVer = (Get-Content $versionJsonPath -Raw | ConvertFrom-Json).version } catch {}
     }
