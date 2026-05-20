@@ -75,6 +75,21 @@
   --lh-body:        1.5;
   --lh-caption:     1.42;
 
+  /* v14 border-radius scale (from WPF Cards/Buttons/Inputs/AppDialogStyle) */
+  --r-card:         12px;   /* cards, panels, dialog body */
+  --r-button:       8px;    /* primary + secondary buttons */
+  --r-input:        6px;    /* inputs, selects, slider track */
+  --r-pill:         999px;  /* full-pill toggles, badges */
+  --r-tiny:         4px;    /* small chips, tag pills, swatches */
+
+  /* v14 spacing rhythm (4px grid) */
+  --sp-1:           4px;
+  --sp-2:           8px;
+  --sp-3:           12px;
+  --sp-4:           16px;
+  --sp-5:           24px;
+  --sp-6:           32px;
+
   /* Layout constants (unchanged from v12) */
   --sidebar-w:      370px;
   --topbar-h:       52px;
@@ -96,7 +111,7 @@ html, body {
   background: rgba(12,12,24,0.92);
   backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; padding: 0 12px; gap: 7px;
+  display: flex; align-items: center; padding: 0 var(--sp-3); gap: var(--sp-2);
   z-index: 200; overflow: hidden;
 }
 .logo {
@@ -105,7 +120,7 @@ html, body {
 .logo-icon {
   width: 30px; height: 30px;
   background: linear-gradient(135deg, #7c3aed, #a855f7);
-  border-radius: 8px;
+  border-radius: var(--r-button);
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; flex-shrink: 0;
   box-shadow: 0 2px 10px rgba(120,50,220,0.4);
@@ -127,39 +142,39 @@ html, body {
 }
 #preset-select {
   background: var(--input-bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 7px;
+  border: 1px solid var(--border); border-radius: var(--r-button);
   font-family: inherit; font-size: 12px;
-  padding: 5px 8px; cursor: pointer; max-width: 130px; min-width: 90px;
+  padding: var(--sp-2); cursor: pointer; max-width: 130px; min-width: 90px;
 }
 #preset-select option { background: #1a1a2e; }
 #size-preset {
   background: var(--input-bg); color: var(--text-muted);
-  border: 1px solid var(--border); border-radius: 7px;
+  border: 1px solid var(--border); border-radius: var(--r-button);
   font-family: inherit; font-size: 11px;
-  padding: 5px 7px; cursor: pointer; max-width: 130px; flex-shrink: 0;
+  padding: var(--sp-2); cursor: pointer; max-width: 130px; flex-shrink: 0;
   -webkit-appearance: none;
 }
 #size-preset option { background: #14142a; }
 .btn-preset-del {
   background: transparent; border: 1px solid var(--border);
-  color: var(--text-muted); border-radius: 7px;
-  padding: 5px 8px; cursor: pointer; font-size: 11px;
+  color: var(--text-muted); border-radius: var(--r-button);
+  padding: var(--sp-2); cursor: pointer; font-size: 11px;
   transition: all 0.15s;
 }
 .btn-preset-del:hover { border-color: var(--error); color: var(--error); }
 
 .btn-anim-preview {
   background: transparent; border: 1px solid var(--accent);
-  color: var(--accent-bright); border-radius: 7px;
-  padding: 5px 12px; cursor: pointer; font-size: 12px; font-family: inherit;
+  color: var(--accent-bright); border-radius: var(--r-button);
+  padding: var(--sp-2) var(--sp-3); cursor: pointer; font-size: 12px; font-family: inherit;
   transition: all 0.15s; white-space: nowrap;
 }
 .btn-anim-preview:hover { background: var(--accent-glow); }
 .btn-anim-preview:active { transform: scale(0.96); }
 
 .btn {
-  padding: 7px 16px; border-radius: 8px; border: none;
-  cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600;
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-button); border: none;
+  cursor: pointer; font-family: inherit; font-size: var(--fs-body-strong); font-weight: var(--fw-semibold);
   transition: all 0.15s; white-space: nowrap;
 }
 .btn:active { transform: scale(0.96); }
@@ -195,7 +210,7 @@ html, body {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   overflow-y: auto; overflow-x: hidden;
-  padding: 10px 0 32px;
+  padding: var(--sp-3) 0 var(--sp-6);
 }
 
 /* ─── Slim scrollbar applied globally ─────────────────────────────────────
@@ -210,7 +225,7 @@ html, body {
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.20);
-  border-radius: 5px;
+  border-radius: var(--r-tiny);
   border: 2px solid transparent;
   background-clip: padding-box;
   transition: background 150ms ease-out;
@@ -223,8 +238,8 @@ html, body {
 .section { margin: 2px 10px; }
 
 .sec-header {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 8px;
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-button);
   cursor: pointer; user-select: none;
   color: var(--text-muted);
   transition: background 0.15s, color 0.15s;
@@ -250,9 +265,12 @@ html, body {
 .sec-body.open { display: block; }
 
 /* ─── Rows ──────────────────────────────────────────────────────────────────── */
+/* .row padding intentionally off-4px-grid (5px 4px) == tight sidebar density.
+   Sidebar shows ~50 control rows; lifting vertical padding to 8px would add
+   ~150 px of scroll on a 370-px-wide panel for negligible visual gain. */
 .row {
   display: flex; align-items: center;
-  padding: 5px 4px; gap: 8px;
+  padding: 5px var(--sp-1); gap: var(--sp-2);
   min-height: 30px;
 }
 .row-label {
@@ -272,9 +290,9 @@ input[type="text"],
 input[type="number"],
 select {
   background: var(--input-bg); border: 1px solid var(--input-border);
-  border-radius: 6px; color: var(--text);
-  font-family: inherit; font-size: 12px;
-  padding: 5px 8px; outline: none; width: 100%;
+  border-radius: var(--r-input); color: var(--text);
+  font-family: inherit; font-size: var(--fs-caption);
+  padding: var(--sp-2); outline: none; width: 100%;
   transition: border-color 0.15s;
 }
 input[type="text"]:focus,
@@ -288,7 +306,7 @@ input[type="range"] {
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 3px;
   background: rgba(255,255,255,0.1);
-  border-radius: 2px; outline: none; cursor: pointer;
+  border-radius: var(--r-input); outline: none; cursor: pointer;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -324,11 +342,11 @@ input[type="range"]::-moz-range-thumb {
 input[type="color"] {
   -webkit-appearance: none; appearance: none;
   width: 26px; height: 26px; padding: 2px;
-  border: 1.5px solid var(--border); border-radius: 6px;
+  border: 1.5px solid var(--border); border-radius: var(--r-input);
   background: transparent; cursor: pointer; flex-shrink: 0;
 }
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
+input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border: none; }
 .hex-in {
   font-family: var(--font-mono);
   font-size: var(--fs-tiny); width: 80px; letter-spacing: 0.3px;
@@ -343,7 +361,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
 .track {
   position: absolute; inset: 0;
-  background: rgba(255,255,255,0.09); border-radius: 10px;
+  background: rgba(255,255,255,0.09); border-radius: var(--r-pill);
   transition: background 0.2s;
 }
 .track::before {
@@ -372,7 +390,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
   background: var(--bg); min-width: 0; position: relative;
 }
 .preview-header {
-  padding: 9px 18px; font-size: 11px; color: var(--text-muted);
+  padding: var(--sp-2) var(--sp-4); font-size: var(--fs-tiny); color: var(--text-muted);
   border-bottom: 1px solid rgba(255,255,255,0.04);
   display: flex; align-items: center; gap: 8px;
   flex-shrink: 0;
@@ -388,14 +406,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 }
 .preview-body {
   flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 32px;
+  padding: var(--sp-6);
   background:
     radial-gradient(ellipse 60% 50% at 50% 50%, rgba(80,20,140,0.12) 0%, transparent 70%);
 }
 /* Simulates OBS canvas — dark grey background behind the overlay */
 .obs-canvas {
   background: #1c1c28;
-  border-radius: 12px;
+  border-radius: var(--r-card);
   box-shadow:
     0 0 0 1px rgba(255,255,255,0.07),
     0 12px 48px rgba(0,0,0,0.6);
@@ -405,7 +423,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
   position: absolute; top: 7px; left: 8px;
   font-size: var(--fs-tiny); font-weight: var(--fw-semibold); letter-spacing: 1px;
   text-transform: uppercase; color: rgba(255,255,255,0.22);
-  background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 4px;
+  background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: var(--r-tiny);
   pointer-events: none; z-index: 10;
 }
 /* The iframe container — JS sets the correct scaled dimensions */
@@ -530,7 +548,8 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
   margin-bottom: 3px;
   font-size: var(--fs-tiny); font-weight: var(--fw-semibold);
   color: #fff; background: rgba(96,32,160,0.92);
-  padding: 2px 7px; border-radius: 4px;
+  /* padding intentionally tight (2px 7px) == small floating badge on draggable node */
+  padding: 2px 7px; border-radius: var(--r-tiny);
   pointer-events: none; white-space: nowrap;
 }
 .le-handle {
@@ -552,7 +571,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .iframe-wrap.layout-edit-on { overflow: visible; }
 
 .preview-footer {
-  padding: 9px 18px; font-size: 11px; color: var(--text-muted);
+  padding: var(--sp-2) var(--sp-4); font-size: var(--fs-tiny); color: var(--text-muted);
   border-top: 1px solid rgba(255,255,255,0.04);
   text-align: center; flex-shrink: 0;
 }
@@ -569,11 +588,11 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 /* ─── Theme grid ────────────────────────────────────────────────────────────── */
 .theme-grid {
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 7px; padding: 6px 4px;
+  gap: var(--sp-2); padding: var(--sp-2) var(--sp-1);
 }
 .theme-btn {
   background: var(--panel); border: 1.5px solid var(--border-light);
-  border-radius: 10px; padding: 9px 10px;
+  border-radius: var(--r-card); padding: var(--sp-2) var(--sp-3);
   cursor: pointer; text-align: left;
   transition: all 0.18s; color: var(--text-muted);
   font-family: inherit; display: block; width: 100%;
@@ -586,7 +605,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 }
 .theme-swatches { display: flex; gap: 3px; }
 .theme-swatch {
-  width: 14px; height: 14px; border-radius: 3px;
+  width: 14px; height: 14px; border-radius: var(--r-tiny);
   border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0;
 }
 </style>
@@ -4060,9 +4079,9 @@ async function pmImport(file) {
 .lt-modal-card {
   background: var(--bg-elevated, #1a0f2e);
   border: 1px solid var(--border, rgba(160,80,255,0.25));
-  border-radius: 14px;
+  border-radius: var(--r-card);
   width: min(90vw, 900px); max-height: 80vh; overflow: auto;
-  padding: 22px 26px;
+  padding: var(--sp-5);
   box-shadow: 0 12px 48px rgba(0,0,0,0.6);
 }
 .lt-modal-header {
@@ -4083,8 +4102,8 @@ async function pmImport(file) {
 }
 .lt-template-card {
   border: 1.5px solid var(--border, rgba(160,80,255,0.30));
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
   background: rgba(255,255,255,0.04);
   cursor: pointer;
   transition: all 0.15s;
@@ -4102,7 +4121,7 @@ async function pmImport(file) {
   width: 100%; aspect-ratio: 935/135;
   background: rgba(8, 4, 16, 0.55);
   border: 1px solid rgba(160,80,255,0.18);
-  border-radius: 6px;
+  border-radius: var(--r-input);
   position: relative; overflow: hidden;
   padding: 4px; box-sizing: border-box;
 }
@@ -4136,10 +4155,10 @@ async function pmImport(file) {
   margin-top: 4px;
 }
 .pm-save-form input[type="text"] {
-  flex: 1; padding: 9px 12px; font-size: var(--fs-body);
+  flex: 1; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-body);
   background: rgba(255,255,255,0.05);
   border: 1.5px solid var(--border, rgba(160,80,255,0.30));
-  border-radius: 8px; color: var(--text, #fff);
+  border-radius: var(--r-input); color: var(--text, #fff);
   outline: none; transition: border-color 0.15s;
 }
 .pm-save-form input[type="text"]:focus {
@@ -4171,22 +4190,22 @@ async function pmImport(file) {
 }
 .pm-list::-webkit-scrollbar { width: 8px; }
 .pm-list::-webkit-scrollbar-thumb {
-  background: rgba(160,80,255,0.35); border-radius: 4px;
+  background: rgba(160,80,255,0.35); border-radius: var(--r-tiny);
 }
 .pm-empty {
-  padding: 24px; text-align: center;
+  padding: var(--sp-5); text-align: center;
   color: var(--text-muted, rgba(255,255,255,0.5));
   font-size: 12px; font-style: italic;
   background: rgba(255,255,255,0.02);
   border: 1.5px dashed rgba(160,80,255,0.25);
-  border-radius: 10px;
+  border-radius: var(--r-card);
 }
 .pm-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
+  padding: var(--sp-3) var(--sp-4);
   background: rgba(255,255,255,0.03);
   border: 1.5px solid var(--border, rgba(160,80,255,0.22));
-  border-radius: 10px;
+  border-radius: var(--r-card);
   transition: all 0.15s;
 }
 .pm-row:hover {
@@ -4208,15 +4227,15 @@ async function pmImport(file) {
 }
 .pm-row-name-edit {
   flex: 1; min-width: 0;
-  padding: 5px 9px; font-size: var(--fs-body); font-weight: var(--fw-semibold);
+  padding: var(--sp-2); font-size: var(--fs-body); font-weight: var(--fw-semibold);
   background: rgba(255,255,255,0.07);
   border: 1.5px solid var(--accent-bright, #c060ff);
-  border-radius: 6px; color: var(--text, #fff);
+  border-radius: var(--r-input); color: var(--text, #fff);
   outline: none;
 }
 .pm-row-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .pm-row-actions .btn {
-  padding: 5px 9px; font-size: 11px;
+  padding: var(--sp-1) var(--sp-2); font-size: var(--fs-tiny);
   min-width: 0;
 }
 .pm-row-actions .pm-btn-danger { color: #ff8080; }
@@ -4232,9 +4251,9 @@ async function pmImport(file) {
   flex: 1; font-size: 12px; color: #ffc080; font-weight: 500;
 }
 .pm-status {
-  margin-top: 12px; padding: 8px 12px;
-  font-size: 12px; min-height: 14px;
-  border-radius: 6px;
+  margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-caption); min-height: 14px;
+  border-radius: var(--r-input);
   transition: all 0.2s;
 }
 .pm-status.pm-ok {
