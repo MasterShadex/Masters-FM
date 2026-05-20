@@ -462,9 +462,10 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 }
 .preview-header {
   padding: var(--sp-2) var(--sp-4); font-size: var(--fs-tiny); color: var(--text-muted);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: var(--sp-2);
   flex-shrink: 0;
+  letter-spacing: 0.5px; text-transform: uppercase;
 }
 .live-dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -478,8 +479,9 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 .preview-body {
   flex: 1; display: flex; align-items: center; justify-content: center;
   padding: var(--sp-6);
+  /* Subtle brand glow behind the canvas == frames the overlay simulation */
   background:
-    radial-gradient(ellipse 60% 50% at 50% 50%, rgba(80,20,140,0.12) 0%, transparent 70%);
+    radial-gradient(ellipse 60% 50% at 50% 50%, rgba(139, 92, 246, 0.10) 0%, transparent 70%);
 }
 /* Simulates OBS canvas == dark grey background behind the overlay */
 .obs-canvas {
@@ -643,17 +645,17 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 
 .preview-footer {
   padding: var(--sp-2) var(--sp-4); font-size: var(--fs-tiny); color: var(--text-muted);
-  border-top: 1px solid rgba(255,255,255,0.04);
+  border-top: 1px solid var(--border);
   text-align: center; flex-shrink: 0;
 }
-.preview-footer strong { color: var(--accent-bright); }
+.preview-footer strong { color: var(--brand-glow); font-weight: var(--fw-semibold); }
 
 /* ─── Section help text ─────────────────────────────────────────────────────── */
 .sec-help {
-  font-size: 11px; color: var(--text-muted);
-  line-height: 1.5; padding: 0 4px 8px;
+  font-size: var(--fs-tiny); color: var(--text-muted);
+  line-height: var(--lh-body); padding: 0 var(--sp-1) var(--sp-2);
   border-bottom: 1px solid var(--border-light);
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
 }
 
 /* ─── Theme grid ────────────────────────────────────────────────────────────── */
