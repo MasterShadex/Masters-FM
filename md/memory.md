@@ -3526,3 +3526,93 @@ local v14.0.0 cut remains -- a separate brief (operator-commissioned,
 - HeartbeatService.cs stale docstring tidy (parked from Stage 7.15)
 
 ### Status: HALT. Stage 7.16 closure committed. v14 visually + functionally complete end-to-end. v14.0.0 local cut is the only remaining brief. Awaiting operator's next direction.
+
+---
+
+## 2026-05-20 22:41 UTC -- Stage 7.17: local v14.0.0 cut
+
+**Commits:**
+- `bfec846` STEP 0 -- checkpoint + state inventory pre-v14.0.0 cut
+- `718e3e1` v14.0.0 -- local cut (the actual v14.0.0 commit; contains version.json bump + 6 STEP 2.5 version-string edits across 4 files)
+
+**Outcome:** PASS (operator-verified About dialog reads 14.0.0; one mid-brief HALT for STEP 2.5 brief correction, classified as brief-correction not Ruflo strike)
+
+### What this stage did
+Bumped `version.json` from `14.0.0-rc.3` to `14.0.0`. Fresh `_full_rebuild.ps1`
+produced a `14.0.0`-labeled MSI. Local install verified working. Committed
+locally as `v14.0.0 -- local cut` at `718e3e1`.
+
+### Mid-brief STEP 2.5 brief correction
+First STEP 2 rebuild produced installed DLL `ProductVersion` =
+`14.0.0-rc.3+bfec846...` despite `version.json` correctly reading `14.0.0`.
+Diagnosis (the brief's ROLLBACK section explicitly anticipated this) found
+six hardcoded version strings outside `version.json`:
+
+- `_full_rebuild.ps1:287` -- `$appVer = '14.0.0-rc.3'` (fallback)
+- `MastersFM_Tray_v14.csproj:22` -- `<Version>14.0.0-rc.3</Version>`
+- `MastersFM_Tray_v14.csproj:25` -- `<InformationalVersion>14.0.0-rc.3</InformationalVersion>`
+- `TrayMenuViewModel.cs:46` -- `_nowPlayingHeaderText = "v14.0.0-rc.3 - ready"`
+- `TrayMenuViewModel.cs:153` -- ternary fallback returning same
+- `App.xaml.cs:161` -- `UserAgent.ParseAdd("MastersFM/14.0.0-rc.3 (UpdateCheck)")`
+
+Operator authorized all 6 as STEP 2.5 brief correction (constraint: only
+version-string changes, no logic edits). Second rebuild verified
+`ProductVersion = 14.0.0+bfec846...` (no rc.3). Operator confirmed PASS
+at the gate.
+
+### Operator standing rule honored
+- NO git push executed (125 commits ahead of origin/main, unchanged)
+- NO git tag created
+- NO GitHub interaction (release / draft / browser / API)
+- rc.3 draft on GitHub untouched as historical artifact
+- All work remains local-only
+
+### v14 cycle summary
+This closes the v14 work cycle. The cycle spanned:
+- Stage 7.7B family (WPF dialog visual rebuild)
+- INTERRUPT #3 (rc.2 regressions fixed)
+- Stage 7.8B/C/D (latency + file-edit OBS + state machine)
+- rc.3 ship-prep including 5 server memory fixes
+- Stage 7.11 read-only diagnosis of 10 operator issues
+- Stage 7.12 Batch A (6 P0 fixes) + Batch B/C
+- Stage 7.13 customize.html v14 rebuild
+- Stage 7.14 overlay clock freeze diagnosis
+- Stage 7.15 overlay clock freeze fix
+- Stage 7.16 overlay.html v14 rebuild
+- Stage 7.17 local v14.0.0 cut (this stage)
+
+All protected files (tray.ps1, tray_native.cs, launcher.cs, server.js)
+SHA256 UNCHANGED across the ENTIRE cycle (every stage Stage 7.7B through
+Stage 7.17).
+
+### v14.0.0 is now the local truth
+- Installed app is v14.0.0 (canonical MSI built from `718e3e1`,
+  MSI sha256 `34dbf7b2122174dc...`)
+- Repo HEAD has version 14.0.0 (`718e3e1`)
+- Operator can use this build indefinitely as a personal-use version
+- If operator ever decides to publish: separate brief at that time
+  (will involve delete or replace rc.3 GitHub draft, push commits,
+  create release, decide tag strategy). NONE of that happens here.
+
+### Documentation references intentionally NOT updated
+~10 .md files contain historical `rc.3` references (release notes,
+audit reports, prior stage closure reports, memory.md APPEND entries).
+These describe what was at the time. Updating would falsify history.
+Operator confirmed: leave them alone.
+
+### Strikes consumed
+0 / 24
+
+### v14.1.0 candidates (not started, not planned, not blocking)
+- Server log rotation policy
+- Fix C (overlay.html stale-startedAt client fallback)
+- Customize preview-pane time-tick enhancement
+- `_prevPos` dictionary eviction policy in SmtcEventBridge.cs
+- `MinResyncIntervalMs` becomes a config token
+- HeartbeatService.cs stale docstring tidy
+- R2R compilation review -- the 8-10 min cold rebuild burns ~7+ min on
+  dotnet publish R2R for server.exe; worth evaluating whether to drop
+  R2R for local-use builds. Single-line edit to `_full_rebuild.ps1`.
+- Any new issues that surface during continued daily use
+
+### Status: HALT. v14 work cycle CLOSED at 718e3e1. v14.0.0 is local truth. No Stage 7.18 planned. v14 is done.
