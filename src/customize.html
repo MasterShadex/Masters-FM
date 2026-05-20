@@ -97,9 +97,30 @@
   --shadow-button-hover:  0 4px 18px rgba(139, 92, 246, 0.35);
   --shadow-input-focus:   0 0 8px rgba(139, 92, 246, 0.45);
 
+  /* v14 animation tokens (from WPF Animations.xaml; cubic-bezier approximations) */
+  --dur-press:      80ms;    /* button press depress */
+  --dur-fast:       150ms;   /* hover transitions */
+  --dur-standard:   220ms;   /* default state changes */
+  --dur-slow:       280ms;   /* dialog open / larger moves */
+  --dur-accent-bar: 8000ms;  /* accent bar drift loop */
+  --ease-standard:  cubic-bezier(0.4, 0, 0.2, 1);    /* QuadraticEase InOut */
+  --ease-out:       cubic-bezier(0.0, 0, 0.2, 1);    /* QuadraticEase Out */
+  --ease-spring:    cubic-bezier(0.16, 1, 0.3, 1);   /* ElasticEase Spring=3 */
+  --ease-in:        cubic-bezier(0.4, 0, 1, 1);      /* QuadraticEase In */
+
   /* Layout constants (unchanged from v12) */
   --sidebar-w:      370px;
   --topbar-h:       52px;
+}
+
+/* v14 reduced-motion respect (mirrors App.xaml.cs IsReducedMotion override) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 html, body {
@@ -127,7 +148,7 @@ html, body {
   height: 3px;
   background: var(--accent-bar);
   background-size: 200% 100%;
-  animation: accent-drift 8s linear infinite;
+  animation: accent-drift var(--dur-accent-bar) linear infinite;
   z-index: 1000;
   pointer-events: none;
 }
@@ -199,7 +220,11 @@ html, body {
 .btn {
   padding: var(--sp-2) var(--sp-4); border-radius: var(--r-button); border: none;
   cursor: pointer; font-family: inherit; font-size: var(--fs-body-strong); font-weight: var(--fw-semibold);
-  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.08s;
+  transition: background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard),
+              transform var(--dur-press) var(--ease-out);
   white-space: nowrap;
 }
 .btn:active            { transform: scale(0.96); }
@@ -268,7 +293,9 @@ html, body {
   padding: var(--sp-2) var(--sp-3); border-radius: var(--r-button);
   cursor: pointer; user-select: none;
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard);
 }
 .sec-header:hover { background: var(--surface-2); color: var(--text); }
 .sec-header.open  {
@@ -323,7 +350,8 @@ select {
   border-radius: var(--r-input); color: var(--text);
   font-family: inherit; font-size: var(--fs-caption);
   padding: var(--sp-2); outline: none; width: 100%;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard);
 }
 input[type="text"]:hover,
 input[type="number"]:hover,
