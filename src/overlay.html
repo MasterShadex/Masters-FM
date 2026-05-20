@@ -66,6 +66,25 @@
   --error:          #F87171;
   --warning:        #FB923C;
   --info:           #38BDF8;
+
+  /* v14 spacing rhythm (4px grid) -- shared with customize.html */
+  --sp-1:           4px;
+  --sp-2:           8px;
+  --sp-3:           12px;
+  --sp-4:           16px;
+  --sp-5:           24px;
+  --sp-6:           32px;
+
+  /* v14 border-radius scale -- shared with customize.html.
+     == Note: --card-radius (customize-bound, default 56px below) and
+        --progress-radius (default 6px below) keep their existing names
+        per the Apply-to-OBS contract -- these tokens are for INTERNAL
+        non-customize-bound radii (album art frame, small chips). */
+  --r-card:         12px;
+  --r-button:       8px;
+  --r-input:        6px;
+  --r-pill:         999px;
+  --r-tiny:         4px;
 }
 
 html, body {
@@ -391,18 +410,19 @@ body.layout-mode-on [data-layout-node].layout-hidden {
  * marquee + artist ellipsis kick in cleanly instead of overflowing. */
 .info {
   flex: 1; min-width: 0;
-  padding: 22px 24px 22px 28px;
-  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  padding: var(--sp-5);                    /* 24px all sides (was 22px / 24px / 22px / 28px) */
+  display: flex; flex-direction: column; justify-content: center; gap: var(--sp-2);
 }
 
 /* NOW PLAYING row */
 .now-playing-label {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center; gap: var(--sp-3);   /* 12px (was 14px) */
   flex-shrink: 0; line-height: 1;
 }
+/* .bars gap intentionally tight (5px) == EQ-bar style spacing */
 .bars { display: flex; align-items: flex-end; gap: 5px; height: 36px; }
 .bar {
-  width: 6px; border-radius: 3px;
+  width: 6px; border-radius: var(--r-tiny);  /* 4px (was 3px) */
   background: var(--bar-color, var(--brand-glow));
   transform-origin: bottom;
   animation: bar-b var(--bar-dur, 0.85s) ease-in-out infinite;
@@ -460,8 +480,8 @@ body.layout-mode-on [data-layout-node].layout-hidden {
 /* ── Right column — spectrum + timestamps ─────────────────────────────── */
 .right-col {
   flex: 1; min-width: 500px; width: auto;
-  padding: 16px 24px 16px 16px;
-  display: flex; flex-direction: column; gap: 10px;
+  padding: var(--sp-4) var(--sp-5) var(--sp-4) var(--sp-4);    /* 16/24/16/16 (was 16/24/16/16) */
+  display: flex; flex-direction: column; gap: var(--sp-3);     /* 12px (was 10px) */
   border-left: 2px solid rgba(139, 92, 246, 0.10);   /* == brand-base alpha */
 }
 
@@ -497,8 +517,8 @@ body.layout-mode-on [data-layout-node].layout-hidden {
 
 /* ── Time bar ─────────────────────────────────────────────────────────── */
 .time-bar {
-  flex-shrink: 0; display: flex; align-items: center; gap: 16px;
-  height: 46px;
+  flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-4);   /* 16px == on grid */
+  height: 46px;                                                            /* preserve hardcoded layout height */
 }
 .time-bar.hidden { display: none; }
 
