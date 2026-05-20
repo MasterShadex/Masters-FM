@@ -316,12 +316,30 @@ internal static class WebhookHandler
                 {
                     long expectedPos = nowMs - ((long?)ct2["startedAt"]?.GetValue<long>() ?? nowMs);
                     long drift7 = Math.Abs(expectedPos - positionMs);
-                    ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
-                    ct2Dirty = true;
-                    state.LastStartedAtUpdateMs = nowMs;
-                    logger.LogInformation(
-                        "Seek ({DriftS}s jump) -- startedAt resynced to pos={PosS}s",
-                        Math.Round(drift7 / 1000.0), Math.Round(positionMs / 1000.0));
+                    // Stage 7.15 Fix B: defensive guard against false-positive isSeek payloads.
+                    // If the tray (Fix A1 / A2) ever regresses or a future SMTC quirk
+                    // re-introduces false isSeek=true, this server-side check prevents the
+                    // resulting startedAt corruption that freezes the overlay clock. Real
+                    // user-initiated seeks have drift7 >> 500 ms; false positives from a
+                    // frozen-position SMTC source present as drift7 ~= 0.
+                    // See V14_S7_14_DIAG_OVERLAY_TIME_FROZEN.md sections 5.3 + 8.2.
+                    // LogDebug (not LogInformation) so we don't refill server.log at the
+                    // same 3-4 Hz rate the false-positive cascade currently does.
+                    if (drift7 < 500)
+                    {
+                        logger.LogDebug(
+                            "B7: isSeek=true but drift7={Drift}ms < 500ms -- ignoring (likely false positive from stale SMTC)",
+                            drift7);
+                    }
+                    else
+                    {
+                        ct2["startedAt"] = JsonValue.Create(nowMs - positionMs);
+                        ct2Dirty = true;
+                        state.LastStartedAtUpdateMs = nowMs;
+                        logger.LogInformation(
+                            "Seek ({DriftS}s jump) -- startedAt resynced to pos={PosS}s",
+                            Math.Round(drift7 / 1000.0), Math.Round(positionMs / 1000.0));
+                    }
                 }
                 else if (isSeek && ct2["isPaused"]?.GetValue<bool>() != true && b7Cooldown)
                 {
