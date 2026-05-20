@@ -116,7 +116,14 @@ public sealed class HeartbeatService : IHeartbeatService
                 var seekThresholdForSource = SmtcEventBridge.IsBrowserLikeSource(track.Source)
                     ? 1000.0
                     : SeekThresholdMs;
-                if (drift > seekThresholdForSource)
+                // Stage 7.15 Fix A1: require ACTUAL position movement before flagging seek.
+                // SoundCloud-RPC (Electron MediaSession) emits stale TimelineProperties where
+                // reported position freezes while wall clock advances; without this gate the
+                // drift check fires isSeek=true on every tick, causing server B7 to re-pin
+                // startedAt to the frozen position, freezing the overlay clock.
+                // See V14_S7_14_DIAG_OVERLAY_TIME_FROZEN.md sections 5.1 + 8.1.
+                bool positionActuallyMoved = Math.Abs(posAdvanceMs) > 100;
+                if (drift > seekThresholdForSource && positionActuallyMoved)
                 {
                     isSeek = true;
                     _logger.Log(
