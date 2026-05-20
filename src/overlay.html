@@ -3,20 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <title>Master's FM — Now Playing</title>
-<!-- Inter is the default font — others are injected dynamically by applyConfig().
-     Noto Sans (+ 10 script-specific families) is loaded as a permanent fallback
-     chain covering every script that commonly appears in track/artist names:
-       Latin-ext, Cyrillic, Greek, Devanagari  → Noto Sans
-       Chinese Simplified / Traditional         → Noto Sans SC / TC
-       Japanese / Korean                        → Noto Sans JP / KR
-       Hebrew (עברית)                           → Noto Sans Hebrew
-       Arabic (عربي)                            → Noto Sans Arabic
-       Thai (ภาษาไทย)                           → Noto Sans Thai
-       Musical notes ♫, special symbols ★ ♥    → Noto Sans Symbols / Symbols 2
-       Text emoji (●, ◆, ☆ …)                  → Noto Emoji
-       Color emoji 🎵🎶 (Windows / macOS)       → Segoe UI Emoji / Apple Color Emoji
+<!-- Stage 7.16: default font is now Segoe UI (system, no network fetch).
+     The Noto Sans subsets remain on the CDN because they are a FUNCTIONAL
+     fallback chain for international track/artist names, not a cosmetic
+     choice == without them, non-Latin tracks render as tofu boxes on
+     systems that lack OS-level Noto coverage. See V14_S7_16_LOG.md S0.5a
+     for the deviation rationale (drop Inter, keep Noto Sans subsets).
+       Latin-ext, Cyrillic, Greek, Devanagari  -> Noto Sans
+       Chinese Simplified / Traditional        -> Noto Sans SC / TC
+       Japanese / Korean                       -> Noto Sans JP / KR
+       Hebrew                                  -> Noto Sans Hebrew
+       Arabic                                  -> Noto Sans Arabic
+       Thai                                    -> Noto Sans Thai
+       Musical notes, special symbols          -> Noto Sans Symbols / Symbols 2
+       Text emoji                              -> Noto Emoji
+       Color emoji (Windows / macOS)           -> Segoe UI Emoji / Apple Color Emoji
      Browsers fetch each subset on-demand via unicode-range, so idle cost ~zero. -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Sans+Hebrew:wght@400;500;700;900&family=Noto+Sans+Arabic:wght@400;500;700;900&family=Noto+Sans+Thai:wght@400;500;700;900&family=Noto+Sans+Symbols:wght@400;700&family=Noto+Sans+Symbols+2:wght@400;700&family=Noto+Emoji:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Sans+Hebrew:wght@400;500;700;900&family=Noto+Sans+Arabic:wght@400;500;700;900&family=Noto+Sans+Thai:wght@400;500;700;900&family=Noto+Sans+Symbols:wght@400;700&family=Noto+Sans+Symbols+2:wght@400;700&family=Noto+Emoji:wght@400;700&display=swap" rel="stylesheet">
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      BASE STYLES — all colour/size values are CSS custom properties.
@@ -68,7 +71,7 @@
 html, body {
   width: 100%; height: 100%;
   background-color: rgba(0,0,0,0); overflow: hidden;
-  font-family: var(--font-family, 'Inter', 'Noto Sans', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Hebrew', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans Symbols', 'Noto Sans Symbols 2', 'Noto Emoji', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', system-ui, sans-serif);
+  font-family: var(--font-family, 'Segoe UI', 'Noto Sans', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Hebrew', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans Symbols', 'Noto Sans Symbols 2', 'Noto Emoji', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -613,7 +616,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
 // ══════════════════════════════════════════════════════════════════════════
 
 const DEFAULTS = {
-  font: 'Inter',
+  font: 'Segoe UI',   // Stage 7.16: v14 default (was 'Inter'). Customize-saved choices win.
   // v2.1.0 — when true, the spectrum uses WASAPI-loopback data from
   // audio_spectrum.exe (real system audio). When false, falls back to the
   // getUserMedia mic path or the sim animation.  Tray menu toggle sets it.
@@ -1557,8 +1560,10 @@ function rebuildBars(cfg) {
   }
 }
 
-// Inject/update a Google Font link (skips Inter which is already hardlinked)
-const _injectedFonts = new Set(['Inter']);
+// Inject/update a Google Font link (skips system fonts that need no injection).
+// Stage 7.16: 'Segoe UI' added because it's the new v14 default and a SYSTEM
+// font == no Google Font URL exists for it; injectFont would 404 on it.
+const _injectedFonts = new Set(['Segoe UI']);
 function injectFont(name) {
   if (!name || _injectedFonts.has(name)) return;
   _injectedFonts.add(name);
