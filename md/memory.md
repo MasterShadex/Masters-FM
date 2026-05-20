@@ -3254,3 +3254,155 @@ source SHA256.
 - `src/overlay.html` v14 rebuild is v14.1.0 territory
 
 ### Status: HALT. Stage 7.13 closure committed. Awaiting operator's next direction.
+
+---
+
+## 2026-05-20 15:10 UTC -- Stage 7.14: overlay clock-freeze READ-ONLY diagnosis
+
+**Commits:** `5bbc705` Stage 7.14 -- read-only diagnosis of overlay time-frozen bug
+**Outcome:** Diagnosis report `V14_S7_14_DIAG_OVERLAY_TIME_FROZEN.md` (338 lines) committed.
+
+### What this stage did
+Read-only investigation of a defect operator discovered during Stage 7.13
+gate testing: the current-position counter in BOTH the customize.html
+live preview pane AND the overlay.html in OBS was stuck at 0:01 while
+real SoundCloud playback advanced to 0:42.
+
+No code changes, no rebuild, no restart, no log rotation. Pure diagnosis.
+
+### Root cause identified
+3-component cascade triggered by Electron-MediaSession wrappers (SoundCloud-RPC):
+
+1. SoundCloud-RPC publishes a TimelineProperties.Position that doesn't
+   update after the initial publication. SMTC forwards this stale value.
+2. `HeartbeatService.OnTick` (lines 102-126) computes `drift = |wallElapsed
+   - posAdvance|`; when position is frozen, `posAdvance ~= 0` but
+   `wallElapsed ~= 250ms`, drift exceeds 200ms threshold, flags `isSeek=true`.
+3. Same false-positive logic in `SmtcEventBridge.cs` lines 328-340.
+4. Tray sends webhook with `seek=true` at 3-4 Hz cadence.
+5. Server `WebhookHandler.cs` B7 branch (lines 312-325) mechanically
+   re-pins `startedAt = nowMs - positionMs` on every webhook -- because
+   isSeek=true is "trusted" without sanity-checking drift7.
+6. `overlay.html` line 2021 computes `elapsed = Date.now() - startedAt`,
+   which resolves to the constant frozen position forever.
+
+The Phase Q commit `c2b98ea` (which the operator suspected) did NOT
+introduce this; it removed the BACKWARD-snap that previously turned the
+same root cause into a 30-second sawtooth. The freeze is the residual
+symptom on the B7 / isSeek false-positive path, now stripped of its
+prior sawtooth mitigation.
+
+Most likely introducer for the SmtcEventBridge false-positive isSeek:
+`8cf4c64` (Phase C #7 -- "detect seeks at the SMTC bridge so the server's
+B7-seek branch fires immediately"). The HeartbeatService mirror of the
+logic predates v14 work.
+
+### Side-effect indicator
+Server.log was 2.9 GB and growing at ~1.5 GB/day because the
+`[Program] Seek (Ns jump) -- startedAt resynced` line fires at 3-4 Hz.
+
+### Files read (no edits)
+- `src/overlay.html` -- time-tick formula at line 2021
+- `src/customize.html` -- preview iframe at lines 1680 / 2119 (confirmed
+  it scales overlay.html, inheriting the same bug)
+- `src/server_dotnet/WebhookHandler.cs` -- B7 branch lines 312-325
+- `src/tray_csharp/Services/HeartbeatService.cs` -- isSeek logic lines
+  102-126
+- `src/tray_csharp/Detectors/SmtcEventBridge.cs` -- isSeek logic lines
+  328-340
+- `src/tray_csharp/Services/WebhookClient.cs` line 100
+- `src/tray_csharp/Detectors/TrackUpdate.cs` line 23
+
+### Recommended fix shape (proposed; implemented as Stage 7.15 below)
+- Tray-side surgical: gate `isSeek=true` on `Math.Abs(posAdvanceMs) > 100`
+  in both HeartbeatService.cs and SmtcEventBridge.cs.
+- Server-side belt-and-braces: WebhookHandler.cs B7 ignores `isSeek=true`
+  payloads with `drift7 < 500 ms` (false-positive presents as drift7 ~= 0).
+- Optional client-side fallback: deferred unless 1+2 not enough.
+
+---
+
+## 2026-05-20 15:10 UTC -- Stage 7.15: overlay clock freeze fix
+
+**Commits:**
+- `2198aba` STEP 0 -- checkpoint + diagnosis re-read + target file inventory
+- `4b12cc3` STEP 1 -- Fix A1 HeartbeatService isSeek requires actual position movement
+- `05997fa` STEP 2 -- Fix A2 SmtcEventBridge isSeek requires actual position movement
+- `77ee282` STEP 3 -- Fix B WebhookHandler B7 ignores isSeek with near-zero drift
+- (this entry) STEP 5 -- memory.md APPEND + final report
+
+**Outcome:** PASS (operator replied "PASS" to the STEP 4 verification gate)
+
+### What this stage did
+Fixed the multi-component cascade causing the overlay current-position
+time to freeze at the last reported position when SoundCloud-RPC (or
+similar Electron MediaSession apps) reported stale TimelineProperties.
+
+- **Fix A1** (`HeartbeatService.cs`): isSeek=true now requires
+  `Math.Abs(posAdvanceMs) > 100` in addition to drift threshold.
+  Eliminates false positive at the heartbeat-driven detection site.
+- **Fix A2** (`SmtcEventBridge.cs`): same gate applied to SMTC-event-driven
+  seek detection. Eliminates false positive at the event-driven site.
+- **Fix B** (`WebhookHandler.cs` B7): server-side defensive guard ignores
+  `isSeek=true` payloads with `drift7 < 500 ms` (false-positive pattern).
+  Logged at LogDebug not LogInformation so it doesn't refill server.log
+  at the same 3-4 Hz rate the false positives currently do.
+
+Real seek behavior preserved (operator confirmed in gate: clicking
+timeline in SoundCloud correctly updates overlay position within ~1 s).
+
+### Source-code delta
++41 / -8 across 3 files (HeartbeatService.cs, SmtcEventBridge.cs,
+WebhookHandler.cs). Net +33 lines, mostly comments referencing
+`V14_S7_14_DIAG_OVERLAY_TIME_FROZEN.md` sections for traceability.
+
+### Internal sanity check (pre-gate, S4.3)
+30-second window post-rebuild, same SoundCloud-RPC track loaded:
+- `[Heartbeat] seek:` lines in overlay.log: **0** (vs ~90+ pre-fix)
+- `Seek ... resynced` lines in server.log: **0** (vs ~90+ pre-fix)
+- Webhook throughput: unchanged (~15-16 Hz heartbeat ticks continue,
+  but with `isSeek=false`)
+
+### Protected files SHA256
+All 4 protected source files UNCHANGED from
+`V14_S7_REPLAN_PROTECTED_BASELINE.md` (verified at STEP 5.1).
+
+### Build verification
+- STEP 4 rebuild `bq1pb3onb` (~11 min cold, MSI signed, installed OK,
+  ProductVersion `14.0.0-rc.3+77ee282f16...`)
+- STEP 5 dual-build `bfmwx3012` (~38 s warm-cache, all 5 stages exit=0,
+  same ProductVersion -- source unchanged since STEP 3 commit)
+
+### Side benefit observed
+Pre-fix `server.log` growth rate: ~1.5 GB/day (the
+`[Program] Seek (Ns jump) -- startedAt resynced` line firing at 3-4 Hz).
+Post-fix: the offending line dropped to zero in the 30-s sanity window.
+Conservative expected growth rate post-fix: <10% of pre-fix rate,
+i.e. ~150 MB/day or lower. The 2.9 GB existing server.log was NOT
+rotated per ABSOLUTE RULE 5.
+
+### Local-only state
+- HEAD = `77ee282` (STEP 3 -- Fix B); STEP 5 closure commit pending
+- 0 commits ahead of working tree (after STEP 5 commit lands: +1)
+- No new tag created
+- No GitHub push, no GitHub release modification (rule 4)
+- `v14.0.0-rc.3` tag on remote unchanged
+
+### Strikes consumed
+0. Three-strike rule (per STEP, 8 total) never tripped.
+
+### Remaining for v14.0.0 GA
+v14 is functionally and visually COMPLETE. Only ship-prep remains:
+- Bump `version.json` from `14.0.0-rc.3` to `14.0.0` (separate brief)
+- Fresh `_full_rebuild.ps1` to produce the GA MSI
+- Create git tag `v14.0.0`, push main + tag
+- GitHub Release (replace rc.3 draft or publish fresh)
+- Optional: clean soak (no formal requirement -- daily use is effective soak)
+
+### Deferred to v14.1.0
+- Fix C (`overlay.html` client-side stale-startedAt fallback) -- defense
+  in depth; revisit after 1-2 weeks if Fix A+B regress
+- Server log rotation policy (`SimpleFileLogger.cs` enhancement)
+- `src/overlay.html` v14 visual rebuild (largest v14.1.0 piece)
+
+### Status: HALT. Stage 7.15 closure committed. v14.0.0 GA one ship-prep brief away. Awaiting operator's next direction.
