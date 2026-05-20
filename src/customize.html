@@ -7,7 +7,6 @@
 <link rel="icon" type="image/x-icon" href="/MastersFM.ico">
 <link rel="shortcut icon" href="/MastersFM.ico">
 <link rel="manifest" href="/manifest.json">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ─── Reset ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -59,6 +58,23 @@
   --input-bg:       var(--surface-2);
   --input-border:   var(--border-subtle);
 
+  /* v14 typography (Segoe UI / Cascadia Mono from WPF Typography.xaml) */
+  --font-ui:        'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:      'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --fs-display:     28px;   /* dialog title / hero */
+  --fs-heading:     18px;   /* section header */
+  --fs-subheading:  15px;   /* tab label / group title */
+  --fs-body-strong: 14px;   /* button label / important inline */
+  --fs-body:        14px;   /* body copy */
+  --fs-caption:     12px;   /* helper / label */
+  --fs-tiny:        11px;   /* uppercase metadata / badge */
+  --fs-mono:        13px;   /* device id / path / code */
+  --fw-regular:     400;
+  --fw-medium:      500;
+  --fw-semibold:    600;
+  --lh-body:        1.5;
+  --lh-caption:     1.42;
+
   /* Layout constants (unchanged from v12) */
   --sidebar-w:      370px;
   --topbar-h:       52px;
@@ -68,8 +84,9 @@ html, body {
   height: 100%; overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -93,8 +110,8 @@ html, body {
   font-size: 15px; flex-shrink: 0;
   box-shadow: 0 2px 10px rgba(120,50,220,0.4);
 }
-.logo-text { font-size: 14px; font-weight: 700; color: var(--text); }
-.logo-sub  { font-size: 11px; color: var(--text-muted); }
+.logo-text { font-size: var(--fs-body-strong); font-weight: var(--fw-semibold); color: var(--text); }
+.logo-sub  { font-size: var(--fs-tiny); color: var(--text-muted); }
 
 .topbar-status {
   font-size: 12px; color: transparent;
@@ -217,11 +234,11 @@ html, body {
 
 .sec-icon  { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
 .sec-title {
-  flex: 1; font-size: 11px; font-weight: 700;
+  flex: 1; font-size: var(--fs-tiny); font-weight: var(--fw-semibold);
   letter-spacing: 0.6px; text-transform: uppercase;
 }
 .sec-chevron {
-  font-size: 9px; opacity: 0.45;
+  font-size: var(--fs-tiny); opacity: 0.45;
   transition: transform 0.2s;
 }
 .sec-header.open .sec-chevron { transform: rotate(180deg); opacity: 0.7; }
@@ -239,14 +256,14 @@ html, body {
   min-height: 30px;
 }
 .row-label {
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: var(--fs-caption); color: var(--text-muted);
   width: 115px; flex-shrink: 0; line-height: 1.3;
 }
 .row-ctrl { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sub-label {
   padding: 6px 4px 2px;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.7px;
-  text-transform: uppercase; color: rgba(140,70,255,0.55);
+  font-size: var(--fs-tiny); font-weight: var(--fw-semibold); letter-spacing: 0.7px;
+  text-transform: uppercase; color: rgba(139, 92, 246, 0.55);
 }
 .divider { height: 1px; background: var(--border-light); margin: 6px 4px; }
 
@@ -296,7 +313,7 @@ input[type="range"]::-moz-range-thumb {
   width: 22px; height: 22px; padding: 0; flex-shrink: 0;
   border: 1.5px solid var(--border); border-radius: 50%;
   background: transparent; color: var(--accent-bright);
-  font-size: 13px; line-height: 19px; font-weight: 700;
+  font-size: var(--fs-body); line-height: 19px; font-weight: var(--fw-semibold);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 }
@@ -313,8 +330,8 @@ input[type="color"] {
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .hex-in {
-  font-family: 'JetBrains Mono', 'Cascadia Code', 'Courier New', monospace;
-  font-size: 11px; width: 80px; letter-spacing: 0.3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny); width: 80px; letter-spacing: 0.3px;
   flex-shrink: 0;
 }
 
@@ -347,7 +364,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .color-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0; }
 .cl-item { display: flex; align-items: center; gap: 4px; }
 .cl-item input[type="color"] { width: 22px; height: 22px; }
-.cl-item .hex-in { width: 65px; font-size: 10px; }
+.cl-item .hex-in { width: 65px; font-size: var(--fs-tiny); }
 
 /* ─── Preview pane ──────────────────────────────────────────────────────────── */
 .preview {
@@ -386,7 +403,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 }
 .obs-badge {
   position: absolute; top: 7px; left: 8px;
-  font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  font-size: var(--fs-tiny); font-weight: var(--fw-semibold); letter-spacing: 1px;
   text-transform: uppercase; color: rgba(255,255,255,0.22);
   background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 4px;
   pointer-events: none; z-index: 10;
@@ -511,7 +528,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .le-node-label {
   position: absolute; bottom: 100%; left: 0;
   margin-bottom: 3px;
-  font-size: 10px; font-weight: 600;
+  font-size: var(--fs-tiny); font-weight: var(--fw-semibold);
   color: #fff; background: rgba(96,32,160,0.92);
   padding: 2px 7px; border-radius: 4px;
   pointer-events: none; white-space: nowrap;
@@ -564,7 +581,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
 .theme-btn:hover { background: var(--panel-hover); border-color: var(--border); color: var(--text); }
 .theme-btn.active { border-color: var(--accent); background: rgba(147,51,234,0.18); color: var(--accent-bright); }
 .theme-btn-name {
-  font-size: 11px; font-weight: 700; margin-bottom: 5px;
+  font-size: var(--fs-tiny); font-weight: var(--fw-semibold); margin-bottom: 5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .theme-swatches { display: flex; gap: 3px; }
@@ -582,7 +599,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
     <div class="logo-icon">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="9" cy="9" r="8" fill="none" stroke="white" stroke-width="1.5" opacity="0.85"/>
-        <text x="9" y="12.5" text-anchor="middle" font-family="'Inter',sans-serif" font-size="7" font-weight="800" fill="white" letter-spacing="0.5">FM</text>
+        <text x="9" y="12.5" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="7" font-weight="600" fill="white" letter-spacing="0.5">FM</text>
       </svg>
     </div>
     <div>
@@ -4050,7 +4067,7 @@ async function pmImport(file) {
 }
 .lt-modal-header {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 18px; font-weight: 700; color: var(--text, #fff);
+  font-size: var(--fs-heading); font-weight: var(--fw-semibold); color: var(--text, #fff);
   margin-bottom: 12px;
 }
 .lt-modal-close {
@@ -4091,7 +4108,7 @@ async function pmImport(file) {
 }
 .lt-template-thumb svg { width: 100%; height: 100%; }
 .lt-template-name {
-  font-size: 14px; font-weight: 700; color: var(--text, #fff);
+  font-size: var(--fs-body-strong); font-weight: var(--fw-semibold); color: var(--text, #fff);
 }
 .lt-template-desc {
   font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.65));
@@ -4119,7 +4136,7 @@ async function pmImport(file) {
   margin-top: 4px;
 }
 .pm-save-form input[type="text"] {
-  flex: 1; padding: 9px 12px; font-size: 13px;
+  flex: 1; padding: 9px 12px; font-size: var(--fs-body);
   background: rgba(255,255,255,0.05);
   border: 1.5px solid var(--border, rgba(160,80,255,0.30));
   border-radius: 8px; color: var(--text, #fff);
@@ -4141,7 +4158,7 @@ async function pmImport(file) {
   font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.55));
 }
 .pm-section-title {
-  font-size: 13px; font-weight: 700;
+  font-size: var(--fs-body); font-weight: var(--fw-semibold);
   color: var(--text, #fff);
   margin: 18px 0 8px 2px;
   text-transform: uppercase; letter-spacing: 1px;
@@ -4182,7 +4199,7 @@ async function pmImport(file) {
 }
 .pm-row.pm-row-loaded::before {
   content: '●'; color: var(--accent-bright, #c060ff);
-  font-size: 13px; line-height: 1;
+  font-size: var(--fs-body); line-height: 1;
 }
 .pm-row-name {
   flex: 1; min-width: 0;
@@ -4191,7 +4208,7 @@ async function pmImport(file) {
 }
 .pm-row-name-edit {
   flex: 1; min-width: 0;
-  padding: 5px 9px; font-size: 13px; font-weight: 600;
+  padding: 5px 9px; font-size: var(--fs-body); font-weight: var(--fw-semibold);
   background: rgba(255,255,255,0.07);
   border: 1.5px solid var(--accent-bright, #c060ff);
   border-radius: 6px; color: var(--text, #fff);
