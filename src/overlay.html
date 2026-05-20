@@ -460,7 +460,8 @@ body.layout-mode-on [data-layout-node].layout-hidden {
   color:          var(--title-color, #ffffff);
   letter-spacing: var(--title-letter-spacing, 0px);
   white-space: nowrap; display: inline-block; will-change: transform;
-  text-shadow: var(--title-text-shadow, 0 0 40px rgba(255,200,255,0.18));
+  /* v14 default glow: brand-glow alpha (was a pinkish rgba). Customize override wins. */
+  text-shadow: var(--title-text-shadow, 0 0 40px rgba(167, 139, 250, 0.25));
   line-height: 1.1;
 }
 
