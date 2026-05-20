@@ -3165,3 +3165,92 @@ album art, patch-notes overhaul, etc.).
   before whatever future `rc.N` or `v14.0.0` final release goes out.
 
 ### Status: HALT. Awaiting operator's next direction.
+
+---
+
+## 2026-05-20 11:59 UTC -- Stage 7.13: Customize Overlay visual rebuild
+
+**Commits:**
+- `01bd88c` STEP 0 -- checkpoint + design token inventory + customize.html structure map
+- `826aa32` STEP 1 -- archive pre-rebuild customize.html as v12 baseline
+- `ece4c89` STEP 2 -- color tokens migrated to v14 palette
+- `517f7c2` STEP 3 -- typography migrated to Segoe UI + v14 token scale
+- `22bff03` STEP 4 -- spacing rhythm and border-radius migrated to v14 tokens
+- `1cff6ec` STEP 5 -- component styles migrated (buttons, inputs, sliders, toggles, cards)
+- `34804ca` STEP 6 -- chrome (topbar, sidebar, accent bar) migrated to v14
+- `2603570` STEP 7 -- transitions and reduced-motion support
+- `44d072e` STEP 8 -- preview pane frame styled, content rendering untouched
+- `45d1371` STEP 9 -- final polish pass
+
+**Outcome:** PASS (operator replied "continue" to the STEP 10 gate; treated as PASS)
+
+### What this stage did
+- Migrated `src/customize.html` to v14 design tokens (Segoe UI, brand-purple,
+  Surface0..3, 4 px spacing rhythm, 12/8/6 radius scale, animated 3-px accent
+  bar at top, v14 shadow/animation tokens, prefers-reduced-motion guard).
+- Pure visual rebuild (Scope X). No JS logic changes. No HTML structural
+  changes beyond adding `<div class="accent-bar"></div>` inside the topbar.
+  No UX reorganization. Every existing control still behaves identically.
+- All functionality preserved by design: live preview, Apply to OBS,
+  Preset Manager, Reset to Defaults, all 140 native input controls,
+  layout-editor drag/resize, theme grid.
+- Single operator verification gate (STEP 10) cleared via "continue".
+
+### Process
+First stage to use a SINGLE end-of-brief verification gate rather than the
+per-STEP gate cadence used by Batch A. Justification: customize.html is a
+single web surface where partial visual changes look broken by definition.
+The full rebuild had to land before any meaningful operator verification was
+possible. Per-STEP visual checks were Ruflo-internal only; the operator gate
+was end-of-brief.
+
+10 commits in chain `01bd88c -> 45d1371`. File grew from 4204 lines (207199 B)
+to 4346 lines (214752 B). +3.6% size, mostly new `:root` token definitions and
+the reduced-motion guard.
+
+Legacy-alias strategy meant zero mass selector rename was required: every
+existing `var(--accent)`, `var(--sidebar-bg)`, `var(--text-muted)`, etc.
+reference automatically picks up its v14 value through alias chains in `:root`.
+
+### Files touched
+- `src/customize.html` (+1006 / -160 line delta vs v12 baseline)
+- `V14_S7_13_DESIGN_TOKENS.md` (new, 285 lines)
+- `V14_S7_13_LOG.md` (new, ~700 lines; force-added past V*_LOG.md gitignore)
+- `_archive/v12_customize_baseline/customize.html` (new, byte-identical v12 snapshot)
+- `V14_S7_13_REPORT.md` (new, gitignored deliverable)
+
+### Files NOT touched (per ABSOLUTE RULES)
+- `src/overlay.html` (rule 6, deferred to v14.1.0)
+- All `src/tray_csharp/**` (rule 8, no WPF changes)
+- `src/tray.ps1`, `src/tray_native/tray_native.cs`, `src/launcher.cs`,
+  `src/server.js` (rule 7, SHA256 verified unchanged at STEP 11.1)
+- `version.json` (rule 9, no version bump; rebuild script overwrites
+  `msi_sha256` field in working tree but the change was not committed)
+- All JS logic / selectors inside customize.html (rule 1)
+
+### Build verification
+Two `_full_rebuild.ps1` runs landed during the brief:
+1. After STEP 3 commit (bm0csgiyv, ~10 min): proved STEP 2/3 builds clean
+2. After STEP 9 commit (bwu6a7u26, ~10 min): STEP 10 verification rebuild,
+   MSI signed `CN=MasterShadex`, installed OK, tray app relaunched
+
+Plus the post-PASS dual-build (blym0gixu, ~40 sec because of dotnet caches):
+final clean build, installed `customize.html` SHA256 `6d1d4a98...` matches
+source SHA256.
+
+### Local-only state
+- HEAD = `45d1371` (after STEP 9 commit; STEP 11 wrap-up commit pending)
+- 0 commits ahead of working tree
+- No new tag created
+- No GitHub push, no GitHub release modification (rule 9)
+- `v14.0.0-rc.3` tag on remote unchanged
+
+### Remaining for v14.0.0 GA
+- Ship-prep brief: bump `version.json` from `14.0.0-rc.3` to `14.0.0`,
+  fresh MSI, create git tag `v14.0.0`, push to remote, GitHub Release
+  (replace rc.3 draft with v14.0.0 final OR delete rc.3 and publish fresh)
+- Optional: one clean soak run (6-24 h real workload) before tag/push
+- No further functional or visual work expected before GA
+- `src/overlay.html` v14 rebuild is v14.1.0 territory
+
+### Status: HALT. Stage 7.13 closure committed. Awaiting operator's next direction.
