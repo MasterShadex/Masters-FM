@@ -3406,3 +3406,123 @@ v14 is functionally and visually COMPLETE. Only ship-prep remains:
 - `src/overlay.html` v14 visual rebuild (largest v14.1.0 piece)
 
 ### Status: HALT. Stage 7.15 closure committed. v14.0.0 GA one ship-prep brief away. Awaiting operator's next direction.
+
+---
+
+## 2026-05-20 20:43 UTC -- Stage 7.16: overlay.html v14 visual rebuild
+
+**Commits:**
+- `e02a154` STEP 0 -- checkpoint + overlay.html structure map + customize binding contract + CEF compat audit
+- `25e032b` STEP 1 -- archive pre-rebuild overlay.html as v12 baseline
+- `68e04d1` STEP 2 -- color tokens migrated to v14 palette (legacy names preserved as aliases)
+- `af560c2` STEP 3 -- typography Segoe UI default + Inter dropped from CDN (Noto Sans chain preserved)
+- `5dfd716` STEP 4 -- spacing rhythm 4px + radius tokens added (--card-radius / --progress-radius preserved)
+- `574d38a` STEP 5 -- component styles polished (track title text-shadow to brand-glow alpha default)
+- `9ced674` STEP 6 -- animation tokens + reduced-motion guard + track-change transition refined to v14 spring
+- (this entry) STEP 9 -- memory.md APPEND + final report
+
+**Outcome:** PASS (operator replied "PASS" at first attempt; zero strikes consumed)
+
+### What this stage did
+Migrated `src/overlay.html` (the on-stream surface viewers see in OBS) to v14
+design tokens. Pure visual rebuild matching Stage 7.13's pattern. No JS logic
+changes. The only non-CSS edit was the `<link rel="stylesheet">` CDN URL
+(Inter portion dropped; Noto Sans subsets retained as functional fallback
+chain for international track names).
+
+- **Fix landscape:**
+  - New `:root` block with v14 primitives (`--brand-base/-deep/-glow`,
+    `--surface-0..3`, `--text-*`, `--border-*`, `--sp-*`, `--r-*`,
+    `--dur-*`, `--ease-*`)
+  - All ~38 customize-bound CSS variable names PRESERVED VERBATIM
+    (Apply-to-OBS contract intact). Where v12 had `var(--xxx, fallback)`,
+    only the FALLBACK value was updated to a v14 brand alpha.
+  - Hardcoded (non-customize-bound) values like `.art-wrap` bg,
+    `#artwork-fallback` gradient + svg fill, `.right-col` border-left
+    lifted to v14 tokens.
+  - Track-change transition (`#widget`) tightened from 500ms
+    overshoot-elastic to 280ms v14 spring (`var(--dur-slow) var(--ease-spring)`).
+  - Reduced-motion `@media` guard added.
+  - Font default `'Inter'` -> `'Segoe UI'` (system font, no network fetch).
+
+- **Stage 7.15 clock fix preserved:** `#time-current` + `#time-total`
+  still use `font-variant-numeric: tabular-nums`, no transitions added
+  on `content` or `visibility`, no CSS rule introduced that could
+  re-hide the time display. Operator verified clock ticks forward +
+  real seeks land within ~1 s.
+
+- **OBS CEF compatibility verified:** zero `:has()`, `oklch()`,
+  `color()`, `@container` queries introduced. Existing `@property`
+  + `backdrop-filter` + `transform: translate3d` etc. all preserved.
+
+### Process
+Same pattern as Stage 7.13 customize.html rebuild. 8 STEPs (0-7) of
+source/log edits, single end-of-brief operator gate at STEP 8, STEP 9
+wrap-up. Per-STEP internal render checks (CSS-structural integrity,
+diff stat sanity, dotnet build verification on each tray/server commit).
+Customize-override contract checked at every STEP via the binding
+inventory in `V14_S7_16_LOG.md` S0.4.
+
+7 source-affecting commits (e02a154 -> 9ced674); STEP 7 was a CEF audit
+no-op (no source commit needed -- nothing failed). Final source delta
+on `src/overlay.html`: +143 / -45 (3538 -> 3636 lines, 178903 -> 183891 B).
+
+### v14 visual completeness now end-to-end
+- WPF tray dialogs (Stage 7.7B)
+- Customize editor (Stage 7.13)
+- On-stream overlay (Stage 7.16) <-- this stage
+
+All three surfaces share the same v14 design language. No remaining
+v12-styled surfaces.
+
+### Documented deviation from brief
+Per `V14_S7_16_LOG.md` S0.5a: the Google Fonts CDN was partially kept.
+The Inter portion of the URL was removed (Inter is now cosmetic;
+v14 default is Segoe UI system font). The Noto Sans subsets remained
+because they are a FUNCTIONAL fallback chain for international
+track/artist names -- without them, Cyrillic / CJK / Hebrew / Arabic /
+Thai tracks render as tofu boxes on systems lacking OS-level Noto
+coverage. Conservative interpretation of brief S3.1 ("drop external
+font CDN") balanced against the functional necessity.
+
+### Protected files SHA256
+All 4 protected source files UNCHANGED from `V14_S7_REPLAN_PROTECTED_BASELINE.md`
+(verified at STEP 9.1).
+
+### Build verification
+- STEP 8 rebuild `bbgqvifph` (10:40 cold, MSI signed, installed OK,
+  ProductVersion `14.0.0-rc.3+9ced67467b...`)
+- STEP 9 dual-build `bafgaxiwh` (~33 s warm-cache, all 5 stages exit=0,
+  same ProductVersion -- source unchanged since STEP 6 commit)
+
+### Local-only state
+- HEAD = `9ced674` (STEP 6 -- last source-affecting commit);
+  STEP 9 closure commit pending
+- No new tag created
+- No GitHub push, no GitHub release modification (rule 9)
+- `v14.0.0-rc.3` tag on remote unchanged
+- `version.json` still `14.0.0-rc.3` (only `msi_sha256` in working tree
+  rewritten by rebuild scripts; not committed per rule)
+
+### Strikes consumed
+0 / 24 (8 strikes available across 10 STEPs)
+
+### Remaining for v14.0.0 GA
+v14 is now FUNCTIONALLY AND VISUALLY COMPLETE end-to-end. Only the
+local v14.0.0 cut remains -- a separate brief (operator-commissioned,
+~30 min):
+- Bump `version.json` from `14.0.0-rc.3` to `14.0.0`
+- Fresh `_full_rebuild.ps1`
+- Local commit
+- `md/memory.md` APPEND
+- Per operator standing rule: **NO push, NO tag, NO GitHub interaction**
+
+### Deferred to v14.1.0
+- Server log rotation policy (`SimpleFileLogger.cs` enhancement)
+- Optional customize preview-pane tick enhancement (cosmetic)
+- `_prevPos` dictionary eviction policy in `SmtcEventBridge.cs`
+  (parked from Stage 7.15)
+- `MinResyncIntervalMs` becomes a config token (parked from Stage 7.15)
+- HeartbeatService.cs stale docstring tidy (parked from Stage 7.15)
+
+### Status: HALT. Stage 7.16 closure committed. v14 visually + functionally complete end-to-end. v14.0.0 local cut is the only remaining brief. Awaiting operator's next direction.
