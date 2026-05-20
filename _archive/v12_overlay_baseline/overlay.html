@@ -1,0 +1,3538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Master's FM — Now Playing</title>
+<!-- Inter is the default font — others are injected dynamically by applyConfig().
+     Noto Sans (+ 10 script-specific families) is loaded as a permanent fallback
+     chain covering every script that commonly appears in track/artist names:
+       Latin-ext, Cyrillic, Greek, Devanagari  → Noto Sans
+       Chinese Simplified / Traditional         → Noto Sans SC / TC
+       Japanese / Korean                        → Noto Sans JP / KR
+       Hebrew (עברית)                           → Noto Sans Hebrew
+       Arabic (عربي)                            → Noto Sans Arabic
+       Thai (ภาษาไทย)                           → Noto Sans Thai
+       Musical notes ♫, special symbols ★ ♥    → Noto Sans Symbols / Symbols 2
+       Text emoji (●, ◆, ☆ …)                  → Noto Emoji
+       Color emoji 🎵🎶 (Windows / macOS)       → Segoe UI Emoji / Apple Color Emoji
+     Browsers fetch each subset on-demand via unicode-range, so idle cost ~zero. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Sans+Hebrew:wght@400;500;700;900&family=Noto+Sans+Arabic:wght@400;500;700;900&family=Noto+Sans+Thai:wght@400;500;700;900&family=Noto+Sans+Symbols:wght@400;700&family=Noto+Sans+Symbols+2:wght@400;700&family=Noto+Emoji:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     BASE STYLES — all colour/size values are CSS custom properties.
+     applyConfig() sets every --var on <html> after loading config.json,
+     and injects dynamic blocks (glow keyframes, conic border gradient)
+     into the #_dyn <style> element.
+     ═══════════════════════════════════════════════════════════════════ -->
+<style id="_base">
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0); overflow: hidden;
+  font-family: var(--font-family, 'Inter', 'Noto Sans', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Hebrew', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans Symbols', 'Noto Sans Symbols 2', 'Noto Emoji', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 2× render wrapper — draws at 2× the viewport, scaled back 50%.
+   Using 200%/200% makes it responsive to any OBS browser source size. */
+#scale-wrapper {
+  position: relative; width: 200%; height: 200%;
+  transform: scale(0.5); transform-origin: top left;
+  will-change: transform;
+}
+
+/* inset: 40px internal = 20px display-scale margin on every side.
+   This gives the drop-shadow glow room to render without being clipped.
+   v6.2.3: reverted from the v6.0.9-v6.2.2 "card is a fixed-size box inside
+   a 1920×1080 source" experiment — the card fills the OBS Browser Source
+   (1000×200 default) like it did in v6.0.4 and earlier. */
+#widget {
+  position: absolute; inset: 40px;
+  display: flex; align-items: stretch;
+  opacity: 0;
+  /* transform start-position and transition timing are set as inline style by applyConfig()
+     so they always override CSS and react immediately to config changes. */
+  transform: var(--slide-transform, translateY(28px));
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34,1.4,0.64,1);
+  pointer-events: none;
+}
+#widget.visible { opacity: var(--widget-opacity, 1); transform: none; }
+
+/* ── Pulsing outer glow — keyframes + animation injected by applyConfig() */
+#glow-wrap {
+  flex: 1;                       /* fills #widget width & height */
+  display: flex;                 /* centers card-outer inside it */
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--card-radius, 56px);
+}
+
+/* ── Card with rotating conic-gradient border ─────────────────────────── */
+.card-outer {
+  /* v8.1.1: card-outer GROWS OUTWARD as --border-thickness increases so that
+     .card-inner stays the same visible size regardless of how thick the user
+     sets the border. Previously thicker borders ate INWARD into the card-
+     inner's content area, causing layout templates (which assume a 935x135
+     visible card-inner) to clip elements at the edges. Math: base inset of
+     40px (v6 glow padding) minus 2*(border-thickness - 5px). With thickness
+     at the default 5, this resolves to the original `calc(100% - 40px)` so
+     existing presets render identically. With thicker borders, card-outer
+     extends into the glow padding region instead of squeezing card-inner. */
+  position: relative;
+  width:  calc(100% - 40px + 2 * (var(--border-thickness, 5px) - 5px));
+  height: calc(100% - 40px + 2 * (var(--border-thickness, 5px) - 5px));
+  border-radius: var(--card-radius, 56px); overflow: hidden;
+}
+/* Border pseudo-element — background gradient injected by applyConfig().
+ * v6.2.8: back to element-transform rotation (the simple pre-v6.2.7 way).
+ * Houdini @property animation of a custom-property used in a conic-gradient
+ * just didn't animate inside CEF (OBS Browser Source) — the gradient rendered
+ * correctly on first paint but the `--spin-angle` property never interpolated,
+ * leaving the border static. The classic transform: rotate(0deg -> 360deg)
+ * keyframe approach is a GPU composite of a single layer and works reliably
+ * in every Chromium-based host we've tested.
+ *
+ * The earlier "bouncing" complaints that drove the v6.2.7 switch were
+ * actually caused by `buildConicStops` emitting a MIRRORED gradient
+ * (A-B-C-D-E-D-C-B-A) — that was fixed in v6.2.6 to produce a truly
+ * uniform distribution (A-B-C-D-E-A). With the gradient now non-mirrored,
+ * element rotation produces clean one-direction color cycling (not
+ * bouncing) while still using the reliable transform-keyframe animation. */
+.card-outer::before {
+  content: ''; position: absolute;
+  /* v6.9.8: REVERTED to conic-gradient rotation. The v6.3.0 horizontal
+     linear-gradient slide produced a TOP/BOTTOM MIRRORING artefact —
+     because the same gradient column was painted on both edges of the
+     card, the same color appeared at the same X position on both edges
+     simultaneously. Users perceived this (correctly) as "the spin is
+     synchronised, not actually spinning." A true conic-gradient with
+     transform: rotate() puts each color at one perimeter position at a
+     time and visibly traces around the card edge.
+     PSEUDO-ELEMENT IS SIZED 200vmax × 200vmax so the rotating square
+     stays larger than the card's diagonal at every angle — that's what
+     prevents corner exposure during rotation. Card-outer's overflow:
+     hidden + border-radius clips the visible area to the card shape;
+     card-inner (inset by border-thickness) covers everything except the
+     border ring. */
+  left: 50%; top: 50%;
+  width: 200vmax; height: 200vmax;
+  transform: translate(-50%, -50%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: border-spin var(--border-spin-dur, 4s) linear infinite;
+  will-change: transform;
+}
+@keyframes border-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg);   }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Register BG color vars as typed <color> so CSS can transition them.
+   @property is required — without it, browsers treat custom props as strings
+   and cannot interpolate them in linear-gradient(). OBS uses Chromium 108+
+   which fully supports Houdini @property. */
+@property --card-bg-top {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(18,6,36,0.99);
+}
+@property --card-bg-bottom {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(12,4,24,0.99);
+}
+@property --card-bg-left {
+  syntax: '<color>'; inherits: true; initial-value: rgba(12,4,24,0.98);
+}
+@property --card-bg-right {
+  syntax: '<color>'; inherits: true; initial-value: rgba(12,4,24,0.98);
+}
+/* Registering every palette-driven color as a typed <color> var is what lets
+ * CSS actually interpolate between the old and new palette instead of
+ * snapping. Without @property these are just string swaps. */
+@property --title-color        { syntax:'<color>'; inherits:true; initial-value:#ffffff; }
+@property --artist-color       { syntax:'<color>'; inherits:true; initial-value:rgba(220,185,255,0.52); }
+@property --np-color           { syntax:'<color>'; inherits:true; initial-value:#c060ff; }
+@property --ts-color           { syntax:'<color>'; inherits:true; initial-value:#c060ff; }
+@property --platform-color     { syntax:'<color>'; inherits:true; initial-value:rgba(200,160,255,0.38); }
+@property --platform-dot-color { syntax:'<color>'; inherits:true; initial-value:rgba(200,100,255,0.28); }
+@property --progress-fill-a    { syntax:'<color>'; inherits:true; initial-value:#8020c0; }
+@property --progress-fill-b    { syntax:'<color>'; inherits:true; initial-value:#ff60c8; }
+@property --progress-fill-c    { syntax:'<color>'; inherits:true; initial-value:#c040ff; }
+
+.card-inner {
+  position: absolute;
+  inset: var(--border-thickness, 5px);
+  border-radius: calc(var(--card-radius, 56px) - var(--border-thickness, 5px) + 1px);
+  overflow: hidden;
+  background: linear-gradient(
+    var(--card-bg-angle, 148deg),
+    var(--card-bg-top,    rgba(18,6,36,0.99))  0%,
+    var(--card-bg-bottom, rgba(12,4,24,0.99)) 100%
+  );
+  /* Slow gradient morph when dynamic palette changes between songs.
+   * All palette-driven CSS vars transition together so colors wave smoothly
+   * between tracks instead of snapping instantly. Spectrum bars are JS-driven
+   * (see _dynSpectrumColor lerp) so they're NOT in this list. */
+  transition:
+    --card-bg-top 2s ease, --card-bg-bottom 2s ease,
+    --card-bg-left 2s ease, --card-bg-right 2s ease,
+    --title-color 1.4s ease, --artist-color 1.4s ease,
+    --np-color 1.4s ease, --ts-color 1.4s ease,
+    --platform-color 1.4s ease, --platform-dot-color 1.4s ease,
+    --progress-fill-a 1.6s ease, --progress-fill-b 1.6s ease, --progress-fill-c 1.6s ease;
+  backdrop-filter: blur(var(--card-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--card-blur, 0px));
+  display: flex; align-items: stretch;
+  /* v6.8.1: promote the whole card to its own GPU compositor layer.
+     OBS Browser Source captures one full document scan per frame; if
+     the card inner is on its own layer the capture path can grab it
+     as a single texture upload instead of compositing-then-capturing. */
+  transform: translate3d(0, 0, 0);
+  will-change: transform, contents;
+  backface-visibility: hidden;
+}
+/* (v6.0.7 content-side picker CSS removed in v6.2.3 revert.) */
+
+/* ── v7.0.0 layout-mode override ──────────────────────────────────────────
+ * Applied only when cfg.layout.enabled === true. The renderer toggles
+ * `body.layout-mode-on` and writes inline top/left/width/height/z-index
+ * onto every [data-layout-node] element.
+ *
+ * - card-inner becomes a positioned canvas (display:block, relative)
+ * - Wrapper containers (.info, .right-col) collapse via display:contents
+ *   so their children participate in card-inner's layout directly
+ * - .art-wrap loses its flex-driven width / height-100%; the inline x/y/w/h
+ *   take over
+ * - .now-playing-label / .title-wrap / .artist / .time-bar all become
+ *   absolute boxes positioned at their layout-node coordinates
+ * - #spectrum-canvas keeps its existing GPU hints (transform translate3d
+ *   already on it); we ADD position:absolute via inline style — that does
+ *   NOT override the existing translate3d which lives on transform; the
+ *   inline left/top values are what places it.
+ *
+ * Frame effects (glow, spinning border, card background) are NOT layout
+ * nodes — they stay tied to card bounds via their existing CSS rules.
+ */
+/* v7.0.5: layout mode KEEPS THE FULL v6 hierarchy intact, including
+   #widget's inset:40px (glow drop-shadow padding), .card-outer's
+   calc(100% - 40px) margin, and .card-inner's inset:5px (border ring).
+   The earlier overrides (v7.0.1/.2 removed these to make the card fill
+   the iframe pixel-for-pixel) destroyed the visible glow halo around
+   the card and made layout mode look "zoomed in" compared to v6.
+   Restoring them means: the iframe is the OBS Browser Source size, the
+   card-inner is 935×135 visible inside a 1000×200 iframe (v6 default),
+   and layout-nodes are positioned ABSOLUTE against card-inner — the
+   nearest positioned ancestor — using card-inner-relative coordinates.
+   We still multiply inline px by LM_SCALE=2 because the scale-wrapper's
+   0.5x transform makes 1 visible pixel = 2 logical CSS pixels. */
+body.layout-mode-on .card-inner {
+  display: block;
+  align-items: initial;
+  /* DO NOT touch inset — keep v6's inset:5px so the spinning border
+     stays visible around the card. */
+}
+body.layout-mode-on .info,
+body.layout-mode-on .right-col,
+body.layout-mode-on .now-playing-label {
+  /* Wrapper neutralized so its children become card-inner's children
+     for positioning purposes. display:contents preserves the DOM but
+     elides the wrapper from the layout tree. v7.0.2: now-playing-label
+     joins this list because its three children — the EQ bars, the NP
+     text, and the platform badge — became independent layout-nodes. */
+  display: contents;
+  padding: 0;
+  border: none;
+  gap: 0;
+}
+/* v7.0.2: text-bearing layout-nodes (trackTitle, artistName, nowPlayingText)
+   normally show:inline or display:flex content. In layout mode they need
+   to be block-level boxes so width/height honor the inline styles set by
+   applyLayoutMode(). */
+body.layout-mode-on [data-layout-node="nowPlayingText"],
+body.layout-mode-on [data-layout-node="platformBadge"] {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+body.layout-mode-on [data-layout-node] {
+  position: absolute;
+  /* top / left / width / height / z-index come from inline styles set
+     by applyLayoutMode() in the renderer. */
+}
+body.layout-mode-on [data-layout-node="albumArt"] {
+  /* Override the v6 fixed art-w / 100% height; let the layout-node
+     dimensions drive size. flex-shrink no longer matters. */
+  width:  auto;
+  height: auto;
+  flex-shrink: initial;
+}
+body.layout-mode-on [data-layout-node="albumArt"] #artwork {
+  /* Image fills the layout-node box. */
+  width:  100%;
+  height: 100%;
+}
+body.layout-mode-on [data-layout-node="trackTitle"] {
+  /* The title-wrap normally sets width:100% — now it's the layout-node
+     width that constrains it. */
+  width: auto;
+}
+body.layout-mode-on [data-layout-node="spectrum"] {
+  /* min-height: 60px from the v6 rule would clamp tiny spectrum nodes;
+     in layout mode the user-set h is authoritative. */
+  min-height: 0;
+}
+body.layout-mode-on [data-layout-node="progressBar"] {
+  /* time-bar default has h:46px hard-coded; layout-node h overrides. */
+  height: auto;
+}
+body.layout-mode-on [data-layout-node].layout-hidden {
+  /* !important needed: #spectrum-canvas (specificity 1,0,0) wins over
+     this selector's 0,3,1 by default, so without !important the spectrum
+     stayed visible even when the user toggled it off. Same risk for any
+     other layout-node that has an ID-level CSS rule elsewhere. */
+  display: none !important;
+}
+
+/* ── Album art ────────────────────────────────────────────────────────── */
+.art-wrap {
+  flex-shrink: 0;
+  width:  var(--art-w, 310px);
+  height: 100%;          /* always fills card height */
+  position: relative; background: #0d0420;
+}
+#artwork {
+  width:  var(--art-w, 310px);
+  height: 100%; object-fit: cover; display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  transition: opacity 0.35s ease;
+}
+#artwork-fallback {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #180840, #0b0328);
+}
+#artwork-fallback svg { width: 100px; height: 100px; fill: #8040c0; opacity: 0.4; }
+/* Fade art edge into card background — direction flips when art is right-side.
+   --card-bg-left / --card-bg-right are computed in applyConfig() based on gradient angle
+   so the fade always matches the actual card color at that edge. */
+.art-wrap::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0;
+  width: var(--art-fade-w, 130px);
+  background: linear-gradient(to right, transparent, var(--card-bg-left, rgba(12,4,24,0.98)));
+  pointer-events: none;
+}
+.art-wrap.art-right::after {
+  right: auto; left: 0;
+  background: linear-gradient(to right, var(--card-bg-right, rgba(12,4,24,0.98)), transparent);
+}
+/* v7.1.4: center mode — fades on BOTH edges. ::after handles the right fade
+   (same gradient direction as 'left' position, fading out to the right edge),
+   ::before handles the left fade (mirrors the 'right' position gradient).
+   Useful when the user positions album art in the middle of the card via the
+   custom layout editor — both edges blend into card content cleanly. */
+.art-wrap.art-center::before {
+  content: ''; position: absolute; top: 0; left: 0; bottom: 0;
+  width: var(--art-fade-w, 130px);
+  background: linear-gradient(to right, var(--card-bg-right, rgba(12,4,24,0.98)), transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Info column ──────────────────────────────────────────────────────── */
+/* v6.2.3: reverted from the v6.0.7–v6.2.2 fixed-width / shrink-to-fit
+ * experiments. Plain old `flex: 1; min-width: 0;` — info column grows to
+ * fill the available space next to the art, min-width:0 lets the title
+ * marquee + artist ellipsis kick in cleanly instead of overflowing. */
+.info {
+  flex: 1; min-width: 0;
+  padding: 22px 24px 22px 28px;
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+}
+
+/* NOW PLAYING row */
+.now-playing-label {
+  display: flex; align-items: center; gap: 14px;
+  flex-shrink: 0; line-height: 1;
+}
+.bars { display: flex; align-items: flex-end; gap: 5px; height: 36px; }
+.bar {
+  width: 6px; border-radius: 3px;
+  background: var(--bar-color, #c060ff);
+  transform-origin: bottom;
+  animation: bar-b var(--bar-dur, 0.85s) ease-in-out infinite;
+}
+@keyframes bar-b {
+  0%,100% { transform: scaleY(0.25); opacity: 0.4; }
+  50%     { transform: scaleY(1);    opacity: 1;   }
+}
+.now-playing-text {
+  font-size:      var(--np-font-size, 44px);
+  font-weight: 700;
+  letter-spacing: var(--np-letter-spacing, 5px);
+  color:          var(--np-color, #c060ff);
+  text-shadow:    var(--np-text-shadow, none);
+  text-transform: uppercase; opacity: 0.9;
+}
+.platform-badge {
+  font-size:     var(--platform-font-size, 30px);
+  font-weight:   var(--platform-font-weight, 600);
+  letter-spacing:var(--platform-letter-spacing, 2px);
+  color:         var(--platform-color, rgba(200,160,255,0.38));
+  text-shadow:   var(--platform-text-shadow, none);
+  text-transform: uppercase;
+}
+.platform-badge:not(:empty)::before {
+  content: '·'; margin-right: 8px; color: var(--platform-dot-color, rgba(200,100,255,0.28));
+}
+
+/* Track title — scrolls if too long. v6.2.3: reverted mask-image
+   experiments from v6.1.0–v6.1.9. Plain overflow:hidden. */
+.title-wrap { overflow: hidden; width: 100%; flex-shrink: 0; }
+.track-title {
+  font-size:      var(--title-font-size, 68px);
+  font-weight:    var(--title-font-weight, 800);
+  color:          var(--title-color, #ffffff);
+  letter-spacing: var(--title-letter-spacing, 0px);
+  white-space: nowrap; display: inline-block; will-change: transform;
+  text-shadow: var(--title-text-shadow, 0 0 40px rgba(255,200,255,0.18));
+  line-height: 1.1;
+}
+
+/* Artist — v8.0.0 split into wrap + inner so the artist marquee mirrors the
+   title marquee (transform translateX on .artist, clipped by .artist-wrap). */
+.artist-wrap { overflow: hidden; width: 100%; flex-shrink: 0; }
+.artist {
+  font-size:      var(--artist-font-size, 44px);
+  font-weight:    var(--artist-font-weight, 500);
+  color:          var(--artist-color, rgba(220,185,255,0.52));
+  letter-spacing: var(--artist-letter-spacing, 0px);
+  white-space: nowrap; display: inline-block; will-change: transform;
+  text-shadow: var(--artist-text-shadow, none);
+  line-height: 1.1;
+}
+
+/* ── Right column — spectrum + timestamps ─────────────────────────────── */
+.right-col {
+  flex: 1; min-width: 500px; width: auto;
+  padding: 16px 24px 16px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  border-left: 2px solid rgba(200,100,255,0.08);
+}
+
+/* v6.8.0: every known compositor-promotion hint stacked. v6.7.9 set
+   the baseline (will-change, translate3d, backface-visibility, contain,
+   isolation); v6.8.0 adds three more belt-and-suspenders hints:
+   - filter: brightness(1) — visually a no-op, but historically forces
+     a compositor layer in older Chromium/CEF where will-change is
+     ignored
+   - mix-blend-mode: normal — also forces a stacking context AND a
+     compositor layer in some engines
+   - perspective: 1px — creates a 3D rendering context, GPU-only
+   Combined, the canvas should be GPU-promoted everywhere CEF runs. */
+#spectrum-canvas {
+  flex: 1; width: 100%; display: block; min-height: 60px;
+  opacity: var(--spectrum-opacity, 1);
+  /* v8.3.5: dropped `filter: brightness(1)` and `will-change: filter`. The
+     filter property — even an identity like brightness(1) — forces the
+     browser to allocate an off-screen rendering surface, paint into it,
+     apply the (no-op) filter, then composite back. That's per-frame GPU
+     work for zero visual benefit. Same for the perspective:1px hack which
+     was promoting the layer redundantly. The remaining will-change
+     hints + translate3d are enough to keep the canvas on its own GPU
+     layer for OBS Browser Source's capture path. */
+  will-change: contents, transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  contain: layout paint style;
+  isolation: isolate;
+  mix-blend-mode: normal;
+  image-rendering: auto;
+}
+
+/* ── Time bar ─────────────────────────────────────────────────────────── */
+.time-bar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 16px;
+  height: 46px;
+}
+.time-bar.hidden { display: none; }
+
+#time-current {
+  font-size:   var(--ts-font-size, 46px);
+  font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: 1px; color: var(--ts-color, #e090ff);
+  white-space: nowrap; min-width: 104px; line-height: 1;
+  text-shadow: var(--ts-text-shadow, 0 0 20px rgba(200,80,255,0.5));
+}
+#time-total {
+  font-size:   calc(var(--ts-font-size, 46px) * 0.92);
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  letter-spacing: 1px; color: var(--ts-color, #e090ff);
+  white-space: nowrap; min-width: 96px; text-align: right; line-height: 1;
+  text-shadow: var(--ts-text-shadow, 0 0 20px rgba(200,80,255,0.4));
+}
+.progress-wrap {
+  flex: 1;
+  height: var(--progress-h, 9px);
+  border-radius: var(--progress-radius, 6px); overflow: hidden;
+  background: var(--progress-track, rgba(160,70,255,0.10));
+}
+.progress-fill {
+  height: 100%; width: 0%; border-radius: var(--progress-radius, 6px);
+  background: linear-gradient(
+    90deg,
+    var(--progress-fill-a, #8020c0) 0%,
+    var(--progress-fill-b, #ff60c8) 50%,
+    var(--progress-fill-c, #c040ff) 100%
+  );
+  box-shadow: 0 0 14px rgba(220,80,255,0.80);
+  transition: width 0.5s linear;
+}
+</style>
+
+<!-- Dynamic block: glow keyframes + conic border gradient.
+     Written by applyConfig() every time config is fetched. -->
+<style id="_dyn"></style>
+</head>
+<body>
+
+<div id="scale-wrapper">
+  <div id="widget">
+    <div id="glow-wrap">
+      <div class="card-outer">
+        <div class="card-inner">
+
+          <!-- ① Album art -->
+          <div class="art-wrap" id="art-wrap" data-layout-node="albumArt">
+            <img id="artwork" src="" alt="" style="display:none;" />
+            <div id="artwork-fallback">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79
+                  4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- ② Info: NOW PLAYING + title + artist -->
+          <div class="info">
+            <div class="now-playing-label">
+              <!-- v7.0.2: each of the three now-playing pieces is its OWN
+                   layout-node so users can position them independently. -->
+              <div class="bars" id="bars-wrap" data-layout-node="animatedBars"></div>
+              <span class="now-playing-text" id="np-text" data-layout-node="nowPlayingText">Now Playing</span>
+              <span class="platform-badge" id="platform-label" data-layout-node="platformBadge"></span>
+            </div>
+            <div class="title-wrap" data-layout-node="trackTitle">
+              <div class="track-title" id="track-title">—</div>
+            </div>
+            <!-- v8.0.0: artist now wrapped (mirroring title-wrap) so the artist
+                 marquee can translate the inner element while the wrap clips
+                 the overflow. data-layout-node moves up to the wrap so the
+                 custom-layout editor still positions/resizes the right box. -->
+            <div class="artist-wrap" data-layout-node="artistName">
+              <div class="artist" id="artist">—</div>
+            </div>
+          </div>
+
+          <!-- ③ Right column: spectrum + timestamps -->
+          <div class="right-col">
+            <!-- v9.4.0 — canvas2d wiped, WebGL is now the only renderer.
+                 spectrum-canvas stays in the DOM as a transparent layout
+                 placeholder so the existing data-layout-node="spectrum" hook
+                 + per-frame ResizeObserver + _glRender's offset-tracking all
+                 keep working without rewiring. Nothing draws to it now. -->
+            <canvas id="spectrum-canvas" data-layout-node="spectrum"></canvas>
+            <!-- WebGL canvas — sized + positioned by _glInit/_glRender to
+                 perfectly overlay spectrum-canvas's box. position:absolute so
+                 it doesn't disturb the layout system; pointer-events:none so
+                 it never steals input. display:block from the start (was
+                 display:none + JS-toggled in v9.2.x; the toggle is gone). -->
+            <canvas id="spectrum-canvas-gl" style="display:block; position:absolute; pointer-events:none; z-index:5;"></canvas>
+            <div class="time-bar hidden" id="time-bar" data-layout-node="progressBar">
+              <span id="time-current">0:00</span>
+              <div class="progress-wrap">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+              <span id="time-total">0:00</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  CONFIG SYSTEM
+// ══════════════════════════════════════════════════════════════════════════
+
+const DEFAULTS = {
+  font: 'Inter',
+  // v2.1.0 — when true, the spectrum uses WASAPI-loopback data from
+  // audio_spectrum.exe (real system audio). When false, falls back to the
+  // getUserMedia mic path or the sim animation.  Tray menu toggle sets it.
+  liveAudioVisualizer: true,
+  card: {
+    borderRadius:     56,
+    borderThickness:  5,
+    backgroundTop:    'rgba(18,6,36,0.99)',
+    backgroundBottom: 'rgba(12,4,24,0.99)',
+    backgroundOpacity: 0.99,    // v7.1.3: card transparency. Lower = backdrop-filter blur visible.
+    backgroundAngle:  148,
+    backgroundBlur:   0,     // backdrop-filter blur (px) — blurs OBS content behind the card
+  },
+  border: {
+    enabled:      true,
+    spinDuration: 4,
+    colors:       ['#ff1085','#ff60c8','#d040ff','#8020e0','#4a0ab8'],
+  },
+  glow: {
+    enabled:       true,
+    color1:        '#e632b4',
+    color2:        '#961ee6',
+    intensity:     1.0,
+    pulseDuration: 3,
+  },
+  art: {
+    enabled:   true,
+    width:     310,
+    fadeWidth: 130,
+    position:  'left',   // 'left' | 'right'
+  },
+  nowPlaying: {
+    text:          'Now Playing',
+    fontSize:      44,
+    color:         '#c060ff',
+    letterSpacing: 5,
+    glowEnabled:   false,
+    glowColor:     '#c060ff',
+    glowSize:      6,
+  },
+  bars: {
+    enabled: true,
+    color:   '#c060ff',
+    count:   4,
+    speed:   0.85,
+  },
+  platformBadge: {
+    enabled:         true,
+    soundcloudLabel: 'SoundCloud',
+    color:           'rgba(200,160,255,0.38)',
+    dotColor:        'rgba(200,100,255,0.28)',
+    fontSize:        30,
+    fontWeight:      600,
+    letterSpacing:   2,
+    glowEnabled:     false,
+    glowColor:       '#c8a0ff',
+    glowSize:        6,
+  },
+  title: {
+    fontSize:      68,
+    fontWeight:    800,
+    color:         '#ffffff',
+    marqueeSpeed:  68,
+    marqueePause:  2,
+    letterSpacing: 0,
+    glowEnabled:   false,
+    glowColor:     '#ff80ff',
+    glowSize:      6,
+  },
+  artist: {
+    fontSize:      44,
+    fontWeight:    500,
+    color:         'rgba(220,185,255,0.52)',
+    letterSpacing: 0,
+    // v8.0.0: artist now mirrors title's marquee + glow capabilities.
+    marqueeSpeed:  68,    // pixels per second when artist text overflows
+    marqueePause:  2,     // seconds of dwell at each end before scrolling back
+    glowEnabled:   false,
+    glowColor:     '#80c0ff',   // distinct default from title glow (#ff80ff) so users see it as a separate channel
+    glowSize:      6,
+  },
+  // v8.1.3: glow now also available on the small labels.
+  spectrum: {
+    enabled:    true,
+    barCount:   480,          // v9.8.3: full 480 bands default (was 50)
+    gap:        0,            // v9.8.3: no gap between bars (was 3px)
+    barRadius:  0,            // v9.8.3: sharp rectangular bars (was 4px)
+    colorMode:  'rainbow',   // 'rainbow' | 'solid' | 'gradient'
+    color:      '#c060ff',   // used for 'solid' and as base for 'gradient'
+    smoothing:  0,
+    mirrorMode: false,       // mirror left+right for symmetric effect
+    /* v9.4.0: renderer field removed from defaults — WebGL is the only renderer. Saved configs that still have it load harmlessly (just ignored). */
+    heightMult: 1.0,         // bar height multiplier (0.5 = half height, 2.0 = double)
+    minHeight:  0,            // v9.8.3: no floor — bars go fully dark on silence (was 2px)
+    opacity:    1.0,
+    // v5.0.8 — user-tunable render cadence cap for the spectrum canvas.
+    // rAF naturally fires at the browser's compositor rate (60-240 Hz
+    // depending on monitor refresh / OBS Browser Source settings). This
+    // cap lets users dial the max render rate down to save battery on
+    // laptops, or up (to "unlimited", capped by monitor) for butter-smooth
+    // animation. 30 is the minimum useful rate; 1000 is effectively
+    // "uncapped". Default 120 gives more room on high-refresh monitors
+    // than the old hard-coded 60.
+    fps:        120,
+    // v5.0.9 — when true, bars are normalized to a rolling peak so quiet
+    // background music looks just as visually active as loud playback.
+    // Useful when you're running music at 5% system volume for chill
+    // streams and don't want the spectrum to be a tiny flat line.
+    // Default false = bars respond to actual volume (original behaviour).
+    autoGain:   false,
+    // v6.8.2: "Response Time" in ms — how often the FFT produces a new
+    // sample of the spectrum. v9.8.3: default lowered to 0.5 ms = HOP≈24
+    // at 48 kHz (~2000 FFTs/sec) for maximum real-time responsiveness.
+    responseMs: 0.5,
+    // v6.9.3: "Sensitivity" multiplier — applied inside audio_spectrum.exe
+    // before the compressor knee. 1.0 = the empirically tuned default.
+    // Higher = quieter audio fills the bars (useful when streaming with
+    // low system volume). Compressor caps loud audio so cranking is safe.
+    sensitivity: 1.0,
+  },
+  progressBar: {
+    enabled:      true,
+    height:       9,
+    borderRadius: 6,
+    trackColor:   'rgba(160,70,255,0.10)',
+    fillColors:   ['#8020c0','#ff60c8','#c040ff'],
+  },
+  timestamps: {
+    fontSize:    46,
+    color:       '#e090ff',
+    glowEnabled: false,
+    glowColor:   '#e090ff',
+    glowSize:    6,
+  },
+  showAnimation: {
+    duration:        0.5,
+    slideDistance:   28,
+    direction:       'up',
+    easing:          'spring',
+    crossfadeOnSkip: false,  // when true: art+text fade across instead of full slide-out/in
+  },
+  pauseBehavior: {
+    keepVisibleOnPause: false,  // when true: overlay stays visible indefinitely while paused
+  },
+  dynamicColors: {
+    enabled:       false, // master switch — when off, nothing below applies
+    bg:            true,  // card background gradient top + bottom
+    glow:          true,  // outer glow pulse colours
+    titleText:     true,  // track title text colour
+    titleGlow:     true,  // track title text-shadow glow colour
+    artistText:    true,  // artist text colour
+    artistGlow:    true,  // v8.0.0: artist text-shadow glow colour (separate hue offset from title)
+    npGlow:        true,  // v8.1.3
+    platformGlow:  true,  // v8.1.3
+    tsGlow:        true,  // v8.1.3
+    nowPlayingText:true,  // "Now Playing" / "Vibing With" label colour
+    platformBadge: true,  // platform badge (SOUNDCLOUD / YOUTUBE / etc.) colour
+    spectrum:      true,  // spectrum bars (solid/gradient modes only)
+    timestamps:    true,  // elapsed / total time text
+    progressBar:   true,  // progress bar fill gradient
+    border:        true,  // spinning-border 5-stop palette (v6.9.8 — toggle was missing)
+  },
+  overlay: {
+    opacity: 1.0,   // overall overlay transparency (0.1 – 1.0)
+  },
+  // v8.0.1: name of the preset whose settings are currently active. Persisted
+  // here so the customize page can highlight the active preset row in the
+  // Preset Manager modal across restarts. The overlay itself doesn't read
+  // this — config.json already holds whatever the loaded preset wrote.
+  lastPresetName: '',
+  // v7.0.0: optional drag-and-drop layout. When `layout.enabled` is true the
+  // overlay positions each layout-node element absolutely from `layout.nodes`
+  // and the card-inner becomes a relative-positioned canvas. When false (the
+  // default for v6 presets), the legacy flexbox cascade renders unchanged.
+  // See V7_LAYOUT_AUDIT.md and V7_LAYOUT_EDITOR.md for the full design.
+  layout: {
+    enabled: false,
+    canvas:  { width: 1000, height: 200 },
+    gridSize: 8,
+    nodes:   {
+      // v7.0.5: coordinates are CARD-INNER-RELATIVE (not iframe-relative).
+      // For a default canvas of 1000×200 OBS Browser Source, v6 padding
+      // makes card-inner ≈ 935×135 visible. Layout-nodes positioned within
+      // that 935×135 area. albumArt h capped at 135 (full card-inner height)
+      // so it doesn't overflow past the card bottom.
+      albumArt:        { x: 0,    y: 0,   w: 135, h: 135, z: 1, visible: true, locked: false, anchor: 'topleft'     },
+      animatedBars:    { x: 155,  y: 12,  w: 40,  h: 18,  z: 2, visible: true, locked: false, anchor: 'topleft'     },
+      nowPlayingText:  { x: 200,  y: 12,  w: 140, h: 22,  z: 2, visible: true, locked: false, anchor: 'topleft'     },
+      platformBadge:   { x: 350,  y: 12,  w: 180, h: 22,  z: 2, visible: true, locked: false, anchor: 'topleft'     },
+      trackTitle:      { x: 155,  y: 38,  w: 480, h: 38,  z: 3, visible: true, locked: false, anchor: 'topleft'     },
+      artistName:      { x: 155,  y: 78,  w: 480, h: 24,  z: 4, visible: true, locked: false, anchor: 'topleft'     },
+      spectrum:        { x: 18,   y: 12,  w: 290, h: 75,  z: 5, visible: true, locked: false, anchor: 'topright'    },
+      progressBar:     { x: 155,  y: 8,   w: 760, h: 22,  z: 6, visible: true, locked: false, anchor: 'bottomleft'  },
+    },
+  },
+};
+
+// v7.0.0: DEFAULT_LAYOUT is a frozen reference — used both as the fallback
+// when a preset has no `layout` block and as the "Reset Layout" target in
+// customize. Keep this in sync with the layout block in DEFAULTS above.
+const DEFAULT_LAYOUT = JSON.parse(JSON.stringify(DEFAULTS.layout));
+
+// Deep-merge: source values override target, arrays replace entirely.
+function deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  const out = Object.assign({}, target);
+  for (const k of Object.keys(source)) {
+    if (source[k] !== null && typeof source[k] === 'object' && !Array.isArray(source[k])
+        && out[k]    !== null && typeof out[k]    === 'object' && !Array.isArray(out[k])) {
+      out[k] = deepMerge(out[k], source[k]);
+    } else {
+      out[k] = source[k];
+    }
+  }
+  return out;
+}
+
+// Hex → {r,g,b} (also handles 3-digit hex)
+function hexToRgb(h) {
+  h = h.replace('#','');
+  if (h.length === 3) h = h.split('').map(x => x+x).join('');
+  const n = parseInt(h, 16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+
+// v7.1.3: Replaces the alpha channel of any color string with the supplied
+// alpha. Used so the user-controlled card.backgroundOpacity slider can drive
+// the card transparency without forcing the user to edit alpha bytes inside
+// the color picker. Accepts rgb()/rgba()/#RGB/#RGBA/#RRGGBB/#RRGGBBAA.
+// Returns 'rgba(r,g,b,a)' on success, or the original string if it could not
+// parse (e.g. CSS named colors or 'transparent' — those are fine to leave
+// untouched since the gradient fallback handles them).
+function _withCardAlpha(color, alpha) {
+  if (typeof color !== 'string') return color;
+  const a = Math.max(0, Math.min(1, Number(alpha)));
+  if (!isFinite(a)) return color;
+  const s = color.trim();
+  let m = s.match(/^rgba?\(([^)]+)\)$/i);
+  if (m) {
+    const parts = m[1].split(',').map(p => p.trim());
+    if (parts.length < 3) return color;
+    const r = parseFloat(parts[0]) | 0;
+    const g = parseFloat(parts[1]) | 0;
+    const b = parseFloat(parts[2]) | 0;
+    return `rgba(${r},${g},${b},${a.toFixed(3)})`;
+  }
+  if (s.startsWith('#')) {
+    const hex = s.slice(1);
+    let r, g, b;
+    if (hex.length === 3 || hex.length === 4) {
+      r = parseInt(hex[0] + hex[0], 16);
+      g = parseInt(hex[1] + hex[1], 16);
+      b = parseInt(hex[2] + hex[2], 16);
+    } else if (hex.length === 6 || hex.length === 8) {
+      r = parseInt(hex.slice(0,2), 16);
+      g = parseInt(hex.slice(2,4), 16);
+      b = parseInt(hex.slice(4,6), 16);
+    } else {
+      return color;
+    }
+    return `rgba(${r},${g},${b},${a.toFixed(3)})`;
+  }
+  return color;
+}
+
+// ── HSL ↔ RGB helpers (used by dynamic color extraction) ────────────────────
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      default: h = ((r - g) / d + 4) / 6;
+    }
+  }
+  return [h * 360, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  // h: 0-360, s/l: 0-1  →  {r,g,b}: 0-255
+  h /= 360;
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return { r: v, g: v, b: v };
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = t => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  return {
+    r: Math.round(hue2rgb(h + 1/3) * 255),
+    g: Math.round(hue2rgb(h)       * 255),
+    b: Math.round(hue2rgb(h - 1/3) * 255),
+  };
+}
+
+// ── Relay log messages to server.log via /client-log (fire-and-forget) ───────
+function overlayLog(level, msg) {
+  try {
+    fetch('/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level, msg }),
+    }).catch(() => {});
+  } catch (e) {}
+  // Also write to browser console so OBS DevTools shows it
+  const fn = level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
+  fn(`[MastersFM/${level}] ${msg}`);
+}
+
+// ── Dynamic color state ──────────────────────────────────────────────────────
+let _dynGlowOverride    = null; // {c1,c2} — art-derived glow colours for buildDynCss
+let _dynBorderOverride  = null; // ['#rrggbb', ...] — art-derived spinning-border palette for buildDynCss
+let _dynSpectrumColor   = null; // {r,g,b,hueShift} — current (rendered) spectrum base color
+let _dynSpectrumTarget  = null; // target color — the renderer eases _dynSpectrumColor toward this
+let _dynSpectrumLerpMs  = 1400; // how long the color takes to morph between palettes
+let _dynSpectrumSetAt   = 0;    // perf.now() when the target was last set
+let _lastPalette        = null; // {primary,secondary} — cached so sub-toggle changes
+                             // can re-apply without waiting for a new track
+
+// Extract two dominant hue regions from album art using 24-bucket hue analysis.
+// Returns { primary, secondary } where secondary is from a hue ≥45° away.
+// v6.9.9: never returns null. Multi-tier filtering progressively relaxes
+// the saturation/lightness thresholds so dark or near-monochrome album art
+// still yields meaningful colors. If even the most permissive pass finds
+// nothing, synthesize a palette from the image's mean color so the dynamic
+// path NEVER falls back to the user's preset just because the art is dark.
+function extractPalette(imgEl) {
+  try {
+    const SIZE = 96;   // bumped 64 → 96 for finer color quantization
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(imgEl, 0, 0, SIZE, SIZE);
+    const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+
+    // Compute mean RGB across ALL opaque pixels — used as the last-resort
+    // fallback so even pure-black art produces a tinted palette instead of
+    // null (which would let preset colors leak through).
+    let meanR = 0, meanG = 0, meanB = 0, nSamples = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i+3] < 200) continue;
+      meanR += data[i]; meanG += data[i+1]; meanB += data[i+2];
+      nSamples++;
+    }
+    if (nSamples > 0) { meanR /= nSamples; meanG /= nSamples; meanB /= nSamples; }
+
+    // Run a single bucketing pass with `tier`-defined thresholds. Returns
+    // a sorted list of buckets that scored above the validity floor, or
+    // [] if nothing did. We call this in tiers from strict → permissive.
+    const N = 24;   // 24 × 15° buckets — finer than the v6.x 30° buckets
+    const runPass = (tier) => {
+      const buckets = Array.from({ length: N }, (_, i) => ({
+        score: 0, r: 0, g: 0, b: 0, w: 0, hCenter: i * 15 + 7.5,
+      }));
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+        if (a < 200) continue;
+        const [h, s, l] = rgbToHsl(r, g, b);
+        if (s < tier.sMin || l < tier.lMin || l > tier.lMax) continue;
+        // Smooth lightness preference — peaks at tier.lPeak, with a floor
+        // (tier.floorMul) so even out-of-band pixels still contribute. Hard
+        // step cutoffs were what caused all-dark art to drop every pixel.
+        const lightnessGate = Math.max(
+          tier.floorMul,
+          1 - Math.abs(l - tier.lPeak) * tier.lFalloff,
+        );
+        const w = Math.pow(s, tier.sExp) * lightnessGate;
+        if (w <= 0) continue;
+        const bi = Math.floor(h / 15) % N;
+        buckets[bi].score += w;
+        buckets[bi].r += r * w; buckets[bi].g += g * w;
+        buckets[bi].b += b * w; buckets[bi].w += w;
+      }
+      return buckets.filter(b => b.w > 0.005).sort((a, b) => b.score - a.score);
+    };
+
+    // Tiered passes — accept the first one that produces a usable bucket.
+    const tiers = [
+      // Tier 1: vibrant — preferred, mirrors the v6.8 behaviour
+      { name: 'vibrant',  sMin: 0.18, lMin: 0.08, lMax: 0.94, lPeak: 0.45, lFalloff: 1.30, floorMul: 0.10, sExp: 1.4 },
+      // Tier 2: relaxed — for muted album art (pastels, low-contrast)
+      { name: 'muted',    sMin: 0.08, lMin: 0.05, lMax: 0.96, lPeak: 0.40, lFalloff: 0.90, floorMul: 0.20, sExp: 1.2 },
+      // Tier 3: dark-friendly — for dark/black album art with subtle color hints
+      { name: 'dark',     sMin: 0.04, lMin: 0.02, lMax: 0.98, lPeak: 0.25, lFalloff: 0.50, floorMul: 0.40, sExp: 1.0 },
+      // Tier 4: any-hint-of-color — last shot before synthesis
+      { name: 'minimal',  sMin: 0.02, lMin: 0.01, lMax: 0.99, lPeak: 0.30, lFalloff: 0.10, floorMul: 0.70, sExp: 0.8 },
+    ];
+    let valid = [];
+    let tierUsed = 'none';
+    for (const t of tiers) {
+      valid = runPass(t);
+      if (valid.length > 0) { tierUsed = t.name; break; }
+    }
+
+    const toColor = b => {
+      const r = Math.round(b.r / b.w), g = Math.round(b.g / b.w), bv = Math.round(b.b / b.w);
+      const [h, s, l] = rgbToHsl(r, g, bv);
+      return { r, g, b: bv, h, s, l };
+    };
+
+    if (valid.length === 0) {
+      // Synthesize from mean color. For art that's truly black/grey/white
+      // (no dominant hue), pick a tasteful default hue (270° = magenta-ish)
+      // shifted by mean lightness so different artworks still feel distinct.
+      const [mh, ms, ml] = rgbToHsl(meanR, meanG, meanB);
+      const synthH = ms < 0.06
+        ? (270 + (ml * 180)) % 360   // truly grey → derive hue from lightness
+        : mh;                         // some hue present → use it
+      const synthS = Math.max(0.45, Math.min(0.85, ms + 0.30));
+      const synthL = Math.max(0.42, Math.min(0.62, ml + 0.18));
+      const pRgb = hslToRgb(synthH, synthS, synthL);
+      const sRgb = hslToRgb((synthH + 35) % 360, synthS, synthL);
+      const primary   = { ...pRgb, h: synthH,                 s: synthS, l: synthL };
+      const secondary = { ...sRgb, h: (synthH + 35) % 360,    s: synthS, l: synthL };
+      overlayLog('INFO',
+        `DynColors[synth]: art mean rgb(${Math.round(meanR)},${Math.round(meanG)},${Math.round(meanB)}) → h${Math.round(synthH)}° (no color buckets matched any tier)`);
+      return { primary, secondary };
+    }
+
+    const primary = toColor(valid[0]);
+
+    // Secondary: first bucket ≥ 45° away (relaxed from v6.8's 60°). Lower
+    // threshold yields a viable secondary on album art with narrow color
+    // palettes (e.g., monochromatic blue-tinted) where the v6.8 60° gate
+    // forced a synthetic complementary hue instead of using a real one.
+    let secondary = null;
+    let secondaryFromArt = false;
+    for (let i = 1; i < valid.length; i++) {
+      const dist = Math.min(
+        Math.abs(valid[i].hCenter - valid[0].hCenter),
+        360 - Math.abs(valid[i].hCenter - valid[0].hCenter),
+      );
+      if (dist >= 45) { secondary = toColor(valid[i]); secondaryFromArt = true; break; }
+    }
+    // No distinct secondary in art → derive complementary-ish offset that
+    // PRESERVES the primary's saturation+lightness so the synth secondary
+    // doesn't read as an unrelated color.
+    if (!secondary) {
+      const sH = (primary.h + 150) % 360;
+      const sRgb = hslToRgb(sH, primary.s, primary.l);
+      secondary = { ...sRgb, h: sH, s: primary.s, l: primary.l };
+    }
+
+    overlayLog('INFO',
+      `DynColors[${tierUsed}]: primary rgb(${primary.r},${primary.g},${primary.b}) h=${Math.round(primary.h)}° s=${(primary.s*100).toFixed(0)}% l=${(primary.l*100).toFixed(0)}% | secondary rgb(${secondary.r},${secondary.g},${secondary.b}) h=${Math.round(secondary.h)}° (${secondaryFromArt ? 'extracted' : 'synth'})`);
+    return { primary, secondary };
+  } catch (e) {
+    overlayLog('ERROR', `DynColors: canvas failed — ${e.message} (CORS block?)`);
+    return null;
+  }
+}
+
+// Apply art-derived palette. Only touches elements whose sub-toggle is enabled.
+// NEVER calls removeProperty — always restores config values when a toggle is off,
+// so the @property initial-value fallback (which looks purple) is never exposed.
+function applyDynamicPalette(palette) {
+  if (!palette || !_cfg) return;
+  const { primary: P, secondary: S } = palette;
+  const dc  = _cfg.dynamicColors || {};
+  const R   = document.documentElement.style;
+  const log = [];
+
+  // v6.9.9: visibility-floor helper. The user wants colors more accurate
+  // to the album art, BUT a deep-black album with primary L=0.08 would
+  // produce an invisible spinning border / spectrum / progress bar. Each
+  // visible element gets a target L that's biased toward the extracted L
+  // but clamped between visibility-floor and not-blown-out-ceiling.
+  // visL(extractedL, floor, ceil) preserves album darkness/brightness
+  // while ensuring the result is visually present on the card surface.
+  const visL = (l, floor, ceil) => Math.max(floor, Math.min(ceil, l));
+
+  // v6.9.9: saturation passthrough that PRESERVES album feel. The v6.8
+  // helpers (vSat × 1.65, bSat × 1.35) over-saturated muted album art —
+  // a dusty rose became neon pink. Now we keep extracted saturation as-is
+  // for accent elements and only mildly boost when the art is genuinely
+  // pale (s < 0.35), so the rendered colors track what's actually on the
+  // album sleeve. Hard ceiling stays at 0.95 to avoid pure-saturated
+  // CRT-blue artefacts on already-vivid art.
+  const accurateSat = s => s < 0.35 ? Math.min(s * 1.40, 0.85) : Math.min(s, 0.95);
+
+  // v7.1.3: read user's card transparency once, applied to every gradient stop.
+  const _cardA = _cfg.card.backgroundOpacity ?? 0.99;
+  if (dc.bg !== false) {
+    // BG top/bottom: bias darker than the album so card content stays
+    // legible. We still use extracted hue + sat so the panel reads as
+    // "the album color" instead of a synthesized lavender.
+    const bgTop = hslToRgb(P.h, Math.min(P.s, 0.85), visL(P.l, 0.18, 0.30));
+    const bgBot = hslToRgb(S.h, Math.min(S.s * 0.85, 0.65), visL(S.l, 0.04, 0.10));
+    R.setProperty('--card-bg-top',    `rgba(${bgTop.r},${bgTop.g},${bgTop.b},${_cardA.toFixed(3)})`);
+    R.setProperty('--card-bg-bottom', `rgba(${bgBot.r},${bgBot.g},${bgBot.b},${_cardA.toFixed(3)})`);
+    // Side gradient stops were hard-coded at alpha 0.98; scale that against the
+    // user's chosen transparency so dialing it down keeps these in proportion.
+    const _sideA = Math.max(0, Math.min(1, _cardA * (0.98 / 0.99)));
+    R.setProperty('--card-bg-left',   `rgba(${bgBot.r},${bgBot.g},${bgBot.b},${_sideA.toFixed(3)})`);
+    R.setProperty('--card-bg-right',  `rgba(${bgBot.r},${bgBot.g},${bgBot.b},${_sideA.toFixed(3)})`);
+    log.push(`bg: top=h${Math.round(P.h)}° bot=h${Math.round(S.h)}°`);
+  } else {
+    // Restore config values — NEVER removeProperty (would expose @property purple fallback)
+    const sinA = Math.sin((_cfg.card.backgroundAngle * Math.PI) / 180);
+    R.setProperty('--card-bg-top',    _withCardAlpha(_cfg.card.backgroundTop,    _cardA));
+    R.setProperty('--card-bg-bottom', _withCardAlpha(_cfg.card.backgroundBottom, _cardA));
+    R.setProperty('--card-bg-left',  _withCardAlpha(sinA >= 0 ? _cfg.card.backgroundBottom : _cfg.card.backgroundTop, _cardA));
+    R.setProperty('--card-bg-right', _withCardAlpha(sinA >= 0 ? _cfg.card.backgroundTop    : _cfg.card.backgroundBottom, _cardA));
+    log.push('bg=preset');
+  }
+
+  if (dc.glow !== false) {
+    // Glow always reads as a halo — keep saturation high (it's filtered
+    // through drop-shadow so the visible color is much softer than the
+    // raw RGB suggests). Lightness clamped to 0.52..0.68 for pulse depth.
+    _dynGlowOverride = {
+      c1: hslToRgb(P.h,             Math.max(0.85, P.s),           visL(P.l, 0.55, 0.68)),
+      c2: hslToRgb((P.h + 30) % 360, Math.max(0.80, P.s * 0.95),   visL(P.l, 0.45, 0.58)),
+    };
+    log.push(`glow=h${Math.round(P.h)}°`);
+  } else {
+    _dynGlowOverride = null;
+    log.push('glow=preset');
+  }
+
+  // Spinning border — v6.9.9 5-stop palette derived directly from the
+  // extracted primary + secondary RGB so the border reads as the actual
+  // album sleeve. Stops cycle: primary | primary-darker | secondary |
+  // primary↔secondary mix | primary-lighter. Lightness uses the visL
+  // helper so dark albums get a darker but still visible border, and
+  // bright albums don't get over-lit.
+  if (dc.border !== false) {
+    const rgbToHex = ({r,g,b}) =>
+      '#' + [r,g,b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+    const baseLp  = visL(P.l, 0.45, 0.72);
+    const baseLs  = visL(S.l, 0.45, 0.72);
+    const mixH    = ((P.h + S.h) / 2 + (Math.abs(P.h - S.h) > 180 ? 180 : 0)) % 360;
+    const mixL    = visL((P.l + S.l) / 2, 0.50, 0.74);
+    const stops = [
+      hslToRgb(P.h, accurateSat(P.s),                         baseLp),
+      hslToRgb(P.h, accurateSat(P.s),                         Math.max(0.30, baseLp - 0.18)),
+      hslToRgb(S.h, accurateSat(S.s),                         baseLs),
+      hslToRgb(mixH, accurateSat((P.s + S.s) / 2),            mixL),
+      hslToRgb(P.h, accurateSat(P.s),                         Math.min(0.85, baseLp + 0.15)),
+    ].map(rgbToHex);
+    _dynBorderOverride = stops;
+    log.push(`border=h${Math.round(P.h)}°+h${Math.round(S.h)}° L=${(baseLp*100).toFixed(0)}/${(baseLs*100).toFixed(0)}%`);
+  } else {
+    _dynBorderOverride = null;
+    log.push('border=preset');
+  }
+
+  if (dc.titleGlow !== false && _cfg.title.glowEnabled) {
+    // Palette-driven title text-shadow — matches the outer glow hue so the
+    // card + title halo feel part of the same lighting scheme. Uses the
+    // same accurateSat passthrough as the rest of v6.9.9 so the halo color
+    // tracks the album rather than synthesizing a saturated CRT-pink.
+    const tg = hslToRgb(P.h, Math.max(0.65, accurateSat(P.s)), visL(P.l, 0.60, 0.74));
+    const gsz = (_cfg.title.glowSize ?? 6) + 'px';
+    const tgCol = `rgb(${tg.r},${tg.g},${tg.b})`;
+    R.setProperty('--title-text-shadow',
+      `0 0 ${gsz} ${tgCol}, 0 0 ${Math.round((_cfg.title.glowSize ?? 6) * 1.8)}px ${tgCol}`);
+    log.push(`titleGlow=h${Math.round(P.h)}°`);
+  } else if (_cfg.title.glowEnabled) {
+    // Glow ON but dynamic-glow OFF → restore preset glow color.
+    const gc  = _cfg.title.glowColor || '#ff80ff';
+    const gsz = (_cfg.title.glowSize ?? 6) + 'px';
+    R.setProperty('--title-text-shadow',
+      `0 0 ${gsz} ${gc}, 0 0 ${Math.round((_cfg.title.glowSize ?? 6) * 1.8)}px ${gc}`);
+    log.push('titleGlow=preset');
+  }
+
+  // v8.0.0: artist glow follows the same path as titleGlow but offsets the hue
+  // by +60° on the colour wheel so the two halos read as related-but-distinct
+  // even when both are on simultaneously. Saturation comes down 10pt and
+  // lightness lifts 8pt vs. titleGlow so the artist halo feels softer / more
+  // ambient rather than competing with the title for visual focus.
+  if (dc.artistGlow !== false && _cfg.artist?.glowEnabled) {
+    const aHue = (P.h + 60) % 360;
+    const ag   = hslToRgb(aHue, Math.max(0.55, accurateSat(P.s) - 0.10), visL(P.l, 0.66, 0.82));
+    const agsz = (_cfg.artist.glowSize ?? 6) + 'px';
+    const agCol = `rgb(${ag.r},${ag.g},${ag.b})`;
+    R.setProperty('--artist-text-shadow',
+      `0 0 ${agsz} ${agCol}, 0 0 ${Math.round((_cfg.artist.glowSize ?? 6) * 1.8)}px ${agCol}`);
+    log.push(`artistGlow=h${Math.round(aHue)}°`);
+  } else if (_cfg.artist?.glowEnabled) {
+    // Glow ON but dynamic-artistGlow OFF → restore preset glow color.
+    const agc  = _cfg.artist.glowColor || '#80c0ff';
+    const agsz = (_cfg.artist.glowSize ?? 6) + 'px';
+    R.setProperty('--artist-text-shadow',
+      `0 0 ${agsz} ${agc}, 0 0 ${Math.round((_cfg.artist.glowSize ?? 6) * 1.8)}px ${agc}`);
+    log.push('artistGlow=preset');
+  }
+
+  // v8.1.3: dynamic glow on np / platform / timestamps. Each gets its own
+  // hue offset so all three halos read as distinct channels when active.
+  const _glow = (en, c, s) => en
+    ? `0 0 ${s}px ${c}, 0 0 ${Math.round(s*1.8)}px ${c}`
+    : 'none';
+  if (dc.npGlow !== false && _cfg.nowPlaying?.glowEnabled) {
+    const ng = hslToRgb(P.h, Math.max(0.55, accurateSat(P.s)), visL(P.l, 0.62, 0.78));
+    const cs = `rgb(${ng.r},${ng.g},${ng.b})`;
+    R.setProperty('--np-text-shadow', _glow(true, cs, _cfg.nowPlaying.glowSize ?? 6));
+    log.push(`npGlow=h${Math.round(P.h)}°`);
+  } else if (_cfg.nowPlaying?.glowEnabled) {
+    R.setProperty('--np-text-shadow', _glow(true, _cfg.nowPlaying.glowColor || '#c060ff', _cfg.nowPlaying.glowSize ?? 6));
+  }
+  if (dc.platformGlow !== false && _cfg.platformBadge?.glowEnabled) {
+    const aHue = (P.h + 30) % 360;
+    const pg = hslToRgb(aHue, Math.max(0.50, accurateSat(P.s) - 0.15), visL(P.l, 0.70, 0.84));
+    const cs = `rgb(${pg.r},${pg.g},${pg.b})`;
+    R.setProperty('--platform-text-shadow', _glow(true, cs, _cfg.platformBadge.glowSize ?? 6));
+    log.push(`platformGlow=h${Math.round(aHue)}°`);
+  } else if (_cfg.platformBadge?.glowEnabled) {
+    R.setProperty('--platform-text-shadow', _glow(true, _cfg.platformBadge.glowColor || '#c8a0ff', _cfg.platformBadge.glowSize ?? 6));
+  }
+  if (dc.tsGlow !== false && _cfg.timestamps?.glowEnabled) {
+    const aHue = (P.h - 30 + 360) % 360;
+    const tg = hslToRgb(aHue, Math.max(0.55, accurateSat(P.s)), visL(P.l, 0.64, 0.80));
+    const cs = `rgb(${tg.r},${tg.g},${tg.b})`;
+    R.setProperty('--ts-text-shadow', _glow(true, cs, _cfg.timestamps.glowSize ?? 6));
+    log.push(`tsGlow=h${Math.round(aHue)}°`);
+  } else if (_cfg.timestamps?.glowEnabled) {
+    R.setProperty('--ts-text-shadow', _glow(true, _cfg.timestamps.glowColor || '#e090ff', _cfg.timestamps.glowSize ?? 6));
+  }
+
+  document.getElementById('_dyn').textContent = buildDynCss(_cfg);
+
+  if (dc.titleText !== false) {
+    // Near-white with a faint hue tint — always readable on dark backgrounds
+    const t = hslToRgb(P.h, Math.min(P.s * 0.12, 0.14), 0.97);
+    R.setProperty('--title-color', `rgb(${t.r},${t.g},${t.b})`);
+    log.push('title=near-white');
+  } else {
+    R.setProperty('--title-color', _cfg.title.color);
+    log.push('title=preset');
+  }
+
+  if (dc.platformBadge !== false) {
+    // Platform badge: hue-matched but reduced saturation + alpha so it stays
+    // subtle — it's a label, not the focal point. The dot uses a slightly
+    // warmer/more saturated tint to draw attention as a visual separator.
+    const pb  = hslToRgb(P.h, Math.min(P.s * 0.50, 0.55), 0.72);
+    const pbd = hslToRgb(P.h, Math.min(P.s * 0.85, 0.90), 0.62);
+    R.setProperty('--platform-color',     `rgba(${pb.r},${pb.g},${pb.b},0.82)`);
+    R.setProperty('--platform-dot-color', `rgba(${pbd.r},${pbd.g},${pbd.b},0.70)`);
+    log.push(`platform=h${Math.round(P.h)}°`);
+  } else {
+    R.setProperty('--platform-color',     _cfg.platformBadge.color    ?? 'rgba(200,160,255,0.38)');
+    R.setProperty('--platform-dot-color', _cfg.platformBadge.dotColor ?? 'rgba(200,100,255,0.28)');
+    log.push('platform=preset');
+  }
+
+  if (dc.artistText !== false) {
+    // Clearly hue-tinted — s*0.55 gives visible color without sacrificing readability
+    const t = hslToRgb(P.h, Math.min(P.s * 0.55, 0.58), 0.76);
+    R.setProperty('--artist-color', `rgba(${t.r},${t.g},${t.b},0.82)`);
+    log.push(`artist=h${Math.round(P.h)}° s=${(Math.min(P.s*0.55,0.58)*100).toFixed(0)}%`);
+  } else {
+    R.setProperty('--artist-color', _cfg.artist.color);
+    log.push('artist=preset');
+  }
+
+  if (dc.nowPlayingText !== false) {
+    // v7.0.0: 'Now Playing' / 'Vibing With' label + the EQ-style animated
+    // bars in front of it both get a strong album tint. Saturation floor
+    // bumped 0.55 -> 0.70 and lightness ceiling 0.78 -> 0.72 so low-sat
+    // sepia/pastel album art (e.g. s=27% l=58%) lands as a clearly orange
+    // tint instead of near-white. Critically: --bar-color is overridden
+    // here too — previously it was only ever set in applyConfig's preset
+    // path so the animated bars never picked up the dynamic palette.
+    const np = hslToRgb(P.h, Math.max(0.70, accurateSat(P.s)), visL(P.l, 0.55, 0.72));
+    R.setProperty('--np-color',  `rgb(${np.r},${np.g},${np.b})`);
+    R.setProperty('--bar-color', `rgb(${np.r},${np.g},${np.b})`);
+    log.push(`np+bars=rgb(${np.r},${np.g},${np.b})`);
+  } else {
+    R.setProperty('--np-color',  _cfg.nowPlaying.color);
+    R.setProperty('--bar-color', _cfg.bars.color);
+    log.push('np+bars=preset');
+  }
+
+  if (dc.spectrum !== false) {
+    // v6.9.9: spectrum bars now mirror the actual album hue/saturation
+    // closely. The v6.8 path forced L=0.58 and over-saturated to 1.20×,
+    // so a deep-red album gave salmon-pink bars instead of crimson.
+    // accurateSat preserves album feel; visL keeps the bars bright
+    // enough to read against the dark card while honouring the album's
+    // own tonality (dark album → slightly darker bars; bright album →
+    // slightly brighter bars).
+    const sL  = visL(P.l, 0.50, 0.66);
+    const _sc = hslToRgb(P.h, accurateSat(P.s), sL);
+    _dynSpectrumTarget = { ..._sc, hueShift: P.h };
+    _dynSpectrumSetAt  = performance.now();
+    if (!_dynSpectrumColor) _dynSpectrumColor = { ..._dynSpectrumTarget };  // first apply: no blend
+    log.push(`spectrum=h${Math.round(P.h)}° s=${(accurateSat(P.s)*100).toFixed(0)}% L=${(sL*100).toFixed(0)}%`);
+  } else {
+    _dynSpectrumTarget = null;
+    _dynSpectrumColor  = null;
+    log.push('spectrum=preset');
+  }
+
+  if (dc.timestamps !== false) {
+    const ts = hslToRgb(P.h, Math.min(P.s * 0.55, 0.58), 0.78);
+    R.setProperty('--ts-color', `rgb(${ts.r},${ts.g},${ts.b})`);
+    log.push(`ts=h${Math.round(P.h)}°`);
+  } else {
+    R.setProperty('--ts-color', _cfg.timestamps.color);
+    log.push('ts=preset');
+  }
+
+  if (dc.progressBar !== false) {
+    // v6.9.9: timeline (progress bar) now traces from the actual primary
+    // album color → mid blend → actual secondary color. Lightness clamped
+    // by visL so dark albums get a slightly darker but still readable bar
+    // and bright albums don't blow out. Saturation passes through
+    // accurateSat (mild boost only when the art is genuinely pale).
+    // The mid hue uses shortest-arc averaging so colors that straddle 0°/360°
+    // (e.g., red+pink wrapping) blend through magenta instead of through cyan.
+    const midH = (() => {
+      let dh = S.h - P.h;
+      if (dh > 180)  dh -= 360;
+      if (dh < -180) dh += 360;
+      return ((P.h + dh / 2) + 360) % 360;
+    })();
+    const fa = hslToRgb(P.h, accurateSat(P.s),         visL(P.l, 0.46, 0.60));
+    const fb = hslToRgb(midH, accurateSat((P.s+S.s)/2), visL((P.l + S.l) / 2, 0.50, 0.64));
+    const fc = hslToRgb(S.h, accurateSat(S.s),         visL(S.l, 0.50, 0.64));
+    R.setProperty('--progress-fill-a', `rgb(${fa.r},${fa.g},${fa.b})`);
+    R.setProperty('--progress-fill-b', `rgb(${fb.r},${fb.g},${fb.b})`);
+    R.setProperty('--progress-fill-c', `rgb(${fc.r},${fc.g},${fc.b})`);
+    log.push(`bar: ${Math.round(P.h)}°→${Math.round(midH)}°→${Math.round(S.h)}°`);
+  } else {
+    const fc = _cfg.progressBar.fillColors;
+    R.setProperty('--progress-fill-a', fc[0] || '#8020c0');
+    R.setProperty('--progress-fill-b', fc[1] || fc[0] || '#ff60c8');
+    R.setProperty('--progress-fill-c', fc[2] || fc[1] || fc[0] || '#c040ff');
+    log.push('bar=preset');
+  }
+
+  overlayLog('INFO', `DynColors applied: ${log.join(' | ')}`);
+}
+
+// Restore ALL dynamic-touched CSS vars back to config values.
+// Uses setProperty (not removeProperty) to avoid exposing the purple
+// @property initial-value fallback when the user's config has different colors.
+function clearDynamicPalette() {
+  // Do NOT null _lastPalette here — the user may re-enable and we want to
+  // immediately re-apply without waiting for the next art load.
+  _dynGlowOverride   = null;
+  _dynBorderOverride = null;
+  if (!_cfg) return;
+  const R    = document.documentElement.style;
+  const sinA = Math.sin((_cfg.card.backgroundAngle * Math.PI) / 180);
+  // v7.1.3: respect backgroundOpacity here too so toggling Dynamic Colors off
+  // doesn't snap the card back to fully-opaque if the user wanted transparency.
+  const _cardA = _cfg.card.backgroundOpacity ?? 0.99;
+  R.setProperty('--card-bg-top',    _withCardAlpha(_cfg.card.backgroundTop,    _cardA));
+  R.setProperty('--card-bg-bottom', _withCardAlpha(_cfg.card.backgroundBottom, _cardA));
+  R.setProperty('--card-bg-left',  _withCardAlpha(sinA >= 0 ? _cfg.card.backgroundBottom : _cfg.card.backgroundTop, _cardA));
+  R.setProperty('--card-bg-right', _withCardAlpha(sinA >= 0 ? _cfg.card.backgroundTop    : _cfg.card.backgroundBottom, _cardA));
+  R.setProperty('--title-color',   _cfg.title.color);
+  R.setProperty('--artist-color',  _cfg.artist.color);
+  R.setProperty('--np-color',      _cfg.nowPlaying.color);
+  R.setProperty('--bar-color',     _cfg.bars.color);   // v7.0.0: also restore animated-bars color when dynamic is turned off
+  _dynSpectrumColor = null;
+  R.setProperty('--ts-color',      _cfg.timestamps.color);
+  _dynSpectrumTarget = null;
+  R.setProperty('--platform-color',     _cfg.platformBadge?.color    ?? 'rgba(200,160,255,0.38)');
+  R.setProperty('--platform-dot-color', _cfg.platformBadge?.dotColor ?? 'rgba(200,100,255,0.28)');
+  // Restore preset title-shadow too (matches the inverse branch in applyDynamicPalette)
+  if (_cfg.title.glowEnabled) {
+    const gc  = _cfg.title.glowColor || '#ff80ff';
+    const gsz = (_cfg.title.glowSize ?? 6) + 'px';
+    R.setProperty('--title-text-shadow',
+      `0 0 ${gsz} ${gc}, 0 0 ${Math.round((_cfg.title.glowSize ?? 6) * 1.8)}px ${gc}`);
+  } else {
+    R.setProperty('--title-text-shadow', 'none');
+  }
+  // v8.0.0: artist glow gets the same treatment so the preset color comes back
+  // when dynamic-colors is toggled off (and the glow toggle alone is on).
+  if (_cfg.artist?.glowEnabled) {
+    const agc  = _cfg.artist.glowColor || '#80c0ff';
+    const agsz = (_cfg.artist.glowSize ?? 6) + 'px';
+    R.setProperty('--artist-text-shadow',
+      `0 0 ${agsz} ${agc}, 0 0 ${Math.round((_cfg.artist.glowSize ?? 6) * 1.8)}px ${agc}`);
+  } else {
+    R.setProperty('--artist-text-shadow', 'none');
+  }
+  // v8.1.3: same restore for np / platform / timestamps glow.
+  const _g = (en, c, s) => en ? `0 0 ${s}px ${c}, 0 0 ${Math.round(s*1.8)}px ${c}` : 'none';
+  R.setProperty('--np-text-shadow',       _g(_cfg.nowPlaying?.glowEnabled,    _cfg.nowPlaying?.glowColor    || '#c060ff', _cfg.nowPlaying?.glowSize    ?? 6));
+  R.setProperty('--platform-text-shadow', _g(_cfg.platformBadge?.glowEnabled, _cfg.platformBadge?.glowColor || '#c8a0ff', _cfg.platformBadge?.glowSize ?? 6));
+  R.setProperty('--ts-text-shadow',       _g(_cfg.timestamps?.glowEnabled,    _cfg.timestamps?.glowColor    || '#e090ff', _cfg.timestamps?.glowSize    ?? 6));
+  const fc = _cfg.progressBar.fillColors;
+  R.setProperty('--progress-fill-a', fc[0] || '#8020c0');
+  R.setProperty('--progress-fill-b', fc[1] || fc[0] || '#ff60c8');
+  R.setProperty('--progress-fill-c', fc[2] || fc[1] || fc[0] || '#c040ff');
+  document.getElementById('_dyn').textContent = buildDynCss(_cfg);
+  overlayLog('INFO', 'DynColors: cleared — preset colors restored');
+}
+
+// Build a repeating linear-gradient stop list from an array of hex colors.
+// v6.3.0: switched from conic (rotating) to linear (sliding) so the border
+// animation reads as clean one-direction motion on the thin wide cards
+// Master's FM ships with. Gradient covers 50 % of the element (via
+// background-size: 200 %) with all 5 colors evenly distributed, plus a
+// wrap-back to the first color at 50 %, so a 100 % horizontal slide
+// produces a perfectly continuous loop with no visible seam.
+// Example for 5 colours [A, B, C, D, E]:
+//   A 0%, B 10%, C 20%, D 30%, E 40%, A 50%
+// Combined with background-size: 200 % 100 % and background-position
+// animating 0 % → -200 %, the entire cycle slides two gradient-widths
+// leftward in one animation period = 4 full color sweeps per rotation.
+// Users see clear, unambiguous left-to-right color motion.
+function buildConicStops(colors) {
+  // v6.9.8: single-cycle stops for conic-gradient rotation. N colors
+  // are evenly distributed across 0..100 % with color[0] repeated at
+  // 100 % so the wrap is seamless. The previous double-cycle layout
+  // (used when the border was a linear-gradient slide) would produce
+  // each color twice per full conic sweep, doubling the visible color
+  // change rate and making the rotation look incorrect.
+  if (!colors || colors.length === 0) return '#8020e0 0deg, #8020e0 360deg';
+  if (colors.length === 1) return `${colors[0]} 0deg, ${colors[0]} 360deg`;
+  const n = colors.length;
+  const stops = [];
+  for (let i = 0; i < n; i++) {
+    const pct = (i * 100 / n).toFixed(2);
+    stops.push(`${colors[i]} ${pct}%`);
+  }
+  stops.push(`${colors[0]} 100%`);
+  return stops.join(', ');
+}
+
+// Generate the dynamic CSS block: glow keyframes + border gradient.
+// These can't be expressed as simple CSS vars so they're injected as raw CSS.
+function buildDynCss(cfg) {
+  // ── Glow ──────────────────────────────────────────────────────────────
+  let glowCss;
+  if (cfg.glow.enabled) {
+    // When dynamic colors are active, use the art-derived glow colours instead
+    const c1 = (_dynGlowOverride ? _dynGlowOverride.c1 : null) || hexToRgb(cfg.glow.color1);
+    const c2 = (_dynGlowOverride ? _dynGlowOverride.c2 : null) || hexToRgb(cfg.glow.color2);
+    const f  = cfg.glow.intensity;
+    const a  = (base, mult) => (base * f * mult).toFixed(2);
+    // v6.1.6 CPU optimization: dropped the 3rd drop-shadow at the 50%
+    // keyframe (previously 0 0 80px, opacity 0.12). That shadow had a
+    // huge 80 px blur kernel, which is a per-pixel filter pass across
+    // the entire card + margin on the GPU — expensive and the user
+    // barely saw it at 0.12 alpha. Down to 2 shadows at peak = ~33 %
+    // less GPU filter work during the glow animation, visually almost
+    // indistinguishable.
+    glowCss = `
+#glow-wrap { animation: glow-pulse ${cfg.glow.pulseDuration}s ease-in-out infinite; }
+@keyframes glow-pulse {
+  0%,100% {
+    filter:
+      drop-shadow(0 0 12px rgba(${c1.r},${c1.g},${c1.b},${a(1,0.30)}))
+      drop-shadow(0 0 28px rgba(${c2.r},${c2.g},${c2.b},${a(1,0.15)}));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 22px rgba(${c1.r},${c1.g},${c1.b},${a(1,0.50)}))
+      drop-shadow(0 0 50px rgba(${c2.r},${c2.g},${c2.b},${a(1,0.25)}));
+  }
+}`;
+  } else {
+    glowCss = '#glow-wrap { filter: none; animation: none; }';
+  }
+
+  // ── Spinning border ────────────────────────────────────────────────────
+  // v6.0.5: when dynamic colors are active AND dynamicColors.border is
+  // enabled, _dynBorderOverride carries a 5-stop palette derived from the
+  // album art. Falls back to cfg.border.colors (the user's preset stops)
+  // when no art palette has been extracted yet or the sub-toggle is off.
+  //
+  // v6.2.0: DO NOT re-emit the `animation` property from here. Every
+  // applyConfig call rewrites this #_dyn <style> block, and browsers
+  // restart any CSS animation when its `animation` property is re-set
+  // (even to the identical value). Config updates fire on every preview
+  // push, SSE broadcast, and slider drag — often more than once per
+  // 4-second spin period — so the border animation was restarting at
+  // 0° repeatedly, never completing a rotation. Users saw this as the
+  // border "bouncing on the top and bottom" instead of spinning.
+  //
+  // Fix: let the head-CSS animation own the spin (it's declared on
+  // .card-outer::before with linear infinite and CSS-var duration).
+  // The injected rule here only overrides `background` (the gradient
+  // stops) and — when the border is DISABLED — kills the animation
+  // via `animation: none`. --border-spin-dur CSS var (set in the
+  // non-buildDynCss part of applyConfig) handles duration changes.
+  let borderCss;
+  if (cfg.border.enabled) {
+    const borderColors = _dynBorderOverride || cfg.border.colors;
+    const stops = buildConicStops(borderColors);
+    // v6.9.8: emit conic-gradient (true rotation around card center). The
+    // pseudo-element in head CSS owns the rotate() keyframe animation;
+    // we only override background-image so palette changes don't restart
+    // the spin (v6.2.0 still applies — never re-emit `animation:`). The
+    // 'from 0deg' anchors the first color at the right side at angle 0;
+    // the rotate keyframe sweeps that anchor around the perimeter.
+    borderCss = `.card-outer::before { background-image: conic-gradient(from 0deg, ${stops}); }`;
+  } else {
+    // Static border as fallback — animation explicitly cancelled. The
+    // transform must keep the -50%/-50% centering offset from the head CSS
+    // since the pseudo is now positioned at left:50%/top:50% (v6.9.8).
+    const c = (_dynBorderOverride && _dynBorderOverride[0])
+           || (cfg.border.colors && cfg.border.colors[0])
+           || '#8020e0';
+    borderCss = `.card-outer::before { background-image: none; background-color: ${c}; animation: none; transform: translate(-50%, -50%); }`;
+  }
+
+  return glowCss + '\n' + borderCss;
+}
+
+// ── Live config state ──────────────────────────────────────────────────────
+let _cfg         = deepMerge(DEFAULTS, {});
+let _lastCfgStr  = '';
+
+// Bar height/delay patterns (up to 12 bars)
+const BAR_HEIGHTS = [12, 30, 20, 36, 16, 28, 24, 32, 18, 34, 22, 26];
+const BAR_DELAYS  = [0.00, 0.15, 0.30, 0.10, 0.20, 0.05, 0.25, 0.35, 0.12, 0.22, 0.08, 0.18];
+
+// Rebuild the animated bars DOM to match cfg.bars.count
+function rebuildBars(cfg) {
+  const wrap    = document.getElementById('bars-wrap');
+  const current = wrap.querySelectorAll('.bar').length;
+  if (current === cfg.bars.count) return;
+  wrap.innerHTML = '';
+  for (let i = 0; i < cfg.bars.count; i++) {
+    const b = document.createElement('div');
+    b.className = 'bar';
+    b.style.height         = BAR_HEIGHTS[i % BAR_HEIGHTS.length] + 'px';
+    b.style.animationDelay = BAR_DELAYS[i  % BAR_DELAYS.length]  + 's';
+    wrap.appendChild(b);
+  }
+}
+
+// Inject/update a Google Font link (skips Inter which is already hardlinked)
+const _injectedFonts = new Set(['Inter']);
+function injectFont(name) {
+  if (!name || _injectedFonts.has(name)) return;
+  _injectedFonts.add(name);
+  const link = document.createElement('link');
+  link.rel  = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}:wght@400;500;600;700;800;900&display=swap`;
+  document.head.appendChild(link);
+}
+
+// v7.0.0 — apply the optional drag-and-drop layout. When `cfg.layout.enabled`
+// is false (or the layout block is missing entirely), this function CLEARS any
+// inline absolute-position styles set by a previous layout-mode-on render and
+// removes the `body.layout-mode-on` class — restoring the legacy v6 flexbox
+// cascade pixel-identically. When enabled, every [data-layout-node] element
+// gets inline top/left/width/height/zIndex from cfg.layout.nodes[id].
+//
+// Anchor handling: a node with anchor='topleft' uses (x, y) as-is. With
+// anchor='topright' the right edge is at canvas.width - x and width is w.
+// With anchor='bottomleft' the bottom edge is at canvas.height - y and height
+// is h. With anchor='bottomright' both. With anchor='center' the box is
+// centered on (x, y). This lets the user resize the card canvas later without
+// re-positioning every node.
+function applyLayoutMode(cfg) {
+  const layout = cfg && cfg.layout;
+  const body   = document.body;
+  const nodes  = document.querySelectorAll('[data-layout-node]');
+
+  // v7.0.2: scale-wrapper applies transform:scale(0.5) on a 200%×200% box.
+  // 1 visible iframe pixel = 2 logical CSS pixels inside scale-wrapper. So
+  // every inline px we write here gets multiplied by LM_SCALE so node
+  // coordinates land where the user expects on screen.
+  const LM_SCALE = 2;
+
+  if (!layout || !layout.enabled) {
+    // OFF — strip any leftover state from a previous on→off transition.
+    body.classList.remove('layout-mode-on');
+    nodes.forEach(el => {
+      el.style.top = el.style.left = el.style.width = el.style.height =
+        el.style.zIndex = el.style.fontSize = '';
+      el.classList.remove('layout-hidden');
+      // v7.0.2: also clear the inner-text font-size we set on trackTitle.
+      const inner = el.querySelector && el.querySelector('.track-title');
+      if (inner) inner.style.fontSize = '';
+    });
+    // Reset card-inner dimensions back to its 100%-of-card-outer default.
+    const ci = document.querySelector('.card-inner');
+    if (ci) {
+      ci.style.width = ci.style.height = '';
+    }
+    return;
+  }
+
+  // ON — apply absolute positions per node.
+  body.classList.add('layout-mode-on');
+
+  // v7.0.5: anchor math uses CARD-INNER dimensions because layout-nodes are
+  // positioned absolute against card-inner (their nearest positioned ancestor),
+  // and v6's widget+card-outer+card-inner insets eat ~32.5 visible px from
+  // each iframe edge. So a 1000×200 canvas yields card-inner ≈ 935×135.
+  // Anchor math must measure from card-inner edges, not canvas/iframe edges.
+  const V6_PAD_VIS = 32.5;
+  const cw = ((layout.canvas && layout.canvas.width)  || 1000) - V6_PAD_VIS * 2;
+  const ch = ((layout.canvas && layout.canvas.height) || 200)  - V6_PAD_VIS * 2;
+
+  // v7.0.2: card-inner FILLS its container via CSS inset:0 in layout-mode,
+  // so we no longer set inline width/height here. The container chain
+  // (scale-wrapper → widget → glow-wrap → card-outer → card-inner) is sized
+  // by CSS overrides above; canvas dims drive the iframe natural size in
+  // customize, and inline node coordinates use logical pixels (× LM_SCALE).
+  const ci = document.querySelector('.card-inner');
+  if (ci) ci.style.width = ci.style.height = '';
+
+  nodes.forEach(el => {
+    const id   = el.getAttribute('data-layout-node');
+    const node = layout.nodes && layout.nodes[id];
+    if (!node) return;
+
+    if (node.visible === false) {
+      el.classList.add('layout-hidden');
+      return;
+    }
+    el.classList.remove('layout-hidden');
+
+    const w = Math.max(0, node.w | 0);
+    const h = Math.max(0, node.h | 0);
+    const anchor = node.anchor || 'topleft';
+    let left, top, right, bottom;
+
+    switch (anchor) {
+      case 'topright':
+        right = (node.x | 0); top = (node.y | 0);
+        left  = (cw - right - w);
+        break;
+      case 'bottomleft':
+        left = (node.x | 0); bottom = (node.y | 0);
+        top  = (ch - bottom - h);
+        break;
+      case 'bottomright':
+        right = (node.x | 0); bottom = (node.y | 0);
+        left  = (cw - right - w);
+        top   = (ch - bottom - h);
+        break;
+      case 'center':
+        left = ((node.x | 0) - w / 2);
+        top  = ((node.y | 0) - h / 2);
+        break;
+      case 'topleft':
+      default:
+        left = (node.x | 0); top = (node.y | 0);
+    }
+
+    el.style.left   = (left * LM_SCALE) + 'px';
+    el.style.top    = (top  * LM_SCALE) + 'px';
+    el.style.width  = (w    * LM_SCALE) + 'px';
+    el.style.height = (h    * LM_SCALE) + 'px';
+    el.style.zIndex = (node.z | 0) || '';
+
+    // v7.0.2: auto-scale font-size for text-bearing layout-nodes so resizing
+    // the box actually shrinks the text instead of clipping it. The ratios
+    // were eyeballed against the v6 visual at default node heights. font-size
+    // also lives in logical pixels so we multiply by LM_SCALE for the same
+    // reason as left/top/width/height above. Reuses the `id` variable
+    // declared at the top of the forEach iteration.
+    switch (id) {
+      case 'trackTitle': {
+        // Layout-node target is .title-wrap; inner text is .track-title.
+        const inner = el.querySelector('.track-title');
+        if (inner) inner.style.fontSize = Math.max(8, Math.round(h * 0.85 * LM_SCALE)) + 'px';
+        break;
+      }
+      case 'artistName':
+        el.style.fontSize = Math.max(8, Math.round(h * 0.78 * LM_SCALE)) + 'px';
+        break;
+      case 'nowPlayingText':
+        el.style.fontSize = Math.max(8, Math.round(h * 0.78 * LM_SCALE)) + 'px';
+        break;
+      case 'platformBadge':
+        el.style.fontSize = Math.max(8, Math.round(h * 0.80 * LM_SCALE)) + 'px';
+        break;
+    }
+  });
+}
+
+// Apply a raw config object (partial — missing keys fall back to DEFAULTS).
+function applyConfig(raw) {
+  const cfg = deepMerge(DEFAULTS, raw || {});
+  // v7.1.4: clamp custom-layout canvas to the new 1000x200 cap. Old configs
+  // saved with a vertical 200x1000 / 600x600 / etc. canvas get auto-shrunk so
+  // the editor and live overlay stay within the supported envelope. Lower
+  // values are preserved (a Compact Pill 600x60 stays at 600x60).
+  if (cfg.layout && cfg.layout.canvas) {
+    const cw = cfg.layout.canvas.width  | 0;
+    const ch = cfg.layout.canvas.height | 0;
+    cfg.layout.canvas.width  = Math.max(60,  Math.min(1000, cw || 1000));
+    cfg.layout.canvas.height = Math.max(40,  Math.min(200,  ch || 200));
+  }
+  // v9.8.1: SSE is always fps=2000 (unthrottled, new-frames-only) — no reconnect
+  // needed on fps slider change. The slider now only controls the rAF render cap
+  // in drawSpectrum; SSE delivery is fixed at the FFT publish rate (~120/sec).
+  _cfg = cfg;
+
+  const R = document.documentElement.style;   // shorthand: sets --vars on <html>
+
+  // ── Font ────────────────────────────────────────────────────────────────
+  injectFont(cfg.font);
+  // Multi-script fallback chain: after the user's chosen font, cascade through
+  // Noto Sans families so track/artist strings in any language render correctly:
+  //   Noto Sans          → Latin, Cyrillic, Greek, Devanagari, Vietnamese
+  //   Noto Sans SC/TC    → Chinese (Simplified / Traditional)
+  //   Noto Sans JP/KR    → Japanese / Korean
+  //   Noto Sans Hebrew   → Hebrew (עברית) — NOT in base Noto Sans
+  //   Noto Sans Arabic   → Arabic (عربي)
+  //   Noto Sans Thai     → Thai
+  //   Noto Sans Symbols  → ♫ ★ ♥ ⚡ and other special symbols
+  //   Noto Sans Symbols 2→ supplemental symbols and enclosed alphanumerics
+  //   Noto Emoji         → text-mode emoji coverage
+  //   Segoe UI Emoji     → color emoji on Windows (system font, no download)
+  //   Apple Color Emoji  → color emoji on macOS/iOS (system font)
+  //   Noto Color Emoji   → color emoji on Linux/Android (if installed)
+  //   system-ui / sans-serif → final catch-all
+  R.setProperty('--font-family', `'${cfg.font}', 'Noto Sans', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Hebrew', 'Noto Sans Arabic', 'Noto Sans Thai', 'Noto Sans Symbols', 'Noto Sans Symbols 2', 'Noto Emoji', 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', system-ui, sans-serif`);
+
+  // ── Overlay opacity — must be on the widget element itself, not <html> ─────
+  const widgetEl = document.getElementById('widget');
+  widgetEl.style.setProperty('--widget-opacity', String(cfg.overlay?.opacity ?? 1.0));
+
+  // ── Card ────────────────────────────────────────────────────────────────
+  R.setProperty('--card-radius',       cfg.card.borderRadius    + 'px');
+  R.setProperty('--border-thickness',  cfg.card.borderThickness + 'px');
+  // v7.1.3: apply user-controlled backgroundOpacity to gradient stops so the
+  // backdrop-filter blur is actually visible when the user dials transparency
+  // down. Default 0.99 preserves the v6/v7.1.2 fully-opaque look.
+  const _cardA = cfg.card.backgroundOpacity ?? 0.99;
+  R.setProperty('--card-bg-top',       _withCardAlpha(cfg.card.backgroundTop,    _cardA));
+  R.setProperty('--card-bg-bottom',    _withCardAlpha(cfg.card.backgroundBottom, _cardA));
+  R.setProperty('--card-bg-angle',     cfg.card.backgroundAngle + 'deg');
+  R.setProperty('--card-blur',         (cfg.card.backgroundBlur || 0) + 'px');
+  // v8.3.5: conditionally DISABLE backdrop-filter when blur is 0. Even at
+  // blur(0px), the backdrop-filter property forces the browser to allocate
+  // a backdrop-snapshot layer and re-composite it on every paint of any
+  // descendant (= every spectrum-canvas frame). For users who don't use
+  // the blur effect, this is pure overhead. Setting backdrop-filter to
+  // 'none' kills the layer entirely. Major win during heavy spectrum
+  // activity where the canvas paints many pixels per frame.
+  const _cardInner = document.querySelector('.card-inner');
+  if (_cardInner) {
+    const _blurPx = (cfg.card.backgroundBlur | 0);
+    const _bf = (_blurPx > 0) ? ('blur(' + _blurPx + 'px)') : 'none';
+    _cardInner.style.backdropFilter = _bf;
+    _cardInner.style.webkitBackdropFilter = _bf;
+  }
+  // Dynamic colors: resolve AFTER all config CSS vars have been written above,
+  // so applyDynamicPalette() overrides them cleanly (correct win order).
+  // Run at end of applyConfig so any sub-toggle change takes effect immediately.
+  if (!cfg.dynamicColors?.enabled) {
+    // Feature off → restore everything to what applyConfig just wrote
+    clearDynamicPalette();
+    overlayLog('INFO', 'DynColors: disabled — preset colors in effect');
+  }
+
+  // ── Border ──────────────────────────────────────────────────────────────
+  R.setProperty('--border-spin-dur', cfg.border.spinDuration + 's');
+
+  // ── Album art ───────────────────────────────────────────────────────────
+  const artWrap = document.getElementById('art-wrap');
+  artWrap.style.display = cfg.art.enabled ? '' : 'none';
+  R.setProperty('--art-w',       cfg.art.width     + 'px');
+  R.setProperty('--art-fade-w',  cfg.art.fadeWidth + 'px');
+  // Compute which card edge color to use for the art fade based on gradient angle.
+  // sin(angle) > 0 means the gradient skews rightward → top-color lands on the right edge.
+  // v7.1.3: pass through _withCardAlpha so backgroundOpacity also applies here.
+  const _sinA = Math.sin(((cfg.card.backgroundAngle || 148) * Math.PI) / 180);
+  R.setProperty('--card-bg-left',  _withCardAlpha(_sinA >= 0 ? cfg.card.backgroundBottom : cfg.card.backgroundTop, _cardA));
+  R.setProperty('--card-bg-right', _withCardAlpha(_sinA >= 0 ? cfg.card.backgroundTop    : cfg.card.backgroundBottom, _cardA));
+  // Art position class swap. v8.0.0: three modes — 'left' (default, fade on
+  // right edge into info), 'right' (fade on left edge), 'center' (double fade
+  // on BOTH edges). 'center' is the most useful mode in custom-layout where
+  // the user positions art in the middle of the card; in legacy flexbox mode
+  // it still applies the dual-fade styling at the art-wrap's natural left
+  // position. CSS class is the single switch — both ::before (left fade) and
+  // ::after (right fade) are gated on .art-center.
+  const _artPos = cfg.art.position || 'left';
+  artWrap.classList.remove('art-right', 'art-center');
+  if (_artPos === 'right') {
+    artWrap.style.order = '3';
+    artWrap.classList.add('art-right');
+  } else if (_artPos === 'center') {
+    artWrap.style.order = '';
+    artWrap.classList.add('art-center');
+  } else {
+    artWrap.style.order = '';
+  }
+
+  // v6.2.3: removed the v6.0.7 content-side flip and v6.0.9 card-inside-
+  // source positioning / width / height / info-col-width / visualizerExpand
+  // blocks. Card now simply fills the OBS Browser Source via #widget's
+  // inset:40px, as it did pre-v6.0.5.
+
+  // ── Now Playing label ───────────────────────────────────────────────────
+  document.getElementById('np-text').textContent = cfg.nowPlaying.text;
+  R.setProperty('--np-font-size',      cfg.nowPlaying.fontSize      + 'px');
+  R.setProperty('--np-color',          cfg.nowPlaying.color);
+  R.setProperty('--np-letter-spacing', cfg.nowPlaying.letterSpacing + 'px');
+  // v8.1.3: glow on np / platform / timestamps. Helper builds the text-shadow.
+  const _glowCss = (en, c, s) => en
+    ? `0 0 ${s}px ${c}, 0 0 ${Math.round(s*1.8)}px ${c}`
+    : 'none';
+  R.setProperty('--np-text-shadow',
+    _glowCss(cfg.nowPlaying.glowEnabled, cfg.nowPlaying.glowColor || '#c060ff', cfg.nowPlaying.glowSize ?? 6));
+
+  // ── Animated bars ───────────────────────────────────────────────────────
+  const barsWrap = document.getElementById('bars-wrap');
+  if (!cfg.bars.enabled) {
+    barsWrap.style.display = 'none';
+  } else {
+    barsWrap.style.display = '';
+    R.setProperty('--bar-color', cfg.bars.color);
+    R.setProperty('--bar-dur',   cfg.bars.speed + 's');
+    rebuildBars(cfg);
+  }
+
+  // ── Platform badge ──────────────────────────────────────────────────────
+  // The JS show/hide is handled in showTrack(); just mark it globally disabled.
+  document.getElementById('platform-label')._badgeEnabled = cfg.platformBadge.enabled;
+  // Platform badge visuals — all CSS-var driven so Dynamic Colors can override.
+  R.setProperty('--platform-color',          cfg.platformBadge.color         ?? 'rgba(200,160,255,0.38)');
+  R.setProperty('--platform-dot-color',      cfg.platformBadge.dotColor      ?? 'rgba(200,100,255,0.28)');
+  R.setProperty('--platform-font-size',     (cfg.platformBadge.fontSize      ?? 30) + 'px');
+  R.setProperty('--platform-font-weight',    String(cfg.platformBadge.fontWeight ?? 600));
+  R.setProperty('--platform-letter-spacing',(cfg.platformBadge.letterSpacing ?? 2) + 'px');
+  R.setProperty('--platform-text-shadow',
+    _glowCss(cfg.platformBadge.glowEnabled, cfg.platformBadge.glowColor || '#c8a0ff', cfg.platformBadge.glowSize ?? 6));
+
+  // ── Title ───────────────────────────────────────────────────────────────
+  R.setProperty('--title-font-size',     cfg.title.fontSize      + 'px');
+  R.setProperty('--title-font-weight',   String(cfg.title.fontWeight));
+  R.setProperty('--title-color',         cfg.title.color);
+  R.setProperty('--title-letter-spacing',(cfg.title.letterSpacing ?? 0) + 'px');
+  // Title text glow
+  if (cfg.title.glowEnabled) {
+    const gc   = cfg.title.glowColor || '#ff80ff';
+    const gsz  = (cfg.title.glowSize  ?? 6) + 'px';
+    R.setProperty('--title-text-shadow',
+      `0 0 ${gsz} ${gc}, 0 0 ${Math.round((cfg.title.glowSize ?? 6) * 1.8)}px ${gc}`);
+  } else {
+    R.setProperty('--title-text-shadow', 'none');
+  }
+
+  // ── Artist ──────────────────────────────────────────────────────────────
+  R.setProperty('--artist-font-size',     cfg.artist.fontSize      + 'px');
+  R.setProperty('--artist-font-weight',   String(cfg.artist.fontWeight));
+  R.setProperty('--artist-color',         cfg.artist.color);
+  R.setProperty('--artist-letter-spacing',(cfg.artist.letterSpacing ?? 0) + 'px');
+  // v8.0.0: artist text glow — same shape as title glow but separate vars +
+  // separate user-controlled colour. Default size is smaller (14 vs 20) since
+  // the artist line is typically less prominent than the track title.
+  if (cfg.artist.glowEnabled) {
+    const agc  = cfg.artist.glowColor || '#80c0ff';
+    const agsz = (cfg.artist.glowSize  ?? 6) + 'px';
+    R.setProperty('--artist-text-shadow',
+      `0 0 ${agsz} ${agc}, 0 0 ${Math.round((cfg.artist.glowSize ?? 6) * 1.8)}px ${agc}`);
+  } else {
+    R.setProperty('--artist-text-shadow', 'none');
+  }
+  // Re-trigger marquee with the new speed/pause if artist text already loaded.
+  // Without this, changing artist marquee sliders only takes effect on the
+  // NEXT track change since applyMarquee is otherwise driven by track changes.
+  const _aEl = document.getElementById('artist');
+  if (_aEl && _aEl.textContent && _aEl.textContent !== '—') {
+    applyMarquee(_aEl, _aEl.textContent, 'artist');
+  }
+  // Same for the track title — picks up new title marquee speed/pause live.
+  const _tEl = document.getElementById('track-title');
+  if (_tEl && _tEl.textContent && _tEl.textContent !== '—') {
+    applyMarquee(_tEl, _tEl.textContent, 'title');
+  }
+
+  // ── Spectrum ────────────────────────────────────────────────────────────
+  // v9.4.0: hide BOTH canvases when spectrum is disabled. spectrum-canvas is
+  // the layout placeholder (display:none collapses its slot, which we want);
+  // spectrum-canvas-gl is positioned absolute over it (display:none hides
+  // the actual rendered bars). Without hiding the GL canvas, the bars would
+  // keep rendering at the last sized position even when the user toggled the
+  // spectrum off.
+  const _specEnabled = !!cfg.spectrum.enabled;
+  document.getElementById('spectrum-canvas').style.display    = _specEnabled ? '' : 'none';
+  const _cgl = document.getElementById('spectrum-canvas-gl');
+  if (_cgl) _cgl.style.display = _specEnabled ? 'block' : 'none';
+  if (analyser) analyser.smoothingTimeConstant = cfg.spectrum.smoothing;
+  R.setProperty('--spectrum-opacity', String(cfg.spectrum.opacity ?? 1.0));
+
+  // ── Progress bar ────────────────────────────────────────────────────────
+  // Only toggle hidden-by-config, not the normal hide-when-no-duration logic
+  const timebar = document.getElementById('time-bar');
+  timebar._progressEnabled = cfg.progressBar.enabled;
+  R.setProperty('--progress-h',        cfg.progressBar.height     + 'px');
+  R.setProperty('--progress-radius',   (cfg.progressBar.borderRadius ?? 6) + 'px');
+  R.setProperty('--progress-track',    cfg.progressBar.trackColor);
+  const fc = cfg.progressBar.fillColors;
+  R.setProperty('--progress-fill-a',   fc[0] || '#8020c0');
+  R.setProperty('--progress-fill-b',   fc[1] || fc[0] || '#ff60c8');
+  R.setProperty('--progress-fill-c',   fc[2] || fc[1] || fc[0] || '#c040ff');
+
+  // ── Timestamps ──────────────────────────────────────────────────────────
+  R.setProperty('--ts-font-size', cfg.timestamps.fontSize + 'px');
+  R.setProperty('--ts-color',     cfg.timestamps.color);
+  R.setProperty('--ts-text-shadow',
+    _glowCss(cfg.timestamps.glowEnabled, cfg.timestamps.glowColor || '#e090ff', cfg.timestamps.glowSize ?? 6));
+
+  // ── Show/hide animation ──────────────────────────────────────────────────
+  // All three vars are set as inline style on #widget itself — CSS vars used inside
+  // `transition` and `transform` must be on the element, not <html>, to take effect.
+  const animDir  = cfg.showAnimation.direction || 'up';
+  const animDist = cfg.showAnimation.slideDistance + 'px';
+  const dur      = cfg.showAnimation.duration + 's';
+
+  // "Slide Up"    = card enters FROM above (top), travels downward into position → start offset is negative Y
+  // "Slide Down"  = card enters FROM below (bottom), travels upward into position → start offset is positive Y
+  // "Slide Left"  = card enters FROM the left, travels rightward into position → start offset is negative X
+  // "Slide Right" = card enters FROM the right, travels leftward into position → start offset is positive X
+  const dirTransform = {
+    up:    `translateY(-${animDist})`,
+    down:  `translateY(${animDist})`,
+    left:  `translateX(-${animDist})`,
+    right: `translateX(${animDist})`,
+  };
+  const easingMap = {
+    // Each curve is ~20% more aggressive — overshoot and undershoot amplified
+    // so the motion "reads" clearly to viewers watching an OBS scene. Spring
+    // arrives past the settle point then pulls in; bounce digs deeper under
+    // the start and rebounds higher at the end; ease punchier in/out.
+    spring: 'cubic-bezier(0.34,1.85,0.64,1)',    // overshoot spring (1.56 → 1.85)
+    ease:   'cubic-bezier(0.30,0.55,0.40,1.00)', // snappier smooth ease-out
+    bounce: 'cubic-bezier(0.68,-0.80,0.27,1.85)',// deeper back + bigger overshoot
+    linear: 'linear',
+  };
+  const easing    = easingMap[cfg.showAnimation.easing || 'spring'] || easingMap.spring;
+  const slideFrom = dirTransform[animDir] || dirTransform.up;
+
+  // Set directly on the widget element so they're guaranteed to take effect
+  widgetEl.style.setProperty('--slide-transform', slideFrom);
+  widgetEl.style.transition = `opacity ${dur} ease, transform ${dur} ${easing}`;
+
+  // ── Dynamic CSS: glow keyframes + conic border gradient ──────────────────
+  document.getElementById('_dyn').textContent = buildDynCss(cfg);
+
+  // ── v7.0.0 layout mode: apply absolute-position rules per node ───────────
+  applyLayoutMode(cfg);
+
+  // ── Dynamic palette: re-apply AFTER config vars are set ──────────────────
+  // This ensures sub-toggle changes take effect immediately without waiting for
+  // a new art load. applyDynamicPalette overrides specific config vars above.
+  if (cfg.dynamicColors?.enabled && _lastPalette) {
+    applyDynamicPalette(_lastPalette);
+    overlayLog('INFO', 'DynColors: re-applied after config change');
+  } else if (cfg.dynamicColors?.enabled && !_lastPalette) {
+    // Palette not yet cached (dynamic colors just enabled, or first load).
+    // Pull current art via /art proxy and extract immediately.
+    const _cfgPalTmp = new Image();
+    _cfgPalTmp.crossOrigin = 'anonymous';
+    _cfgPalTmp.onload = () => {
+      const palette = extractPalette(_cfgPalTmp);
+      if (palette) { _lastPalette = palette; applyDynamicPalette(palette); overlayLog('INFO', 'DynColors: palette extracted on config enable'); }
+    };
+    _cfgPalTmp.src = `/art?t=${Date.now()}`;
+  }
+}
+
+// Preview mode: when loaded with ?preview=1 (inside the /customize iframe),
+// the server pushes changes via SSE (`event: preview-config`) so polling is
+// only a fallback for cases where SSE dropped. Normal mode: SSE push covers
+// saves too (`event: overlay-config`). Either way the poll fallback stays
+// infrequent so CPU stays low.
+const _IS_PREVIEW  = new URLSearchParams(location.search).get('preview') === '1';
+const _CFG_URL     = _IS_PREVIEW ? '/preview-config' : '/overlay-config';
+// 5 s reconciliation poll (both modes) — SSE is the primary path; poll just
+// catches missed packets. Preview used to poll every 500 ms; that was burning
+// CPU for no benefit now that SSE push is in place.
+const _CFG_INTERVAL = 5000;
+
+let _cfgTimer = null;
+async function loadConfig() {
+  try {
+    const d = await fetch(_CFG_URL).then(r => r.json());
+    const s = JSON.stringify(d);
+    if (s !== _lastCfgStr) {
+      _lastCfgStr = s;
+      applyConfig(d);
+    }
+  } catch { /* server down — keep current config */ }
+}
+
+// Load immediately, then poll at the interval appropriate for this mode.
+loadConfig();
+_cfgTimer = setInterval(loadConfig, _CFG_INTERVAL);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  TRACK DISPLAY
+// ══════════════════════════════════════════════════════════════════════════
+
+let lastTrack = null, lastArt = '', timer = null;
+// Frozen elapsed captured the INSTANT isPaused flips true. Survives subsequent
+// ticks so the progress bar + timestamp stay rock-steady even if the server
+// briefly sends isPaused=true without pausedAt (race between tray webhook and
+// server's transition-handling pin). Reset to null on resume.
+let frozenElapsed = null;
+// Pause debounce: wait 1s before freezing the timer so the 1-second sync tick
+// always gets a chance to correct the position before we lock it in place.
+let _pauseDebounce = null;
+
+const fmt = ms => {
+  if (!ms || ms < 0) return '0:00';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+// tick() is called both on interval AND on every rAF (from drawSpectrum).
+// Cache last-painted values so we skip DOM writes when nothing changed —
+// the text "1:23" rewritten 60×/s identical would needlessly invalidate
+// paint. Width updates every frame so the progress bar slides smoothly.
+let _lastTimeText = '';
+let _lastFillPct  = -1;
+const tick = () => {
+  if (!lastTrack?.duration) return;
+  let el;
+  if (lastTrack.isPaused) {
+    // Authoritative freeze: isPaused=true is ALWAYS enough, regardless of
+    // whether pausedAt was populated. Prefer the server-provided freeze point
+    // (pausedAt - startedAt); fall back to whatever elapsed we last computed
+    // so the number never climbs.
+    if (lastTrack.pausedAt) {
+      frozenElapsed = Math.max(0, lastTrack.pausedAt - lastTrack.startedAt);
+    } else if (frozenElapsed === null) {
+      frozenElapsed = Math.max(0, Date.now() - lastTrack.startedAt);
+    }
+    el = frozenElapsed;
+  } else {
+    frozenElapsed = null;
+    el = Math.max(0, Date.now() - lastTrack.startedAt);
+  }
+  // Defensive clamp: never display past the track's own duration. If the client
+  // falls out of sync with the server (SSE dies silently, poll hangs, whatever)
+  // we still refuse to paint "4:07 / 2:42" — that's never a real state.
+  if (lastTrack.duration > 0) el = Math.min(el, lastTrack.duration);
+  // Round progress-bar width to 0.1% so consecutive frames skip most writes.
+  // 0.1% of a 900 px bar is <1 px — imperceptible yet saves paint work.
+  const pct = Math.min(el / lastTrack.duration * 100, 100);
+  const pctRounded = Math.round(pct * 10) / 10;
+  if (pctRounded !== _lastFillPct) {
+    _lastFillPct = pctRounded;
+    document.getElementById('progress-fill').style.width = pctRounded + '%';
+  }
+  const txt = fmt(el);
+  if (txt !== _lastTimeText) {
+    _lastTimeText = txt;
+    document.getElementById('time-current').textContent = txt;
+  }
+};
+// _timerActive gates whether tick() runs from the rAF loop. The tick is now
+// driven by drawSpectrum's requestAnimationFrame instead of setInterval —
+// that loop already runs at 60 fps whether the timer is on or off, so adding
+// a tick() call costs almost nothing AND gives us butter-smooth progress-bar
+// motion (was 4 fps before → looked choppy). The interval fallback is kept
+// for the rare case where the spectrum is disabled in config.
+let _timerActive = false;
+const startTimer = () => {
+  stopTimer();
+  _timerActive = true;
+  tick();
+  // Interval is a tiny watchdog — if rAF isn't painting (e.g. spectrum off
+  // and the tab isn't focused), this still nudges the clock 4×/s.
+  timer = setInterval(tick, 250);
+};
+const stopTimer = () => {
+  _timerActive = false;
+  if (timer) { clearInterval(timer); timer = null; }
+};
+
+// Marquee: scrolls LEFT only, then snaps instantly back — speed from config.
+// v6.2.3: removed the .marquee-active class toggle (v6.1.9 experiment —
+// pre-revert we didn't have a fade mask at all). Plain scroll animation
+// with no per-scroll-state CSS changes.
+// v8.0.0: applyMarquee now accepts an optional `which` arg ('title' | 'artist')
+// so the artist label can use its own marqueeSpeed / marqueePause settings
+// without forcing both elements to share the title's timing. Each element gets
+// its own @keyframes block (id='_mq-title' / '_mq-artist') so they don't
+// stomp each other when both overflow at the same time.
+function applyMarquee(el, text, which) {
+  which = which || 'title';
+  el.style.animation = 'none';
+  el.textContent = text;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const ov = el.scrollWidth - el.parentElement.clientWidth;
+    if (ov > 4) {
+      const cfg    = _cfg[which] || _cfg.title;   // fall back to title if missing
+      const speed  = cfg.marqueeSpeed ?? 68;
+      const pause  = cfg.marqueePause ?? 2;
+      const travel = ov / Math.max(1, speed);
+      const total  = pause + travel + pause + 0.01;
+      const p1 = (pause                  / total * 100).toFixed(3);
+      const p2 = ((pause + travel)        / total * 100).toFixed(3);
+      const p3 = ((pause + travel + pause)/ total * 100).toFixed(3);
+      const styleId = '_mq-' + which;
+      const animName = '_mq_' + which;
+      let s = document.getElementById(styleId);
+      if (!s) { s = document.createElement('style'); s.id = styleId; document.head.appendChild(s); }
+      s.textContent =
+        `@keyframes ${animName}{` +
+        `0%,${p1}%{transform:translateX(0)}` +
+        `${p2}%,${p3}%{transform:translateX(-${ov}px)}` +
+        `100%{transform:translateX(0)}}`;
+      el.style.animation = `${animName} ${total.toFixed(2)}s linear infinite`;
+    }
+  }));
+}
+
+function setArt(url) {
+  const img = document.getElementById('artwork');
+  const fb  = document.getElementById('artwork-fallback');
+  if (!url) {
+    img.style.opacity = '0';
+    // Save the hide-timer ref so a subsequent setArt(url) can cancel it —
+    // otherwise that timer would fire AFTER the new image loaded and hide
+    // the newly-visible <img> again (repro: restart Master's FM mid-song,
+    // server sends empty trackArt first, then resolves art ~400ms later —
+    // without cancellation the album art never appeared in OBS).
+    clearTimeout(img._hideTimer);
+    img._hideTimer = setTimeout(() => {
+      img._hideTimer = null;
+      img.style.display = 'none'; fb.style.display = 'flex';
+    }, 350);
+    // Keep _lastPalette from the previous track so spectrum doesn't flash rainbow
+    // during the 1-2s art-resolution gap on track change. Palette updates when new
+    // art loads. Only truly clear if no art arrives after 4s (genuinely art-less track).
+    clearTimeout(img._paletteClearTimer);
+    img._paletteClearTimer = setTimeout(() => {
+      _lastPalette = null;
+      if (_cfg?.dynamicColors?.enabled) clearDynamicPalette();
+    }, 4000);
+    return;
+  }
+  clearTimeout(img._paletteClearTimer); // real art arriving — cancel any pending clear
+  clearTimeout(img._hideTimer);         // cancel pending display:none from prior setArt('')
+  img._hideTimer = null;
+  // Route the main image through /art?t=<now> instead of the raw CDN URL. The
+  // proxy emits Cache-Control: no-store so OBS Browser Source (CEF) can't
+  // latch onto a stale cached response — "refresh cache" was previously the
+  // only way to recover after CEF served a blank or partial image. Cache-
+  // buster also forces a fresh fetch on every track change. Server-side the
+  // proxy serves currentTrack.trackArt, which SSE has already synced to `url`.
+  const proxied = `/art?t=${Date.now()}`;
+  // Preload then crossfade in
+  const tmp = new Image();
+  tmp.onload = () => {
+    img.style.opacity = '0';
+    img.onload  = null;
+    img.onerror = null;
+    img.src = proxied;
+    img.style.display = 'block';
+    fb.style.display  = 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => { img.style.opacity = '1'; }));
+    // Extract palette via /art proxy (localhost — no CORS restrictions)
+    if (_cfg?.dynamicColors?.enabled) {
+      const palTmp = new Image();
+      palTmp.crossOrigin = 'anonymous';
+      palTmp.onload = () => {
+        overlayLog('INFO', `DynColors: sampling via /art proxy`);
+        const palette = extractPalette(palTmp);
+        _lastPalette = palette;
+        if (palette) applyDynamicPalette(palette);
+        else { overlayLog('WARN', 'DynColors: no palette — reverting to preset'); clearDynamicPalette(); }
+      };
+      palTmp.src = `/art?t=${Date.now()}`;
+    }
+  };
+  tmp.onerror = () => {
+    overlayLog('WARN', `setArt: /art proxy preload failed — falling back to raw URL`);
+    // Proxy failed (server not reachable?) — fall back to raw URL so we still
+    // display something.
+    img.src = url;
+    img.style.display = 'block';
+    fb.style.display  = 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => { img.style.opacity = '1'; }));
+  };
+  tmp.src = proxied;
+}
+
+function setDuration(dur) {
+  const bar = document.getElementById('time-bar');
+  const progressEnabled = bar._progressEnabled !== false;
+  if (dur > 0 && progressEnabled) {
+    document.getElementById('time-total').textContent = fmt(dur);
+    bar.classList.remove('hidden');
+    startTimer();
+  } else {
+    bar.classList.add('hidden');
+    stopTimer();
+  }
+}
+
+// Get platform label for track source badge
+function getPlatformLabel(src) {
+  if (!src || src === 'Last.fm') return '';
+  if (src === 'Webhook') return _cfg.platformBadge?.soundcloudLabel || 'SoundCloud';
+  return src;  // 'Spotify', 'osu!', 'VLC', 'Chrome', etc. — show as-is
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Phase M #2A: prefer the cascade-resolved HTTPS URL when present, fall back
+// to the raw primary art (typically the SMTC data: URI).  Discord and the
+// tray menu already prefer trackArtHttps; this brings the OBS overlay in
+// line so a Chrome favicon published by SMTC doesn't end up on screen when
+// the cascade has the correct YouTube/SoundCloud/etc. thumbnail available.
+const bestArt = d => (d && (d.trackArtHttps || d.trackArt)) || '';
+
+let _transitioning = false;
+// Rapid-scroll queue. When a new track arrives mid-transition (e.g. you
+// scroll through osu! song-select), remember the latest one and re-transition
+// to it as soon as the current slide-in completes. Only the *most recent*
+// track is retained; intermediate ones are intentionally dropped.
+let _pendingTransition = null;
+
+// Apply track content directly (no animation — used while widget is hidden).
+// Prefer the freshest server data from _latestData: art resolution runs
+// asynchronously on the server (~400ms for SoundCloud), so by the time this
+// runs after the slide-out animation, trackArt may have resolved even if the
+// `d` captured at transition start was empty.
+function applyTrackContent(d) {
+  const latest = (_latestData && _latestData.track === d.track && _latestData.artist === d.artist)
+    ? _latestData : d;
+
+  applyMarquee(document.getElementById('track-title'), latest.track  || 'Unknown Track', 'title');
+  // v8.0.0: artist now gets its own marquee using cfg.artist.marqueeSpeed +
+  // cfg.artist.marqueePause. Falls back to a static label if it fits.
+  applyMarquee(document.getElementById('artist'), latest.artist || 'Unknown Artist', 'artist');
+
+  const pl   = document.getElementById('platform-label');
+  const name = (pl._badgeEnabled !== false) ? getPlatformLabel(latest.source) : '';
+  pl.textContent   = name;
+  pl.style.display = name ? '' : 'none';
+
+  if (_cfg.art.enabled) setArt(bestArt(latest));
+  setDuration(latest.duration || 0);
+
+  // Keep poll() in sync so it doesn't redundantly re-apply the same art
+  lastArt = bestArt(latest);
+}
+
+// Slide out → swap content → slide in (seamless song change).
+// When crossfadeOnSkip is enabled the whole card stays on screen — only the
+// art and text fade out then back in, giving a much smoother feel on skip.
+async function transitionToTrack(d) {
+  if (_transitioning) {
+    // Already animating — stash the newest requested track so we can land on
+    // it the moment the current slide-in finishes (see queue drain below).
+    _pendingTransition = d;
+    return;
+  }
+  _transitioning = true;
+
+  const widget    = document.getElementById('widget');
+  const isVisible = widget.classList.contains('visible');
+  const animDur   = (_cfg.showAnimation?.duration ?? 0.5) * 1000;
+  // Crossfade only makes sense when the card is already visible — first appear
+  // always uses the normal slide-in so there's something to animate into.
+  const crossfade = !!_cfg.showAnimation?.crossfadeOnSkip && isVisible;
+
+  // Clear stale progress immediately — prevents old end-time flashing on new track
+  setDuration(0);
+
+  // Elements that change per-song and should crossfade.
+  // time-bar is included so old timestamps/progress don't show during the swap.
+  const _fadeEls = () => ['track-title','artist','platform-label','time-bar']
+    .map(id => document.getElementById(id)).filter(Boolean);
+  const FADE_MS  = 260; // fast enough to feel snappy, slow enough to read
+
+  if (crossfade) {
+    // Fade only the track title, artist, platform badge, and album art out.
+    // Everything else (card background, border, spectrum, timestamps) stays live.
+    _fadeEls().forEach(el => {
+      el.style.transition = `opacity ${FADE_MS}ms ease`;
+      el.style.opacity    = '0';
+    });
+    const artImg = document.getElementById('artwork');
+    if (artImg) { artImg.style.transition = `opacity ${FADE_MS}ms ease`; artImg.style.opacity = '0'; }
+    stopTimer();
+    await sleep(FADE_MS + 20);
+  } else if (isVisible) {
+    widget.classList.remove('visible');           // trigger slide-out
+    stopTimer();
+    await sleep(animDur + 80);                    // wait for exit animation
+  }
+
+  // If more recent tracks arrived during the fade/slide, jump straight to the
+  // latest one — no point rendering a track the user already scrolled past.
+  if (_pendingTransition) {
+    d = _pendingTransition;
+    _pendingTransition = null;
+  }
+
+  // Refresh right before applying so we pick up art that resolved during the
+  // animation (server SoundCloud search ~400ms, slide-out ~580ms default).
+  try {
+    const fresh = await fetch('/current').then(r => r.json());
+    if (fresh && fresh.track === d.track && fresh.artist === d.artist) {
+      _latestData = fresh;
+    }
+  } catch (e) { overlayLog('WARN', `transition /current refresh failed: ${e.message}`); }
+
+  applyTrackContent(d);                           // update content while hidden/faded
+  lastTrack = { ...d };                           // sync so poll() won't treat it as new
+  lastArt   = bestArt(d);
+  await sleep(20);                                // tiny settle delay
+
+  if (crossfade) {
+    // Fade the text elements back in. Album art is handled by setArt() inside
+    // applyTrackContent — it preloads the new image then fades the <img> in,
+    // so we just clear the inline opacity/transition we set during fade-out.
+    _fadeEls().forEach(el => { el.style.opacity = ''; });
+    setTimeout(() => {
+      _fadeEls().forEach(el => { el.style.transition = ''; });
+      const artImg = document.getElementById('artwork');
+      if (artImg) { artImg.style.transition = ''; }
+    }, FADE_MS + 80);
+  } else {
+    widget.classList.add('visible');              // slide in
+  }
+
+  _transitioning = false;
+
+  // Drain: if another track was queued DURING the slide-in, transition to it now.
+  if (_pendingTransition) {
+    const next = _pendingTransition;
+    _pendingTransition = null;
+    transitionToTrack(next);
+  }
+}
+
+function showTrack(d) {
+  transitionToTrack(d);
+}
+
+const hideWidget = () => {
+  document.getElementById('widget').classList.remove('visible');
+  stopTimer();
+};
+
+// postMessage from customize page — replay slide-in animation for preview
+window.addEventListener('message', async e => {
+  if (e.data !== 'anim-demo') return;
+  // Force-fetch latest config so easing/direction/duration are current
+  try {
+    const d = await fetch('/preview-config').then(r => r.json());
+    applyConfig(d);
+  } catch (err) { overlayLog('WARN', `anim-demo /preview-config failed: ${err.message}`); }
+  const widget  = document.getElementById('widget');
+  const animDur = (_cfg.showAnimation?.duration ?? 0.5) * 1000;
+  widget.classList.remove('visible');
+  setTimeout(() => widget.classList.add('visible'), animDur + 80);
+});
+
+let _latestData = null;
+
+async function poll() {
+  try {
+    const d = await fetch('/current').then(r => r.json());
+    if (_transitioning) {
+      // If a newer track showed up while animating (e.g. user scrolled
+      // osu! song-select), queue it — transitionToTrack drains on completion.
+      // Any non-new heartbeat is ignored so we don't fight the fade.
+      if (d && (!lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist)) {
+        _pendingTransition = d;
+      }
+      return;
+    }
+    if (!d) { _latestData = null; lastTrack = null; lastArt = ''; hideWidget(); return; }
+    _latestData = d;  // kept fresh so applyTrackContent (runs after slide-out) sees resolved art
+
+    const newArt     = bestArt(d);
+    const isNew      = !lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist;
+    const forceArt   = _sseNeedsArtRefresh && newArt;
+    const artChanged = (!isNew && newArt && newArt !== lastArt) || forceArt;
+    const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
+
+    if (isNew) {
+      lastTrack = { ...d }; lastArt = newArt;
+      showTrack(d);
+      _sseNeedsArtRefresh = false;
+      return;  // let transitionToTrack fully own this cycle
+    }
+    if (artChanged) {
+      lastArt = newArt; setArt(newArt);   // smooth art crossfade
+      if (forceArt) overlayLog('INFO', `Art force-refreshed after SSE reconnect (poll)`);
+      _sseNeedsArtRefresh = false;
+    }
+    // Always sync startedAt from server — picks up both seek corrections and
+    // the server's continuous drift auto-correction immediately.
+    if (d.startedAt) lastTrack.startedAt = d.startedAt;
+    if (durChanged) {
+      lastTrack.duration = d.duration;
+      setDuration(d.duration);
+    }
+    // Sync pause state — freezes progress bar on pause, resumes on unpause
+    lastTrack.isPaused = !!d.isPaused;
+    lastTrack.pausedAt = d.pausedAt || 0;
+
+    // Pause handling: 1-second debounce before freezing the timer. This gives
+    // the sync tick one full cycle to correct the position before locking it in.
+    const widget     = document.getElementById('widget');
+    const wasVisible = widget.classList.contains('visible');
+    if (d.isPaused) {
+      if (!_pauseDebounce) {
+        _pauseDebounce = setTimeout(() => {
+          _pauseDebounce = null;
+          if (!lastTrack?.isPaused) return; // resumed before debounce fired
+          stopTimer();
+          tick();
+          // If "keep visible on pause" is off, hide after 10 s of being paused.
+          if (!_cfg.pauseBehavior?.keepVisibleOnPause) {
+            if (lastTrack.pausedAt) {
+              const pausedFor = Date.now() - lastTrack.pausedAt;
+              if (pausedFor > 10000 && widget.classList.contains('visible')) {
+                widget.classList.remove('visible');
+              }
+            }
+          }
+        }, 1000);
+      }
+    } else {
+      // Resumed — cancel any pending pause debounce immediately
+      if (_pauseDebounce) { clearTimeout(_pauseDebounce); _pauseDebounce = null; }
+      if (!wasVisible && !isNew && lastTrack) {
+        widget.classList.add('visible');
+      }
+      if (lastTrack && lastTrack.duration > 0) startTimer();
+    }
+  } catch { hideWidget(); }
+}
+
+poll();
+// Stage 7.12 Batch B Phase C #5: poll cadence raised back from 100 ms → 2000 ms.
+//
+// The v6.6.2 change to 100 ms was a workaround for the pre-Phase-B Discord/SSE
+// pipeline being too slow on its own.  With Phase A (state-aware tray dedup,
+// 100 ms heartbeat, 16 ms SMTC drain), Phase B (native Discord IPC pipe), and
+// Phase C (server broadcast dedup), the SSE push from the server arrives at
+// the overlay within 5-30 ms of the user input — there's nothing for a 100 ms
+// poll to reconcile.
+//
+// poll() now serves only as a slow watchdog for the case where the EventSource
+// has silently died (rare; CEF reconnects automatically within ~2 s of a server
+// restart) and for the initial state on a brand-new connection (handled by the
+// poll() call immediately above this line).  2000 ms is plenty.
+setInterval(poll, 2000);
+
+// ── Server-Sent Events: near-zero-latency track updates ─────────────────
+// Server pushes a message every time currentTrack mutates (webhook, art
+// resolve, clear). applyServerUpdate mirrors poll()'s logic on the pushed
+// payload so both code paths stay consistent.
+function applyServerUpdate(d) {
+  if (_transitioning) {
+    // Queue newer track for post-transition pickup. Heartbeats for the same
+    // track are dropped — the next real poll will reconcile pause/pos.
+    if (d && (!lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist)) {
+      _pendingTransition = d;
+    }
+    return;
+  }
+  if (!d) { _latestData = null; lastTrack = null; lastArt = ''; hideWidget(); return; }
+  _latestData = d;
+  const newArt     = bestArt(d);
+  const isNew      = !lastTrack || d.track !== lastTrack.track || d.artist !== lastTrack.artist;
+  // Force art refresh on SSE reconnect even if the URL didn't change — OBS
+  // Browser Source (CEF) otherwise keeps serving a stale image after Master's
+  // FM restarts. The flag is set in connectSSE().onopen and cleared below.
+  const forceArt   = _sseNeedsArtRefresh && newArt;
+  const artChanged = (!isNew && newArt && newArt !== lastArt) || forceArt;
+  const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
+  if (isNew) {
+    lastTrack = { ...d }; lastArt = newArt;
+    showTrack(d);
+    _sseNeedsArtRefresh = false;   // isNew path re-renders via transitionToTrack
+    return;  // let transitionToTrack fully own this cycle
+  }
+  if (artChanged) {
+    lastArt = newArt; setArt(newArt);
+    if (forceArt) overlayLog('INFO', `Art force-refreshed after SSE reconnect`);
+    _sseNeedsArtRefresh = false;
+  }
+  if (d.startedAt) lastTrack.startedAt = d.startedAt;
+  if (durChanged) { lastTrack.duration = d.duration; setDuration(d.duration); }
+  lastTrack.isPaused = !!d.isPaused;
+  lastTrack.pausedAt = d.pausedAt || 0;
+  const widget     = document.getElementById('widget');
+  const wasVisible = widget.classList.contains('visible');
+  if (d.isPaused) {
+    if (!_pauseDebounce) {
+      _pauseDebounce = setTimeout(() => {
+        _pauseDebounce = null;
+        if (!lastTrack?.isPaused) return;
+        stopTimer();
+        tick();
+        if (!_cfg.pauseBehavior?.keepVisibleOnPause) {
+          if (lastTrack.pausedAt) {
+            const pausedFor = Date.now() - lastTrack.pausedAt;
+            if (pausedFor > 10000 && widget.classList.contains('visible')) {
+              widget.classList.remove('visible');
+            }
+          }
+        }
+      }, 1000);
+    }
+  } else {
+    if (_pauseDebounce) { clearTimeout(_pauseDebounce); _pauseDebounce = null; }
+    if (!wasVisible && !isNew && lastTrack) {
+      widget.classList.add('visible');
+      if (lastTrack.duration > 0) startTimer();
+    }
+  }
+}
+
+let _sse = null;
+// Flag set whenever we (re)connect to SSE — tells applyServerUpdate that the
+// next payload should force-refresh the album art even if the URL is the same
+// as before. Without this, when Master's FM restarts mid-song OBS Browser
+// Source keeps showing its stale cached image (CEF caches aggressively and
+// the server sends the same trackArt URL it had before the restart, so the
+// overlay's `artChanged` check returns false and setArt is never called).
+let _sseNeedsArtRefresh = true;
+function connectSSE() {
+  try { if (_sse) _sse.close(); } catch {}
+  _sse = new EventSource('/events');
+  _sse.onopen = () => {
+    // Mark for force-refresh on next payload (covers initial connect and
+    // reconnects after server restart / network blip).
+    _sseNeedsArtRefresh = true;
+    overlayLog('INFO', 'SSE connected — art will force-refresh on next update');
+  };
+  _sse.onmessage = e => {
+    try { applyServerUpdate(e.data ? JSON.parse(e.data) : null); }
+    catch (err) { overlayLog('ERROR', `SSE onmessage parse/apply failed: ${err.message} (${e.data ? e.data.slice(0,120) : 'empty'})`); }
+  };
+  // v8.0.7: live customize-panel changes arrive as `event: preview-config`.
+  // ONLY the customize-page iframe (loaded with ?preview=1) should respond
+  // to these — the OBS Browser Source must keep showing whatever was last
+  // saved with Apply to OBS. Previously the OBS overlay also subscribed,
+  // which caused the "every slider tweak instantly hits stream, then 5s
+  // later flips back to the saved config when the polling re-fetches
+  // /overlay-config" bug users were seeing. Now the OBS overlay only
+  // updates on `event: overlay-config` (fired by /save-overlay-config),
+  // which is exactly what Apply to OBS triggers.
+  if (_IS_PREVIEW) {
+    _sse.addEventListener('preview-config', e => {
+      try {
+        const cfg = JSON.parse(e.data);
+        const s   = JSON.stringify(cfg);
+        if (s !== _lastCfgStr) {
+          _lastCfgStr = s;
+          applyConfig(cfg);
+        }
+      } catch (err) { overlayLog('ERROR', `SSE preview-config parse/apply failed: ${err.message}`); }
+    });
+  }
+  _sse.addEventListener('overlay-config', e => {
+    try {
+      const cfg = JSON.parse(e.data);
+      const s   = JSON.stringify(cfg);
+      if (s !== _lastCfgStr) {
+        _lastCfgStr = s;
+        applyConfig(cfg);
+      }
+    } catch (err) { overlayLog('ERROR', `SSE overlay-config parse/apply failed: ${err.message}`); }
+  });
+  // v9.2.0: capture event — server requests a PNG of the current canvas
+  // for visual verification by external test tools. Replies via POST to
+  // /screenshot-response with {requestId, png:"data:image/png;base64,..."}.
+  // Errors are reported via the same POST with {requestId, error}. Each
+  // overlay handles independently; first response wins server-side.
+  _sse.addEventListener('capture', e => {
+    let requestId = '';
+    try {
+      const body = JSON.parse(e.data || '{}');
+      requestId = String(body.requestId || '');
+    } catch {}
+    const replyError = (msg) => {
+      try {
+        fetch('/screenshot-response', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId, error: String(msg) }),
+        }).catch(() => {});
+      } catch {}
+    };
+    try {
+      // v9.4.0: WebGL is the only renderer — always capture from the GL
+      // canvas. Falls back to the (now-empty) canvas2d element only if the
+      // GL canvas is somehow missing from the DOM, just to keep the endpoint
+      // always returning SOMETHING valid.
+      const canvasId = document.getElementById('spectrum-canvas-gl') ? 'spectrum-canvas-gl' : 'spectrum-canvas';
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) { replyError(canvasId + ' not found in DOM'); return; }
+      // Defer the toDataURL by one rAF so it captures a fully-painted frame.
+      // For WebGL contexts created with desynchronized:true or without
+      // preserveDrawingBuffer, toDataURL must run inside a rAF callback so
+      // the GPU framebuffer is still readable.
+      requestAnimationFrame(() => {
+        try {
+          const png = canvas.toDataURL('image/png');
+          fetch('/screenshot-response', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId, png, source: canvasId }),
+          }).catch(() => {});
+        } catch (err) {
+          replyError('toDataURL threw: ' + (err && err.message));
+        }
+      });
+    } catch (err) {
+      replyError('capture handler threw: ' + (err && err.message));
+    }
+  });
+  _sse.onerror = () => {
+    // Browser auto-reconnects by default; on permanent failure force a new connection after 2 s.
+    try { _sse.close(); } catch {}
+    setTimeout(connectSSE, 2000);
+  };
+}
+connectSSE();
+
+// ── Server-restart auto-reload ─────────────────────────────────────────────
+// CEF (OBS Browser Source) aggressively caches overlay.html, so when
+// Master's FM is rebuilt or restarted the overlay keeps running stale code
+// AND ignores album-art URL refreshes. Poll /version every 3 s; when the
+// bootId changes we force a hard reload so everything (HTML, JS, images)
+// is re-fetched fresh. A cache-busting query string pushes CEF past any
+// in-memory cache of the HTML document itself.
+let _bootId = null;
+async function checkServerVersion() {
+  try {
+    const r = await fetch('/version', { cache: 'no-store' });
+    const v = await r.json();
+    if (_bootId === null) {
+      _bootId = v.bootId;
+      return;
+    }
+    if (v.bootId && v.bootId !== _bootId) {
+      overlayLog('INFO', `Server rebooted (bootId ${_bootId} → ${v.bootId}) — force-reloading overlay`);
+      // location.reload(true) with a cache-busting URL param bypasses CEF's
+      // disk cache so the newest HTML/JS is served.
+      const u = new URL(window.location.href);
+      u.searchParams.set('_reload', Date.now());
+      window.location.replace(u.toString());
+    }
+  } catch { /* server briefly unreachable during restart — ignore */ }
+}
+checkServerVersion();
+setInterval(checkServerVersion, 3000);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  SPECTRUM VISUALIZER
+// ══════════════════════════════════════════════════════════════════════════
+
+let analyser = null, freqData = null, audioReady = false;
+
+// ── v2.1.0 WASAPI-loopback spectrum (preferred) ────────────────────────────
+// audio_spectrum.exe runs alongside MastersFM.exe and exposes an SSE feed
+// at http://127.0.0.1:4243/spectrum — 60 log-spaced frequency bands per
+// frame, 0-255 each, matching the shape of getByteFrequencyData().  We
+// prefer this over getUserMedia because it captures whatever the OS is
+// ACTUALLY playing (Spotify / SoundCloud / YouTube / whatever) without
+// needing OBS to route audio into the browser source.
+let _loopbackBands     = null;   // Uint8Array | null — raw from SSE
+let _renderedBands     = null;   // Float32Array | null — per-rAF lerp target
+let _peakHoldEnd       = null;   // Float64Array | null — Phase T.6 per-band peak-hold expiry timestamps (performance.now() ms)
+let _decimatedBands    = null;   // Float32Array | null — barCount-decimated view of _renderedBands
+let _decimatedLen      = 0;      // cached length so we only reallocate when barCount changes
+let _normPeak          = 20;     // rolling max band value (for spectrum.autoGain)
+let _loopbackUpdatedAt = 0;      // performance.now() of last frame
+let _loopbackSSE       = null;
+let _loopbackSseFps    = 0;      // v8.3.0: last fps value sent in ?fps= query
+let _loopbackBackoff   = 2000;   // exponential reconnect with cap
+// v8.3.7: cached spectrum fillStyle gradient. drawSpectrum builds a
+// CanvasGradient via createLinearGradient + multiple addColorStop on every
+// rAF tick (~144/sec); cache key includes color mode + canvas size + base
+// rgb / dyn-color hash so static modes reuse the gradient indefinitely
+// and rainbow mode reuses across the ~3 rAF ticks within each integer
+// hue-degree window (saves most of the ~144 gradient-rebuilds/sec).
+let _cachedFillKey     = '';
+let _cachedFill        = null;
+let _loopbackLatestRaw = null;   // v6.5.3: raw SSE event data, parsed at rAF
+let _spectrumParseFails = 0;     // rolling count of malformed SSE frames
+let _spectrumParseLastLog = 0;   // perf.now() of last flush-to-log
+let _spectrumDisconnectLogged = false; // only log the first disconnect per outage
+// Stage 7.12 Batch B Phase S Finding B: eager-decode throttle. v8.3.4
+// deferred decode to rAF for CPU reasons but cost ~0-16.67 ms (avg ~8 ms
+// on 60 Hz) of latency — SSE arrives, sits as a raw string, decoded
+// only when the next rAF fires. Phase S: decode on arrival IF >=5 ms
+// have passed since the last decode. Preserves CPU savings against
+// bursty arrivals (each OnData fires up to 10 SSE signals in <1 ms),
+// while ensuring the bands array is already-decoded by the time rAF
+// reads it. Effective: ~4-8 ms cut from the latency budget on 60 Hz.
+let _lastLoopbackDecodeAt = 0;
+const LOOPBACK_DECODE_MIN_GAP_MS = 5;
+
+// v8.3.4: decode the most recently STASHED SSE frame into _loopbackBands.
+// Called by drawSpectrum right before it reads bands, so we only ever parse
+// the freshest payload that's going to hit the canvas this frame.
+// This pattern decouples SSE arrival rate from JS-side decode cost. At
+// SSE rate 1000 fps on a 144 Hz monitor, the previous on-arrival decode
+// did ~1000 atob + 480-element array fill per second (~25 % of one core
+// just for SSE work, leaving little budget for the canvas redraw during
+// hardcore drops). With stash-and-decode-at-rAF, decode runs at rAF rate
+// (~144/sec) regardless of SSE rate — same visual smoothness because the
+// canvas can only display monitor-refresh frames anyway, but ~7× lower
+// JS overhead at high SSE settings.
+function _decodeLatestLoopback() {
+  const raw = _loopbackLatestRaw;
+  if (raw === null) return;
+  _loopbackLatestRaw = null;
+  try {
+    // v7.0.10: server emits raw base64 directly (no JSON wrapper). Client
+    // does a single atob and a tight charCodeAt loop. Legacy v6.5.2 JSON
+    // format support is removed — server has emitted raw since v7.0.9 and
+    // any in-flight clients refresh on overlay reload.
+    const bin = atob(raw);
+    const len = bin.length;
+    if (!_loopbackBands || _loopbackBands.length !== len) {
+      _loopbackBands = new Uint8Array(len);
+    }
+    for (let i = 0; i < len; i++) _loopbackBands[i] = bin.charCodeAt(i);
+  } catch (err) {
+    _spectrumParseFails = (_spectrumParseFails || 0) + 1;
+    const now = performance.now();
+    if (!_spectrumParseLastLog || (now - _spectrumParseLastLog) > 10000) {
+      _spectrumParseLastLog = now;
+      overlayLog('WARN', `spectrum SSE parse failed ${_spectrumParseFails}x in last ~10s (example: ${err.message})`);
+      _spectrumParseFails = 0;
+    }
+  }
+}
+function connectSpectrumSSE() {
+  // v5.1 — connect in BOTH normal (OBS Browser Source) AND customizer
+  // preview. Previously the preview skipped the SSE so users could
+  // tweak colors + spectrum height without seeing if the live audio
+  // actually drove the bars as expected. Cost is tiny because the
+  // preview rAF is throttled to 30 fps by the earlier v5 optimization.
+  try {
+    if (_loopbackSSE) { try { _loopbackSSE.close(); } catch {} }
+    // v9.8.1: always connect at fps=2000 (server unthrottled / new-frames-only
+    // mode). At fps=2000 the server sends only when s_frame changes — i.e.
+    // exactly once per FFT publish (~120/sec, tied to SSE_INTERVAL_MS=8ms).
+    // No duplicate frames are ever sent, so SSE traffic is ~77 KB/s regardless
+    // of what the render-fps slider is set to. This decouples audio response
+    // latency (always ≤8ms from FFT) from render smoothness (controlled by
+    // cfg.spectrum.fps in drawSpectrum). Previously fps=N drove BOTH the SSE
+    // rate AND the rAF cap; at fps=1000 the server sent 1000 duplicate sends/sec
+    // (640 KB/s + 1000 context-switches/sec) with no visual benefit since the
+    // rAF could only render at monitor refresh rate. At fps=2000 that overhead
+    // is zero — SSE CPU cost is constant at the natural FFT rate.
+    _loopbackSSE = new EventSource('http://127.0.0.1:4243/spectrum?fps=2000');
+    _loopbackSseFps = 2000;   // fixed; render rate controlled separately by fpsCap
+    // v9.8.2: re-apply the user's saved Response Time on every SSE connect.
+    // audio_spectrum.exe always starts at HOP=512 (10.7 ms); the saved
+    // responseMs is only honoured when the user moves the slider in customize.
+    // Posting it here ensures the correct HOP is in effect from the first frame,
+    // including after an audio_spectrum.exe crash-and-restart.
+    try {
+      const _hopMs = Math.max(0.01, _cfg?.spectrum?.responseMs ?? 10.7);
+      fetch('http://127.0.0.1:4243/set-hop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ms: _hopMs })
+      }).catch(() => {});
+    } catch (_) {}
+    _loopbackSSE.onopen = () => {
+      if (_spectrumDisconnectLogged) {
+        overlayLog('INFO', 'WASAPI spectrum re-connected after outage');
+      } else {
+        overlayLog('INFO', 'WASAPI spectrum connected');
+      }
+      _spectrumDisconnectLogged = false;
+      _loopbackBackoff = 2000;
+    };
+    _loopbackSSE.onmessage = e => {
+      // v6.6.6: reverted to on-arrival parsing. The v6.5.3 'stash +
+      // parse at rAF' scheme was bottlenecking bar updates.
+      // v8.3.4: STASH-AND-DECODE-AT-RAF. CPU-saving optimization that
+      // cost ~0-16.67 ms (avg ~8 ms on 60 Hz) of latency.
+      // Stage 7.12 Batch B Phase S Finding B: hybrid eager-decode.
+      // Stash first (so the rAF code path that reads _loopbackLatestRaw
+      // still works as a fallback). If >=5 ms have passed since the last
+      // decode, also decode RIGHT NOW so _loopbackBands is fresh by the
+      // time the next rAF fires. Preserves the CPU win against bursty
+      // arrivals (server fires ~10 SSE signals per OnData in <1 ms; the
+      // 5 ms gate collapses those into one decode) while ensuring the
+      // rAF doesn't pay an additional ~8 ms wait for the decode.
+      if (typeof e.data !== 'string' || !e.data) return;
+      _loopbackLatestRaw  = e.data;          // stash (kept for rAF fallback path)
+      const _now = performance.now();
+      _loopbackUpdatedAt  = _now;            // freshness gate still works
+      if ((_now - _lastLoopbackDecodeAt) >= LOOPBACK_DECODE_MIN_GAP_MS) {
+        _lastLoopbackDecodeAt = _now;
+        _decodeLatestLoopback();              // bands now fresh for next rAF
+      }
+    };
+    _loopbackSSE.onerror = () => {
+      try { _loopbackSSE.close(); } catch {}
+      _loopbackSSE = null;
+      // Back off up to 10 s so a missing/crashed audio_spectrum.exe doesn't
+      // pound the port.  Fresh launch (after MSI reinstall) takes ~1 s.
+      const delay = Math.min(10000, _loopbackBackoff);
+      _loopbackBackoff = Math.min(10000, _loopbackBackoff * 1.5);
+      // Log the first disconnect (and subsequent ones at increasing backoff
+      // so we can see a sustained outage). Without this, a crashed
+      // audio_spectrum.exe silently falls through to the simulator and
+      // the user has no idea why their music visualization went flat.
+      if (!_spectrumDisconnectLogged) {
+        _spectrumDisconnectLogged = true;
+        overlayLog('WARN', `spectrum SSE disconnected - will retry with ${delay}ms backoff`);
+      }
+      setTimeout(connectSpectrumSSE, delay);
+    };
+  } catch (ex) {
+    overlayLog('WARN', 'WASAPI spectrum connect failed: ' + ex.message);
+    setTimeout(connectSpectrumSSE, 4000);
+  }
+}
+connectSpectrumSSE();
+
+async function initAudio() {
+  try {
+    const permStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    permStream.getTracks().forEach(t => t.stop());
+
+    const all    = await navigator.mediaDevices.enumerateDevices();
+    const inputs = all.filter(d => d.kind === 'audioinput');
+    console.log('[Overlay] Audio inputs found:');
+    inputs.forEach((d, i) => console.log(`  [${i}] ${d.label}`));
+
+    const loopbackTerms = [
+      'stereo mix', 'what u hear', 'wave out mix',
+      'vb-audio', 'vb audio', 'coconut',
+      'voicemeeter', 'voicemeter',
+      'cable output', 'cable-a', 'cable-b',
+      'loopback', 'wasapi loopback', 'mix output',
+    ];
+
+    let chosen = null;
+
+    // URL override: ?device=0  or  ?device=stereo
+    const urlParam = new URLSearchParams(location.search).get('device');
+    if (urlParam !== null) {
+      chosen = inputs[parseInt(urlParam, 10)] ||
+               inputs.find(d => d.label.toLowerCase().includes(urlParam.toLowerCase())) || null;
+      if (chosen) console.log(`[Overlay] URL override → ${chosen.label}`);
+    }
+
+    if (!chosen) {
+      for (const term of loopbackTerms) {
+        chosen = inputs.find(d => d.label.toLowerCase().includes(term));
+        if (chosen) { console.log(`[Overlay] Auto-detected → ${chosen.label}`); break; }
+      }
+    }
+
+    if (!chosen) {
+      chosen = inputs[0];
+      console.log(`[Overlay] Using default → ${chosen?.label}`);
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: chosen ? { exact: chosen.deviceId } : undefined,
+        echoCancellation: false, noiseSuppression: false,
+        autoGainControl: false,  latency: 0,
+      },
+      video: false,
+    });
+
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const src  = actx.createMediaStreamSource(stream);
+    analyser   = actx.createAnalyser();
+    analyser.fftSize               = 2048;
+    analyser.smoothingTimeConstant = _cfg.spectrum.smoothing;
+    analyser.minDecibels           = -85;
+    analyser.maxDecibels           = -10;
+    src.connect(analyser);
+    freqData   = new Uint8Array(analyser.frequencyBinCount);
+    audioReady = true;
+    console.log(`[Overlay] ✅ Capturing from: ${chosen?.label || 'default'}`);
+  } catch(e) {
+    console.log('[Overlay] ⚠️ Audio unavailable, using simulator:', e.message);
+    overlayLog('WARN', `initAudio getUserMedia failed - falling back to simulator: ${e.message}`);
+  }
+}
+
+// ── Chill spectrum simulator ───────────────────────────────────────────────
+// Pre-allocated at 100 bars max; drawSpectrum only uses _cfg.spectrum.barCount.
+const MAX_SIM = 480;   // v6.3.3: matches audio_spectrum.exe's BAND_COUNT (raised 240->480 so the spectrum resolves individual frequency spikes sharply - 48 bars per octave, 4x the detail of a pro-audio parametric EQ).
+const simVals = new Float32Array(MAX_SIM).fill(0.10);
+const simTgts = new Float32Array(MAX_SIM).fill(0.10);
+const simFreq  = Array.from({length:MAX_SIM}, (_, i) => 0.35 + (i/MAX_SIM)*1.1 + Math.random()*0.4);
+const simPhase = Array.from({length:MAX_SIM}, () => Math.random()*Math.PI*2);
+const SIM_SHAPE = Array.from({length:MAX_SIM}, (_, i) => {
+  const t = i/(MAX_SIM-1);
+  return 0.78*Math.exp(-t*1.9) + 0.22*(1-t*0.55);
+});
+const SIM_DECAY = Array.from({length:MAX_SIM}, (_, i) => 0.91 - (i/(MAX_SIM-1))*0.14);
+
+let nextEvent = 0;
+
+function simTick(t, NUM) {
+  if (t >= nextEvent) {
+    const tPos   = Math.pow(Math.random(), 1.3);
+    const center = Math.floor(1 + tPos * (NUM-6));
+    const width  = 3 + Math.floor(Math.random() * 9);
+    const level  = (0.58 + Math.random()*0.38) * (1 - tPos*0.30);
+    for (let i = Math.max(0,center-width); i <= Math.min(NUM-1,center+width); i++) {
+      const dist = Math.abs(i-center)/width;
+      simTgts[i] = Math.max(simTgts[i], level*Math.exp(-dist*dist*1.8));
+    }
+    nextEvent = t + 0.25 + Math.random()*0.55;
+  }
+  for (let i = 0; i < NUM; i++) {
+    const osc     = 0.5+0.5*Math.sin(t*simFreq[i]+simPhase[i]);
+    const osc2    = 0.5+0.5*Math.sin(t*simFreq[i]*0.53+simPhase[i]+2.1);
+    const ambient = SIM_SHAPE[i]*(0.50+0.50*(osc*0.65+osc2*0.35));
+    const target  = Math.max(ambient, simTgts[i]);
+    const diff    = target - simVals[i];
+    simVals[i]   += diff*(diff>0 ? 0.32 : 0.11);
+    simVals[i]    = Math.max(0.02, Math.min(1.0, simVals[i]));
+    simTgts[i]   *= SIM_DECAY[i];
+    if (simTgts[i] < 0.018) simTgts[i] = 0;
+  }
+  return simVals;
+}
+
+// v6.6.2: 8K SUPERSAMPLING KILLED. v6.6.1 rendered internally at 8×
+// (a 1000×200 card = 8000×1600 canvas = 12.8M pixels per frame) and
+// that WRECKED the GPU frame budget in OBS CEF — user reported
+// "everything now is like 10 fps and laggy, very badly". Back to 1:1.
+
+// ResizeObserver keeps canvas buffer exactly matching its CSS layout size.
+// This fixes spectrum not drawing when the widget starts hidden (opacity:0)
+// or when flex layout resolves after the first rAF fires.
+(function initCanvasResize() {
+  const canvas = document.getElementById('spectrum-canvas');
+  if (!canvas) return;
+  const sync = () => {
+    const w = canvas.offsetWidth  || canvas.parentElement?.offsetWidth  || 600;
+    const h = canvas.offsetHeight || canvas.parentElement?.offsetHeight || 200;
+    if (canvas.width  !== w) canvas.width  = w;
+    if (canvas.height !== h) canvas.height = h;
+    canvas.__cssW = w;
+    canvas.__cssH = h;
+  };
+  sync();
+  if (window.ResizeObserver) {
+    new ResizeObserver(sync).observe(canvas);
+  } else {
+    window.addEventListener('resize', sync);
+  }
+})();
+
+let _prevRafTick = 0;
+let _lastDrawAt = 0;
+// v9.9.3: OBS Browser Source uses CEF off-screen rendering. In that mode
+// requestAnimationFrame is throttled to the Browser Source FPS setting
+// (default 30 fps = 33 ms cadence) regardless of what JS requests.
+// setInterval is NOT subject to this throttle — it fires at its configured
+// interval. Detect OBS by user-agent and swap schedulers so the spectrum
+// updates at our configured fps instead of OBS's browser-source fps.
+const _inOBS = /OBS/i.test(navigator.userAgent);
+// v6.9.7: idle-frame-skip state. False on first frame so the at-rest pixels
+// are guaranteed to commit before we start skipping subsequent identical frames.
+let _wasIdleLastFrame = false;
+
+// ── v9.4.0 WebGL spectrum renderer (the only renderer) ─────────────────────
+// v9.2.0–v9.3.2 history: WebGL started as a URL-param opt-in (?renderer=webgl),
+// then became the default in v9.3.0, with a customize-panel toggle to fall
+// back to canvas2d. v9.4.0 wipes canvas2d entirely — WebGL is now the only
+// path. The _glUrlOverride / _glWantsWebGL / _glWantWebGL / _glActive /
+// _lastRenderMode state from those releases is gone (the URL ?renderer=
+// param is silently ignored, the S.spectrum.renderer config field is tolerated
+// for backward compat but never read). _gl.ready alone gates the render.
+const _gl = {
+  ctx: null, canvas: null,
+  program: null, vao: null, vbo: null,
+  bandsTex: null, bandsTexLen: 0,
+  u: {}, ready: false, initFailed: false,
+  bandUploadBuf: null,
+};
+const _glVS = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+const _glFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_bands;
+uniform float u_bandCount;
+uniform float u_canvasW;       // v9.6.4: needed for gap math in pixel space
+uniform float u_canvasH;
+uniform float u_gap;           // v9.6.4: pixels between adjacent bars (the canvas2d "gap" config)
+uniform float u_barRadius;     // v9.6.4: top-corner radius in pixels (the canvas2d "barRadius" config)
+uniform float u_opacity;       // v9.6.4: spectrum opacity (0..1)
+uniform float u_minBarPx;
+uniform float u_heightMult;
+uniform float u_gainScale;
+uniform int   u_colorMode;
+uniform vec3  u_baseRgb;
+uniform float u_hueOffset;
+uniform float u_dynHueShift;
+uniform float u_dynL;
+uniform int   u_mirror;
+out vec4 fragColor;
+vec3 hsl2rgb(vec3 hsl) {
+  float h = hsl.x, s = hsl.y, l = hsl.z;
+  float c = (1.0 - abs(2.0*l - 1.0)) * s;
+  float hp = h * 6.0;
+  float x = c * (1.0 - abs(mod(hp, 2.0) - 1.0));
+  vec3 rgb;
+  if      (hp < 1.0) rgb = vec3(c, x, 0.0);
+  else if (hp < 2.0) rgb = vec3(x, c, 0.0);
+  else if (hp < 3.0) rgb = vec3(0.0, c, x);
+  else if (hp < 4.0) rgb = vec3(0.0, x, c);
+  else if (hp < 5.0) rgb = vec3(x, 0.0, c);
+  else               rgb = vec3(c, 0.0, x);
+  return rgb + vec3(l - c * 0.5);
+}
+void main() {
+  float u = v_uv.x;
+  if (u_mirror == 1) u = 1.0 - abs(u * 2.0 - 1.0);
+
+  // ── v9.6.4: gap math in pixel units ────────────────────────────────────
+  // Each band gets a slot of width canvasW/N pixels. The bar fills
+  // (slotW - gap) pixels; the remaining gap pixels on the right side are
+  // empty space between this bar and the next. (Equivalent to canvas2d's
+  // "draw bar from slotStart to slotStart+barW, leave gap to the next slot".)
+  float xPx = u * u_canvasW;
+  float slotW = u_canvasW / u_bandCount;
+  float barW  = max(1.0, slotW - u_gap);
+  int bandIdx = int(floor(xPx / max(slotW, 1.0)));
+  bandIdx = clamp(bandIdx, 0, int(u_bandCount) - 1);
+  float bandStartPx = float(bandIdx) * slotW;
+  float localPx = xPx - bandStartPx;
+  if (localPx > barW) discard;   // in gap region between bars
+
+  float bandVal = texelFetch(u_bands, ivec2(bandIdx, 0), 0).r;
+  float energy = bandVal * u_gainScale;
+  float barH   = max(u_minBarPx, energy * u_canvasH * u_heightMult);
+  float yPx = (1.0 - v_uv.y) * u_canvasH;
+  float barTopPx = u_canvasH - barH;
+  if (yPx < barTopPx) discard;   // above the bar top
+
+  // ── v9.6.4: rounded TOP corners ────────────────────────────────────────
+  // Bottom of each bar is flush with the canvas edge so it doesn't need
+  // rounding. Clamp the radius to (barW/2, barH/2) so a thick radius on a
+  // thin/short bar can't produce a "circle" instead of a rounded-top shape.
+  if (u_barRadius > 0.5) {
+    float r = min(u_barRadius, min(barW * 0.5, barH * 0.5));
+    float yLocal = yPx - barTopPx;
+    if (yLocal < r) {
+      float edgeDist = min(localPx, barW - localPx);
+      if (edgeDist < r) {
+        float dx = r - edgeDist;
+        float dy = r - yLocal;
+        if (dx*dx + dy*dy > r*r) discard;   // outside the rounded curve
+      }
+    }
+  }
+
+  vec3 col;
+  if (u_colorMode == 0) {
+    float t = (yPx - barTopPx) / max(barH, 1.0);
+    vec3 lo = u_baseRgb * 0.6;
+    vec3 hi = min(u_baseRgb + vec3(60.0/255.0), vec3(1.0));
+    col = mix(lo, hi, t);
+  } else if (u_colorMode == 1) {
+    float baseHue, gSpread;
+    if (u_dynHueShift >= 0.0) { baseHue = u_dynHueShift - 30.0; gSpread = 60.0; }
+    else                      { baseHue = (u_baseRgb.r + u_baseRgb.g + u_baseRgb.b) / 3.0 * 240.0; gSpread = 120.0; }
+    float hue = mod(baseHue + v_uv.x * gSpread + 360.0, 360.0);
+    col = hsl2rgb(vec3(hue/360.0, 0.90, 0.55));
+  } else {
+    float dynShift = u_dynHueShift;
+    float spread   = (dynShift >= 0.0) ? 45.0  : 300.0;
+    float base     = (dynShift >= 0.0) ? dynShift - 22.0 : 0.0;
+    float drift    = (dynShift >= 0.0) ? 0.0 : u_hueOffset;
+    float L        = (dynShift >= 0.0) ? u_dynL : 0.58;
+    float hue = mod(base + v_uv.x * spread + drift + 360.0, 360.0);
+    col = hsl2rgb(vec3(hue/360.0, 0.95, L));
+  }
+  fragColor = vec4(col, u_opacity);
+}`;
+function _glCompile(gl, type, src, kind) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    overlayLog('WARN', `webgl: ${kind} shader compile failed: ${gl.getShaderInfoLog(sh)}`);
+    return null;
+  }
+  return sh;
+}
+function _glInit() {
+  // v9.4.0: WebGL is the only renderer — always init. Sticky-success after
+  // first call (returns _gl.ready); sticky-failure prevents retry storms.
+  if (_gl.ready || _gl.initFailed) return _gl.ready;
+  const c2d = document.getElementById('spectrum-canvas');
+  const cgl = document.getElementById('spectrum-canvas-gl');
+  if (!c2d || !cgl) { _gl.initFailed = true; overlayLog('WARN', 'webgl: canvases not found in DOM'); return false; }
+  // ── v9.2.1/v9.2.2 FIX: position the GL canvas to EXACTLY OVERLAY canvas2d ─
+  // v9.2.0: position:absolute escaped to wrong ancestor → off-screen.
+  // v9.2.1: set parent position:relative + inset:0 width:100% height:100%.
+  //         BUG: that filled the entire parent (.right-col includes padding
+  //         + time-bar area), so bars rendered across a larger region than
+  //         canvas2d's actual slot — visible mismatch reported by user.
+  // v9.2.2: position:absolute with EXPLICIT top/left/width/height from
+  //         canvas2d's offset values. Canvas2d is inside right-col (now
+  //         position:relative), so canvas2d.offsetTop/Left are exactly its
+  //         position relative to right-col's positioned origin — meaning
+  //         setting cgl's top/left to those values puts cgl exactly on top
+  //         of canvas2d. Per-frame resize sync in _glRender keeps it
+  //         aligned through window/source resizes.
+  const parent = c2d.parentNode;
+  if (parent && getComputedStyle(parent).position === 'static') {
+    parent.style.position = 'relative';
+  }
+  cgl.style.position = 'absolute';
+  cgl.style.pointerEvents = 'none';
+  // Match canvas2d's exact box (offset* values are relative to the nearest
+  // positioned ancestor — which is now right-col after the position:relative
+  // line above).
+  const oW = c2d.offsetWidth  || 300;
+  const oH = c2d.offsetHeight || 150;
+  cgl.style.left   = c2d.offsetLeft + 'px';
+  cgl.style.top    = c2d.offsetTop  + 'px';
+  cgl.style.width  = oW + 'px';
+  cgl.style.height = oH + 'px';
+  cgl.width  = oW;
+  cgl.height = oH;
+  console.log('[webgl] init begin: oW=' + oW + ' oH=' + oH + ' offsetLeft=' + c2d.offsetLeft + ' offsetTop=' + c2d.offsetTop);
+  try {
+    // v9.2.1: preserveDrawingBuffer:true so toDataURL (the screenshot
+    // endpoint) reliably captures the rendered frame. Slight perf cost
+    // (browser keeps a CPU-side copy of the framebuffer) but well worth
+    // it for the testing infrastructure.
+    const gl = cgl.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+    if (!gl) { _gl.initFailed = true; overlayLog('WARN', 'webgl: WebGL2 not available'); console.error('[webgl] WebGL2 not available'); return false; }
+    console.log('[webgl] context acquired');
+    const vs = _glCompile(gl, gl.VERTEX_SHADER, _glVS, 'vertex');
+    const fs = _glCompile(gl, gl.FRAGMENT_SHADER, _glFS, 'fragment');
+    if (!vs || !fs) { _gl.initFailed = true; console.error('[webgl] shader compile failed'); return false; }
+    console.log('[webgl] shaders compiled');
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+    gl.bindAttribLocation(prog, 0, 'a_pos');
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(prog);
+      overlayLog('WARN', 'webgl: link failed: ' + log);
+      console.error('[webgl] link failed:', log);
+      _gl.initFailed = true; return false;
+    }
+    console.log('[webgl] program linked');
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1,  1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.useProgram(prog);
+    _gl.u = {
+      bands:        gl.getUniformLocation(prog, 'u_bands'),
+      bandCount:    gl.getUniformLocation(prog, 'u_bandCount'),
+      canvasW:      gl.getUniformLocation(prog, 'u_canvasW'),     // v9.6.4: gap math
+      canvasH:      gl.getUniformLocation(prog, 'u_canvasH'),
+      gap:          gl.getUniformLocation(prog, 'u_gap'),         // v9.6.4
+      barRadius:    gl.getUniformLocation(prog, 'u_barRadius'),   // v9.6.4
+      opacity:      gl.getUniformLocation(prog, 'u_opacity'),     // v9.6.4
+      minBarPx:     gl.getUniformLocation(prog, 'u_minBarPx'),
+      heightMult:   gl.getUniformLocation(prog, 'u_heightMult'),
+      gainScale:    gl.getUniformLocation(prog, 'u_gainScale'),
+      colorMode:    gl.getUniformLocation(prog, 'u_colorMode'),
+      baseRgb:      gl.getUniformLocation(prog, 'u_baseRgb'),
+      hueOffset:    gl.getUniformLocation(prog, 'u_hueOffset'),
+      dynHueShift:  gl.getUniformLocation(prog, 'u_dynHueShift'),
+      dynL:         gl.getUniformLocation(prog, 'u_dynL'),
+      mirror:       gl.getUniformLocation(prog, 'u_mirror'),
+    };
+    gl.uniform1i(_gl.u.bands, 0);
+    gl.clearColor(0, 0, 0, 0);  // v9.9.2: set once at init; never changes
+    _gl.uc = {};                 // v9.9.2: per-uniform cache (skip unchanged driver calls)
+    _gl.ctx = gl; _gl.canvas = cgl; _gl.program = prog; _gl.vao = vao; _gl.vbo = vbo;
+    // v9.4.0: cgl already has display:block from its inline style; canvas2d
+    // is empty (never drawn to) so no scrub needed. v9.2.1's "don't hide
+    // canvas2d as a placeholder" rule still applies — the layout system
+    // depends on its presence.
+    // v9.2.4 FIX: log uses oW/oH (renamed from w/h in v9.2.2); v9.2.3 still
+    // had `${w}x${h}` which threw a ReferenceError silently. The throw was
+    // caught by the outer catch but `_gl.ready = true` had already been set
+    // BEFORE the failing log → drawSpectrum saw _gl.ready=true and ran
+    // _glRender on a half-initialized state. Two changes:
+    //   (a) use the correct variable names oW/oH in the log
+    //   (b) only set _gl.ready=true AFTER all init+logging succeeds, so
+    //       any throw leaves _gl.ready=false and canvas2d takes over
+    //   (c) catch block explicitly resets _gl.ready=false (defensive)
+    overlayLog('INFO', `webgl: spectrum renderer initialized (${oW}x${oH})`);
+    console.log('[webgl] init complete: ready');
+    _gl.ready = true;
+    return true;
+  } catch (e) {
+    _gl.initFailed = true;
+    _gl.ready      = false;   // v9.2.4: cleanup any half-initialized state
+    // v9.3.0: bulletproof fallback for the WebGL-default era — if init blew up
+    // AFTER cgl.style.display='block' (line 3106) but before ready flipped on,
+    // explicitly hide the GL canvas again so canvas2d underneath is the only
+    // visible layer. Also drop any context handles so a stale gl ref can't be
+    // accidentally used by _glRender.
+    try { cgl.style.display = 'none'; } catch {}
+    _gl.ctx = null; _gl.program = null; _gl.vao = null; _gl.vbo = null; _gl.u = null;
+    overlayLog('WARN', 'webgl: init exception: ' + (e && e.message));
+    console.error('[webgl] init exception:', e);
+    return false;
+  }
+}
+// Diagnostic: log first render call so we can verify WebGL is reaching this point
+let _glFirstRenderLogged = false;
+function _glRender(bands, cfg, baseRgb, dynColor, hueOffsetDeg, normPeak) {
+  if (!_gl.ready) return false;
+  const gl = _gl.ctx;
+  const cgl = _gl.canvas;
+  // ── v9.2.1/v9.2.2 FIX: re-sync GL canvas position+size every frame to
+  // perfectly track canvas2d's bounds. Cheap (handful of property reads
+  // per frame) and handles layout shifts: window resize, OBS source
+  // resize, parent flex recompute. Without this, the GL canvas would
+  // drift if canvas2d moved/resized after init.
+  const c2d = document.getElementById('spectrum-canvas');
+  if (c2d) {
+    const wantL = c2d.offsetLeft;
+    const wantT = c2d.offsetTop;
+    const wantW = c2d.offsetWidth  || 300;
+    const wantH = c2d.offsetHeight || 150;
+    // CSS box (visible position + size)
+    if (cgl._lastL !== wantL) { cgl.style.left = wantL + 'px'; cgl._lastL = wantL; }
+    if (cgl._lastT !== wantT) { cgl.style.top  = wantT + 'px'; cgl._lastT = wantT; }
+    if (cgl._lastSW !== wantW) { cgl.style.width  = wantW + 'px'; cgl._lastSW = wantW; }
+    if (cgl._lastSH !== wantH) { cgl.style.height = wantH + 'px'; cgl._lastSH = wantH; }
+    // Drawing buffer (pixel resolution)
+    if (cgl.width !== wantW || cgl.height !== wantH) {
+      cgl.width  = wantW;
+      cgl.height = wantH;
+      if (!_glFirstRenderLogged) console.log('[webgl] render resize: ' + wantW + 'x' + wantH + ' at ' + wantL + ',' + wantT);
+    }
+  }
+  const cw = cgl.width, ch = cgl.height;
+  const uc = _gl.uc;
+  // v9.9.2: only call viewport when canvas size actually changed (cached)
+  if (uc.vpW !== cw || uc.vpH !== ch) { gl.viewport(0, 0, cw, ch); uc.vpW = cw; uc.vpH = ch; }
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  const bandLen = bands ? bands.length : 0;
+  if (bandLen === 0) {
+    if (!_glFirstRenderLogged) console.warn('[webgl] render: bandLen=0, returning');
+    return true;
+  }
+  if (!_gl.bandsTex || _gl.bandsTexLen !== bandLen) {
+    if (_gl.bandsTex) gl.deleteTexture(_gl.bandsTex);
+    _gl.bandsTex = gl.createTexture();
+    _gl.bandsTexLen = bandLen;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, _gl.bandsTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, bandLen, 1, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+    _gl.bandUploadBuf = new Uint8Array(bandLen);
+    // v9.9.2: pre-compute per-band gamma (avoids per-frame i*0.01 math in upload loop)
+    _gl.bassGamma = new Float32Array(bandLen);
+    for (let _gi = 0; _gi < bandLen; _gi++) {
+      _gl.bassGamma[_gi] = _gi < 100 ? (2.0 - _gi * 0.01) : 1.0;
+    }
+  } else {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, _gl.bandsTex);
+  }
+  const autoGain  = !!cfg.autoGain;
+  // v9.6.9: autoGain noise-gate. gainScale = 255/normPeak can be 10-50×
+  // on quiet audio, amplifying the WASAPI noise floor (bands value 1-5)
+  // into 10-250 range — hundreds of short bars everywhere (pixelated look).
+  // Fix: zero out any band below 6% of normPeak before gainScale is applied.
+  // autoGain off: gate = 0 → no change to band values.
+  const _agGate = (autoGain && normPeak > 5) ? normPeak * 0.06 : 0;
+  // v9.9.0: per-band bass-gamma upload for autoGain mode.
+  // Problem: with autoGain on, adjacent bass bands often have very similar raw
+  // values (e.g. 190-205). gainScale = 255/normPeak maps them all to ~245-255
+  // — visually identical → flat "wall" across the bass region.
+  // Fix: in autoGain mode, upload pow(v/normPeak, γ) × 255 where γ varies from
+  // 2.0 at band 0 to 1.0 at band 100. Power curve γ>1 expands differences near
+  // the ceiling: two bands at 90% and 95% of peak now display at 81% and 90%
+  // height (gap widens from 5% to 9%). Peak band always hits 100%. No change to
+  // autoGain-off path or to bands 100+ (γ=1 = same as before).
+  if (autoGain && normPeak > 5) {
+    const _invPk = 1.0 / normPeak;
+    for (let i = 0; i < bandLen; i++) {
+      const _v = bands[i];
+      if (_v > _agGate) {
+        const _n = Math.min(1.0, _v * _invPk);
+        // γ: 2.0 at i=0, linear taper to 1.0 at i=100, flat 1.0 beyond
+        const _g = _gl.bassGamma[i];
+        _gl.bandUploadBuf[i] = (Math.pow(_n, _g) * 255 + 0.5) | 0;
+      } else {
+        _gl.bandUploadBuf[i] = 0;
+      }
+    }
+  } else {
+    for (let i = 0; i < bandLen; i++) {
+      const _v = bands[i];
+      _gl.bandUploadBuf[i] = (_v > _agGate) ? (_v | 0) : 0;
+    }
+  }
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, bandLen, 1, gl.RED, gl.UNSIGNED_BYTE, _gl.bandUploadBuf);
+  const colorMode = cfg.colorMode === 'solid' ? 0 : (cfg.colorMode === 'gradient' ? 1 : 2);
+  const dynShift  = dynColor ? (((dynColor.hueShift % 360) + 360) % 360) : -1;
+  const dynL      = dynColor ? Math.max(0.50, Math.min(0.66, dynColor.l ?? 0.58)) : 0.58;
+  // v9.2.1: gainScale = 1.0 for autoGain off (bandVal from R8 texture is already
+  // normalized 0..1; no additional scale needed). For autoGain on, normalization
+  // is now done per-band in the upload loop above (v9.9.0), so gainScale stays 1.0.
+  // v9.6.5: autoGain threshold lowered from 20 → 5 (quiet virtual-mixer sources).
+  const gainScale = 1.0;
+  const minBarPx  = cfg.minHeight ?? 2;
+  const heightMult = cfg.heightMult ?? 1.0;
+  const mirror    = cfg.mirrorMode ? 1 : 0;
+  // v9.6.4: gap, barRadius, opacity were missing from the WebGL pipeline since
+  // the v9.4.0 canvas2d wipe. Sliders for them did nothing. Now wired through
+  // the new uniforms (u_canvasW + u_gap + u_barRadius + u_opacity); the
+  // fragment shader handles per-bar gap discard, top-corner rounding, and
+  // alpha blending in pixel space.
+  const gap       = Math.max(0, cfg.gap ?? 3);
+  const barRadius = Math.max(0, cfg.barRadius ?? 4);
+  const opacity   = Math.max(0, Math.min(1, cfg.opacity ?? 1.0));
+  // v9.9.2: uniform cache — skip gl.uniform* when value is unchanged.
+  // Saves ~12 driver round-trips/frame for static configs (only hueOffset /
+  // dynHueShift / dynL change frame-to-frame in animated color modes).
+  // gl.useProgram removed from per-frame path — set once in _glInit; we only
+  // ever have one program so the binding never needs to be re-established.
+  const _u = _gl.u;
+  if (uc.bandCount  !== bandLen)    { gl.uniform1f(_u.bandCount,   bandLen);    uc.bandCount  = bandLen; }
+  if (uc.canvasW    !== cw)         { gl.uniform1f(_u.canvasW,     cw);         uc.canvasW    = cw; }
+  if (uc.canvasH    !== ch)         { gl.uniform1f(_u.canvasH,     ch);         uc.canvasH    = ch; }
+  if (uc.gap        !== gap)        { gl.uniform1f(_u.gap,         gap);        uc.gap        = gap; }
+  if (uc.barRadius  !== barRadius)  { gl.uniform1f(_u.barRadius,   barRadius);  uc.barRadius  = barRadius; }
+  if (uc.opacity    !== opacity)    { gl.uniform1f(_u.opacity,     opacity);    uc.opacity    = opacity; }
+  if (uc.minBarPx   !== minBarPx)   { gl.uniform1f(_u.minBarPx,    minBarPx);   uc.minBarPx   = minBarPx; }
+  if (uc.heightMult !== heightMult) { gl.uniform1f(_u.heightMult,  heightMult); uc.heightMult = heightMult; }
+  if (uc.gainScale  !== gainScale)  { gl.uniform1f(_u.gainScale,   gainScale);  uc.gainScale  = gainScale; }
+  if (uc.colorMode  !== colorMode)  { gl.uniform1i(_u.colorMode,   colorMode);  uc.colorMode  = colorMode; }
+  const _brR = baseRgb.r/255, _brG = baseRgb.g/255, _brB = baseRgb.b/255;
+  if (uc.brR !== _brR || uc.brG !== _brG || uc.brB !== _brB) {
+    gl.uniform3f(_u.baseRgb, _brR, _brG, _brB); uc.brR = _brR; uc.brG = _brG; uc.brB = _brB;
+  }
+  if (uc.hueOffset   !== hueOffsetDeg) { gl.uniform1f(_u.hueOffset,   hueOffsetDeg); uc.hueOffset   = hueOffsetDeg; }
+  if (uc.dynHueShift !== dynShift)     { gl.uniform1f(_u.dynHueShift, dynShift);     uc.dynHueShift = dynShift; }
+  if (uc.dynL        !== dynL)         { gl.uniform1f(_u.dynL,        dynL);         uc.dynL        = dynL; }
+  if (uc.mirror      !== mirror)       { gl.uniform1i(_u.mirror,      mirror);       uc.mirror      = mirror; }
+  gl.bindVertexArray(_gl.vao);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  if (!_glFirstRenderLogged) {
+    _glFirstRenderLogged = true;
+    // sample a few bands so we know the data is non-zero
+    const sample = [];
+    for (let i = 0; i < Math.min(bandLen, 8); i++) sample.push(_gl.bandUploadBuf[i]);
+    console.log('[webgl] FIRST RENDER ok: cw=' + cw + ' ch=' + ch + ' bandLen=' + bandLen + ' colorMode=' + colorMode + ' gainScale=' + gainScale.toFixed(4) + ' minBarPx=' + minBarPx + ' heightMult=' + heightMult + ' bands[0..7]=' + sample.join(','));
+  }
+  return true;
+}
+// ── end v9.2.0 WebGL renderer ──────────────────────────────────────────────
+
+function drawSpectrum() {
+  // v9.9.3: in OBS, rAF is throttled by the browser-source FPS setting.
+  // setInterval (set up at the call site below) drives the loop instead.
+  if (!_inOBS) requestAnimationFrame(drawSpectrum);
+
+  // v8.0.0 — skip ALL spectrum + tick work when the document isn't
+  // visible (minimized windows / background tabs). CEF/Chromium already
+  // slows rAF when hidden, but compositor runs sometimes continue —
+  // this keeps us explicit-zero.
+  if (document.hidden) return;
+
+  // v6.1.8: preview honors the user's Render FPS slider again.
+  // Stage 7.12 Batch B Phase S Finding K: cap raised 120 → 480. rAF is
+  // naturally bounded by monitor refresh (60/120/144/240 Hz), so the
+  // cap at 120 was throttling 144/240 Hz displays to ~72/60 fps
+  // effective. WebGL render is sub-ms (texSubImage2D + 6-vertex
+  // drawArrays); per-frame CPU/GPU cost at 240+ fps stays trivial on
+  // modern hardware. The slider still goes to 120 by default; users
+  // who want their full monitor refresh can raise it in customize.
+  const fpsCap = Math.max(30, Math.min(480, _cfg.spectrum?.fps ?? 240));
+  const minGap = 1000 / fpsCap;
+  const now    = performance.now();
+  // v6.5.4: the -0.5 ms fudge-factor handles rAF clock jitter. At
+  // fpsCap=120 (8.3 ms minGap) the gate fires at most every ~8 ms —
+  // matches the OBS browser-source default and the SSE publish rate.
+  if (_lastDrawAt && (now - _lastDrawAt) < (minGap - 0.5)) return;
+  _lastDrawAt = now;
+
+  // v8.3.4: decode the latest stashed SSE payload (if any) BEFORE we read
+  // _loopbackBands. Decoupling SSE arrival rate from decode rate cuts JS
+  // overhead ~7× at fps=1000 SSE / 144 Hz monitor — critical headroom for
+  // the canvas redraw loop during high-amplitude content (drops/hardcore).
+  _decodeLatestLoopback();
+
+  // Piggy-back the progress-bar/timestamp tick on the rAF loop that's already
+  // running for the spectrum. Zero extra scheduling cost, and the bar slides
+  // smoothly at 60 fps instead of stepping 4×/s. tick() is a no-op when the
+  // timer isn't active and is fast-path cached so consecutive same-value
+  // frames skip the DOM writes entirely.
+  if (_timerActive) tick();
+
+  // ── v9.4.0 WEBGL-ONLY RENDER PATH ─────────────────────────────────────────
+  // canvas2d path was wiped in v9.4.0 — WebGL is now the only renderer. The
+  // GPU Acceleration toggle is gone, the ?renderer= URL param is ignored, the
+  // _glWantsWebGL/_glActive/_lastRenderMode state machinery is deleted. WebGL
+  // initializes lazily on the first drawSpectrum tick (_glInit is sticky-
+  // success so this is essentially free after the first call). If WebGL fails
+  // to init (rare — bad GPU drivers, ancient CEF), the spectrum doesn't
+  // render but the rest of the overlay (text, art, progress bar, glow,
+  // border) keeps working — they're all DOM/CSS, not canvas-based.
+  if (!_gl.ready && !_gl.initFailed) _glInit();
+  if (!_gl.ready) return;   // WebGL init failed; spectrum sits dark
+
+  // Dyn-color lerp — picks RGB toward the target colour over _dynSpectrumLerpMs.
+  if (_dynSpectrumTarget && _dynSpectrumColor) {
+    const elapsed = performance.now() - _dynSpectrumSetAt;
+    const t = Math.max(0, Math.min(1, elapsed / _dynSpectrumLerpMs));
+    const k = t * t * (3 - 2 * t);
+    _dynSpectrumColor.r = Math.round(_dynSpectrumColor.r + (_dynSpectrumTarget.r - _dynSpectrumColor.r) * k * 0.12);
+    _dynSpectrumColor.g = Math.round(_dynSpectrumColor.g + (_dynSpectrumTarget.g - _dynSpectrumColor.g) * k * 0.12);
+    _dynSpectrumColor.b = Math.round(_dynSpectrumColor.b + (_dynSpectrumTarget.b - _dynSpectrumColor.b) * k * 0.12);
+    let dh = _dynSpectrumTarget.hueShift - (_dynSpectrumColor.hueShift ?? 0);
+    if (dh > 180)  dh -= 360;
+    if (dh < -180) dh += 360;
+    _dynSpectrumColor.hueShift = (((_dynSpectrumColor.hueShift ?? 0) + dh * k * 0.12) + 360) % 360;
+  }
+  // Smoothing — populates _renderedBands from _loopbackBands. WebGL reads
+  // _renderedBands as an R8 1D texture in _glRender below.
+  const _wasapiFreshGL = (_loopbackBands && (now - _loopbackUpdatedAt) < 400);
+  const _loopSrcGL = (typeof _cfg.liveAudioVisualizer === 'boolean') ? _cfg.liveAudioVisualizer : true;
+  if (_loopSrcGL && _wasapiFreshGL) {
+    if (!_renderedBands || _renderedBands.length !== _loopbackBands.length) {
+      _renderedBands = new Float32Array(_loopbackBands.length);
+    }
+    // v9.8.2: heartbeat mode — rise is always instant (true peak detector).
+    // Bars snap to the audio peak in the SAME rAF tick the SSE data arrives.
+    // No lerp or threshold on the up-path — maximum possible reaction speed.
+    //
+    // Stage 7.12 Batch B Phase T.1 (2026-05-17 — refined after operator
+    // reported "too smooth / delayed" feel on Phase T).
+    //
+    // Background:
+    // - Phase S Finding L set fall floor to 5 ms half-life → 200 BPM
+    //   hardcore looked like a 3.3 Hz square-wave strobe (Issue 2).
+    //   Sparse non-ASIO SSE arrivals + 5 ms fall → 10 fps perception
+    //   on WASAPI/MME/KS (Issue 3).
+    // - Phase T fixed strobing via a two-stage knee at 30% of CURRENT
+    //   bar value. But the slow phase (60ms half-life ABOVE knee) made
+    //   the bar TRAIL the audio: after a kick (100%) returning to bass
+    //   (50%), the bar took ~150 ms to settle at the bass level — looking
+    //   like the kick was sustaining. Operator: "feels delayed".
+    //
+    // Phase T.15 (2026-05-17 — operator: now go to T.2): one knob bump
+    // from T.1 — fallTrackHL 12+smoothGL*60 → 20+smoothGL*70. Slower
+    // than typical LCD response (4-16 ms) so the bar's motion is above
+    // the panel refresh — eliminates the ghosting / double-frame
+    // perception T.1 had at 12 ms — while still settling kick→bass
+    // within ~110 ms (no perceived lag).
+    let frameMaxIn = 0;
+    for (let k = 0; k < _loopbackBands.length; k++) {
+      if (_loopbackBands[k] > frameMaxIn) frameMaxIn = _loopbackBands[k];
+    }
+    const audioPresent   = frameMaxIn > Math.max(20, _normPeak * 0.20);
+    const smoothGL       = Math.max(0, Math.min(1, _cfg.spectrum.smoothing ?? 0));
+    const fallTrackHL    = 20 + smoothGL * 70;     // 20-90 ms half-life (Phase T.2 baseline)
+    const fallFadeHL     = 80 + smoothGL * 220;    // 80-300 ms silence fade (unchanged)
+    const dtMsGL         = Math.min(100, now - (_prevRafTick || now));
+    const fallAlphaTrack = 1 - Math.pow(0.5, dtMsGL / fallTrackHL);
+    const fallAlphaFade  = 1 - Math.pow(0.5, dtMsGL / fallFadeHL);
+    const fallA          = audioPresent ? fallAlphaTrack : fallAlphaFade;
+    _prevRafTick = now;
+    let frameMaxGL = 0;
+    for (let k = 0; k < _renderedBands.length; k++) {
+      const tgt = _loopbackBands[k];
+      const cur = _renderedBands[k];
+      if (tgt >= cur) {
+        _renderedBands[k] = tgt;                          // instant rise (heartbeat)
+      } else {
+        _renderedBands[k] = cur + (tgt - cur) * fallA;    // single-stage exponential decay
+      }
+      if (_renderedBands[k] > frameMaxGL) frameMaxGL = _renderedBands[k];
+    }
+    _normPeak = Math.max(_normPeak * 0.995, frameMaxGL);
+  }
+  // Render via WebGL
+  if (_renderedBands && _renderedBands.length > 0) {
+    const baseRgb_glFast = _dynSpectrumColor || hexToRgb(_cfg.spectrum.color?.startsWith('#') ? _cfg.spectrum.color : '#c060ff');
+    const hueOffsetDegFast = (now / 1000) * 45;
+    // v9.6.7: honour cfg.barCount by decimating 480 bands → barCount groups.
+    // canvas2d drew exactly barCount bars by slicing simVals; WebGL always got
+    // all 480 from the SSE texture, making the Number-of-Bars slider a dead
+    // control since v9.4.0. Fix: take the max of each group of (480/barCount)
+    // bands in JS before uploading the texture so the shader sees the right N.
+    const _wantBars = Math.max(1, Math.min(_renderedBands.length, (_cfg.spectrum.barCount ?? 50) | 0));
+    let _bandsToRender = _renderedBands;
+    if (_wantBars < _renderedBands.length) {
+      if (!_decimatedBands || _decimatedLen !== _wantBars) {
+        _decimatedBands = new Float32Array(_wantBars);
+        _decimatedLen   = _wantBars;
+      }
+      const _step = _renderedBands.length / _wantBars;
+      for (let _i = 0; _i < _wantBars; _i++) {
+        const _lo = Math.floor(_i * _step);
+        const _hi = Math.min(Math.floor((_i + 1) * _step), _renderedBands.length);
+        let _mx = 0;
+        for (let _j = _lo; _j < _hi; _j++) { if (_renderedBands[_j] > _mx) _mx = _renderedBands[_j]; }
+        _decimatedBands[_i] = _mx;
+      }
+      _bandsToRender = _decimatedBands;
+    }
+    _glRender(_bandsToRender, _cfg.spectrum, baseRgb_glFast, _dynSpectrumColor, hueOffsetDegFast, _normPeak);
+  }
+}
+
+// v9.4.0 canvas2d branch removed (was lines 3395-3834 in v9.3.x). The function
+// now ends at the WebGL render call above; everything below this point is
+// the next top-level declaration, not part of drawSpectrum.
+
+
+// Skip audio capture in the customizer preview iframe — getUserMedia would
+// trigger a microphone permission popup that alarms users. The spectrum just
+// draws nothing in preview mode; the live OBS overlay still captures audio normally.
+if (!_IS_PREVIEW) initAudio();
+if (_inOBS) {
+  // OBS mode: drive render loop with setInterval so it runs at our configured
+  // fps regardless of the OBS browser-source FPS setting. First draw fires now.
+  const _obsIntervalMs = Math.round(1000 / 120); // 8 ms ≈ 120 fps
+  setInterval(drawSpectrum, _obsIntervalMs);
+  drawSpectrum();
+} else {
+  drawSpectrum(); // self-schedules via requestAnimationFrame inside
+}
+</script>
+</body>
+</html>
