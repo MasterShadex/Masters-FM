@@ -336,7 +336,15 @@ public sealed class SmtcEventBridge : IDisposable
                 var jump        = Math.Abs(posDeltaMs - expectedMs);
                 // Phase H #2: 1000 ms for browsers (jittery), 100 ms otherwise.
                 var seekJumpMs  = IsBrowserLikeSource(sourceName) ? 1000.0 : 100.0;
-                if (jump > seekJumpMs) isSeek = true;
+                // Stage 7.15 Fix A2: require ACTUAL position movement before flagging seek.
+                // Mirrors HeartbeatService.cs Fix A1 -- SMTC TimelineProperties can be stale
+                // even when the event fires (SoundCloud-RPC / Electron MediaSession wrappers
+                // that stop calling setPositionState mid-track). Without this gate the bridge
+                // flags isSeek=true on every event, server B7 re-pins startedAt to the frozen
+                // pos, and the overlay clock freezes.
+                // See V14_S7_14_DIAG_OVERLAY_TIME_FROZEN.md sections 5.2 + 8.1.
+                bool positionActuallyMoved = Math.Abs(posDeltaMs) > 100;
+                if (jump > seekJumpMs && positionActuallyMoved) isSeek = true;
             }
             // Always update so the next event has a fresh baseline (even when
             // the current event was a seek — otherwise we'd flag the corrected
