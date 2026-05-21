@@ -3616,3 +3616,70 @@ Operator confirmed: leave them alone.
 - Any new issues that surface during continued daily use
 
 ### Status: HALT. v14 work cycle CLOSED at 718e3e1. v14.0.0 is local truth. No Stage 7.18 planned. v14 is done.
+
+---
+
+## 2026-05-21 17:34 UTC -- Stage 7.18: Start-on-login default fix + Customize UX audit
+
+**Commits:**
+- `7eb52b6` STEP 0 -- start-on-login diagnosis (Task A pre-fix)
+- `dd1d28d` STEP 1 -- Task A fix: flag bumped `autostart_defaulted_v14rc3` -> `autostart_defaulted_v14_0_0` in `App.xaml.cs`
+- `e71c855` STEP 6 -- customize.html UX inventory phase (sections, controls, labels)
+- `291131c` STEP 7 -- customize.html UX pain-point analysis
+- `ea53514` STEP 8 -- customize.html UX audit synthesis (HALT post-commit)
+- (this entry) STEP 9 -- memory APPEND + brief closure
+
+**Outcome:** Task A PASS at first attempt (operator: "Start on logon works"). Task B audit document committed (no code changes; verified zero customize.html line delta across STEPs 5-8).
+
+### What this stage did
+
+**Task A -- Start-on-login default fix.**
+Fixed the multi-generation flag-gating issue that left fresh v14.0.0 installs with Start-on-login UNCHECKED. The default-on logic at `App.xaml.cs:283-296` was short-circuiting because the rc3-keyed flag `autostart_defaulted_v14rc3` was already `true` in `%APPDATA%\Roaming\MastersFM\config.json` from a prior rc3 install; the v14.0.0 install reused the stale config, skipped Enable(), and the operator's `.lnk` was never recreated. Bumped the flag key to `autostart_defaulted_v14_0_0` so the default-on logic re-applies once per generation -- matches the established pattern in the codebase (v199 -> v14 -> v14rc3 -> v14_0_0 generations). 5-line edit to one source file. Operator-verified at gate.
+
+**Task B -- Customize.html UX audit (READ-ONLY).**
+Produced `V14_S7_18_CUSTOMIZE_UX_AUDIT.md` (committed across STEPs 6/7/8). Structured findings:
+- 16 sections / ~142 distinct controls + 12 dynamic theme cards / 6 642 chars of visible label/help text
+- Pain-point ranking by severity x frequency -- top hits: density-without-grouping, decentralized cross-cutting concerns (accent color, text size), Spectrum Visualizer jargon density
+- v12 baseline comparison: Stage 7.13 was pure visual rebuild -- did NOT change information architecture, control count, section count, section order, default-state. UX complaints predate v14 visual rebuild.
+- First-impression simulation: time-to-find for common tasks (accent color: ~1-2 min then give up; overall size: never findable; first-time setup: no affordance)
+- Three themes: (1) density exposed all at once, (2) decentralized cross-cutting concerns, (3) implicit two-tier user model
+- Explicit non-recommendations list to constrain future redesign brief
+
+**ZERO code changes in `src/customize.html` across Task B** (verified `git diff --stat HEAD~3 HEAD -- src/customize.html` = empty).
+
+### Operator standing rule honored
+- NO git push executed
+- NO git tag created
+- NO GitHub interaction (release / draft / browser / API)
+- rc.3 draft on GitHub untouched
+- All work remains local-only
+
+### Why two tasks in one brief
+Both deal with customize / first-impression UX. Bundling produced one rebuild cycle (Task A's fix) rather than two separate brief overheads.
+
+### v14 status
+Still v14.0.0 (no version bump). Task A counts as a fix-forward. The installed DLL ProductVersion now reads `14.0.0+dd1d28d88c...` (commit suffix bumped from the v14.0.0 cut at `718e3e1`). If operator wants a clean v14.0.1 cut at some point, that's a separate brief.
+
+### Protected files
+All 4 protected source files SHA256 UNCHANGED across this brief (verified at S0, S5, S9.1). Same baseline as `V14_S7_REPLAN_PROTECTED_BASELINE.md`.
+
+### Strikes consumed
+0 / 24
+
+### Next likely brief (operator-commissioned)
+After operator reviews `V14_S7_18_CUSTOMIZE_UX_AUDIT.md`, a UX redesign brief can be scoped based on which pain points the operator wants addressed. The audit's open questions (§3.3) and non-recommendations (§3.4) constrain that brief's scope. No Stage 7.19 planned; next brief depends on operator priorities and possibly real-user feedback before scoping.
+
+### Files touched in this brief
+- `src/tray_csharp/App.xaml.cs` (Task A: 5-line flag-name + comment + log-message bump)
+- `V14_S7_18_TASK_A_LOG.md` (new; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_18_CUSTOMIZE_UX_AUDIT.md` (new; tracked; gitignored-deliverable in spirit but the brief specifies it gets committed as the brief's primary output)
+- `md/memory.md` (this APPEND)
+- `_BACKUPS_2026-05-21_18-11_S7_18_PRE/` (disk-only snapshot)
+
+### Files NOT touched
+- All protected files (rule 1)
+- `src/customize.html` (rule 4 / Task B read-only -- verified zero delta)
+- `version.json` (rule 3)
+- All `src/` outside `App.xaml.cs` (Task A confined to one file; Task B touched none)
+
+### Status: HALT. Stage 7.18 closed. Task A fix live in build; Task B audit awaiting operator review. No Stage 7.19 planned -- next brief is operator-commissioned based on audit findings. v14 still at 14.0.0 (fix-forward); no version bump.
