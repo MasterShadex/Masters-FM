@@ -227,4 +227,80 @@ Numbered observations, written as if encountering the file for the first time:
 
 ---
 
-*Section 4 (synthesis -- pain-point ranking, themes, open questions, non-recommendations) follows in STEP 8 commit. This file is built incrementally per the brief's STEP structure. STEP 8 is the final commit; HARD HALT applies post-commit.*
+## 3. Synthesis (STEP 8) -- NO PROPOSED FIXES
+
+This is the final audit section. Critical constraint: **NO fixes proposed. NO redesign suggestions. NO mockups.** What follows is a structured summary of findings that a future UX-redesign brief (operator-commissioned) can use to scope solutions.
+
+### 3.1 Pain-point ranking (severity x frequency)
+
+Severity: 1 (cosmetic / rare) to 5 (functional blocker / common).
+Frequency hit by new user: 1 (only power users hit this) to 5 (any new user hits this within 1 min).
+
+| Rank | Pain point | Affected sections | Severity | Frequency | Score |
+|---:|---|---|---:|---:|---:|
+| 1 | **Density without grouping** -- 16 sections of 0-16 controls each, no visual sub-grouping inside sections, no inter-section grouping | All sections, especially Dynamic Colors / Text Glow / Track & Artist / Spectrum | 4 | 5 | 20 |
+| 2 | **Discoverability of cross-cutting concerns** -- "accent color" / "overall size" / "make text bigger" require visiting 3-5 sections to set | Dynamic Colors, Text Glow, Track & Artist, Now Playing Label, Platform Badge, Progress & Timestamps | 4 | 5 | 20 |
+| 3 | **Jargon in technical sections** -- Spectrum Visualizer is power-user-grade in the middle of an otherwise approachable panel | Spectrum Visualizer | 3 | 4 | 12 |
+| 4 | **Wall-of-text help blocks** -- Spectrum's Loudness Boost tooltip is 60+ words referencing audio-mixer products by brand | Spectrum Visualizer, Layout, Text Glow | 3 | 4 | 12 |
+| 5 | **No global "size" control** -- card auto-fills OBS browser source dimensions; users look for a manual size knob and don't find one | (across UI -- absence) | 3 | 4 | 12 |
+| 6 | **Hidden dependency: Background Blur requires Background Opacity < 100%** | Card Shape | 4 | 3 | 12 |
+| 7 | **No first-time setup affordance** -- new user dropped into 16-section panel with no "start here" path | Header / overall | 3 | 4 | 12 |
+| 8 | **No search / filter** -- if you don't know the section name, you can't find the control | Sidebar overall | 2 | 4 | 8 |
+| 9 | **5-block repetition in Text Glow** -- same 3-control block stacked 5 times | Text Glow | 2 | 3 | 6 |
+| 10 | **Marquee speed/pause duplicated for Title and Artist** -- four sliders where two would do for most users | Track & Artist | 2 | 3 | 6 |
+
+### 3.2 Three themes ("top 3 things wrong")
+
+**Theme 1: DENSITY EXPOSED ALL AT ONCE.** customize.html's underlying complexity (~140 controls) is visible from the moment the page opens -- the user sees 16 section headers in a tall sidebar list. There is no progressive disclosure beyond the per-section collapse. A user who wants to make one small change ("hide the spectrum bars") has to navigate the same surface as a power user choreographing a full custom layout. Specific examples: (a) Visual Themes is one click away from a "good enough" result for 80 % of users, yet it lives in the same visual hierarchy as Spectrum Visualizer's 16-control engineering panel. (b) Dynamic Colors is 16 toggles in a flat list, when most users want "all on" or "all off". (c) Text Glow is 5 identical control blocks back-to-back -- the repetition itself is the cognitive cost, not any single block.
+
+**Theme 2: DECENTRALIZED CROSS-CUTTING CONCERNS.** Conceptually-unified properties are spread across multiple sections. "The color of stuff on the card" is decentralized into 25 separate color pickers across 8 sections. "How big the text is" is decentralized across Track & Artist (Title size + Artist size), Now Playing Label (NP size), Platform Badge (badge size), Progress & Timestamps (timestamp size). Specific examples: (a) Asking "change the accent color" requires visiting Dynamic Colors (to disable auto-color), then Track & Artist (title color), then Outer Glow (glow color), then Progress & Timestamps (timestamp + progress fill colors). (b) Asking "make text larger" requires four sections. (c) No section is named in a way that suggests "global color" or "global size".
+
+**Theme 3: TWO-TIER USER MODEL IS IMPLICIT.** customize.html serves two distinct audiences -- a casual user who picks a theme + maybe tweaks one or two things, and a power user who choreographs a custom layout + per-element styling. The UI does not surface this tiering. A new user opening the page sees the SAME 16 sections that a power user does. Specific examples: (a) "Spectrum Visualizer" includes audio-engineering jargon that a casual user has no business needing; it should arguably be behind a "Show advanced" toggle. (b) "Layout" with drag-and-drop positioning is genuinely powerful but is also the kind of feature that an unfamiliar user might toggle "Use Custom Layout" and break their working preset. (c) Visual Themes is the casual-user shortcut but is the FIRST section in the list, with no signposting that "you can stop here if you like one of these".
+
+### 3.3 Open questions (only operator / real users can answer)
+
+Things the audit cannot resolve from static reading:
+
+1. **Which sections do operator's users actually open most often?** A telemetry sample (which `data-sec` values get `.open` toggled in a typical session) would prioritize redesign work. The audit assumes worst-case overwhelm; reality may be that 80 % of users only open Visual Themes + maybe Album Art.
+
+2. **Have specific controls been complained about by name?** "Loudness Boost is confusing" vs. "the whole spectrum section is overwhelming" implies different fixes. The audit cannot distinguish without operator user-feedback data.
+
+3. **Is the user complaint mostly from new users, or also from long-term users?** New-user complaints suggest onboarding gaps. Long-term-user complaints suggest the IA itself is wrong (or grew complex over versions). The fix shapes differ.
+
+4. **Is the goal "easier to start" or "easier to power-use"?** Both are valid; both produce different redesigns. A simplified default mode + advanced toggle suits the first; better discoverability + search suits the second.
+
+5. **Are there specific cross-cutting concerns operator wants prioritized?** If "users always want to change accent color first", surfacing a "Theme Color" master is a focused fix. If "users always want to make the overlay smaller", a global Size control is.
+
+6. **What's the constraint on the customize.html surface size?** Could it be wider than 370 px? Two-column? Tabbed? The audit assumes the current single-column sidebar layout; a different page-level structure could reduce density dramatically without removing any controls.
+
+7. **Is the operator's actual user base professional streamers (power-tweakers) or casual streamers (set-and-forget)?** Audit assumes mixed; the prioritization depends on which is dominant.
+
+8. **Is preserving every existing control mandatory, or are some genuinely removable?** The redundancy/cruft section (§2.4) flags candidates but does not propose removal. Future redesign brief could authorize selective removal -- that's an operator decision.
+
+### 3.4 What this audit does NOT recommend
+
+Explicit non-recommendations to constrain the future redesign brief's scope:
+
+- **This audit does NOT recommend removing any controls.** Every control noted as "redundancy candidate" is flagged for OPERATOR REVIEW, not for removal. The redundancy is suggestive, not authoritative.
+- **This audit does NOT recommend a wizard / guided setup.** A "first-time" path was flagged as a gap; whether to address it via a wizard, a Quick Start link, a default-expanded "Welcome" section, or by other means is OPERATOR'S CALL.
+- **This audit does NOT recommend collapsing more sections by default vs. expanding them by default.** All sections currently default-collapsed; changing this is one possible fix for the "where do I start?" gap, but so is the opposite.
+- **This audit does NOT recommend an "Advanced mode" toggle.** A two-tier user model was flagged as IMPLICIT in the UI; whether to make it EXPLICIT via a toggle is OPERATOR'S CALL.
+- **This audit does NOT recommend specific re-grouping of sections.** "Decentralized cross-cutting concerns" was flagged; whether the answer is a "Global" tab, a "Theme Color" master picker, search/filter, or simply better section labeling is OPERATOR'S CALL.
+- **This audit does NOT recommend any specific labeling change.** "Jargon-heavy labels" was flagged; whether the answer is rewrites, tooltips, info-icons, or contextual hide-on-novice-mode is OPERATOR'S CALL.
+- **This audit does NOT recommend rewriting the Spectrum Visualizer's tooltip copy.** The brand-name references (SteelSeries Sonar, Voicemeeter) and version-number leakage (v9.6.5) were flagged as wall-of-text; whether to rewrite, summarize, link out, or hide behind an info icon is OPERATOR'S CALL.
+
+All of these are POSSIBLE futures. None of them is decided by this audit.
+
+---
+
+## 4. References
+
+- `src/customize.html` (4346 lines / 214 752 bytes; current v14 state from Stage 7.13)
+- `_archive/v12_customize_baseline/customize.html` (4204 lines / 207 199 bytes; pre-Stage-7.13 snapshot)
+- `V14_S7_13_REPORT.md` (Stage 7.13 closure -- documents which CSS variables / tokens were preserved)
+- `V14_S7_13_DESIGN_TOKENS.md` (v14 design token catalogue)
+- `CLAUDE_CODE_INSTRUCTIONS.md` (Stage 7.18 brief)
+
+---
+
+*Stage 7.18 Task B audit complete. NO CODE CHANGES. NO FIX PROPOSALS. STEP 8 commit lands this synthesis -- HARD HALT post-commit per brief ABSOLUTE RULE 8. Operator reviews this document; future redesign brief is operator-commissioned and out of scope here.*
