@@ -110,4 +110,121 @@ Categorization sampling (2-3 per section, deliberately picking the most visible 
 
 ---
 
-*Sections 2-4 (pain-point identification, v12 baseline comparison, synthesis) follow in STEPs 7 and 8 commits. This file is built incrementally per the brief's STEP structure.*
+## 2. Pain-point identification (STEP 7)
+
+### 2.1 Cognitive load hot-spots
+
+Ranking the top 5 sections by likely overwhelm-factor (control count + text density + mixed control types + section length):
+
+| Rank | Section | Controls | Text chars | Why it overwhelms |
+|---:|---|---:|---:|---|
+| 1 | **Spectrum Visualizer** | 16 | 1195 | Highest text density of any section; mix of toggle / slider / dropdown / color / button; jargon-heavy labels (Reaction Speed, Loudness Boost, Bar Roundness); brand-name references inside the tooltip (SteelSeries Sonar, Voicemeeter) require audio-engineering context. |
+| 2 | **Text Glow** | 15 | 697 | Five identical 3-control blocks (Enabled / Glow Color / Glow Intensity) stacked back-to-back for five different text elements, with no visual sub-grouping. User has to read each block to know which text element it's for. |
+| 3 | **Dynamic Colors** | 16 | 422 | 16 boolean toggles, no visual grouping, no hierarchy. Each toggle is plain-English but the SHEER NUMBER on one screen produces "where do I even start" overwhelm. Decisions are mostly correlated (if you want dynamic on, you likely want all of them on) but the UI presents them as 16 independent choices. |
+| 4 | **Layout** | 12 | 782 | 8 layout-node vis/lock pairs (16 toggles?) plus intro paragraph + tip + template picker + Edit button. The vis/lock pairing is intelligible after you read the inline "Left toggle = visible. Right toggle (🔒) = lock" hint, but the hint is ABOVE the rows, not adjacent to the first row. |
+| 5 | **Track & Artist** | 12 | 428 | Two 6-control blocks (Title and Artist) with identical layout but distinct controls each. Plus a "Marquee Speed" / "Marquee Pause" duplication between Title and Artist that requires the user to set both. Color picker placement varies between Title and Artist (Title has color BEFORE marquee, Artist has color AFTER -- this is from the source line ordering). |
+
+**Bottom 5 (least overwhelming)**: General (1 control), Font (1 control), Spinning Border (2), Outer Glow (5), Album Art (4). These are well-scoped single-purpose sections.
+
+### 2.2 Jargon hot-spots
+
+Ranking the top 5 sections by jargon-per-control density:
+
+| Rank | Section | Jargon examples | Plain-English ratio |
+|---:|---|---|---|
+| 1 | **Spectrum Visualizer** | "Reaction Speed", "Loudness Boost", "Bar Roundness", "Lowest/Tallest Bar Height", "Color Mode", "Mirror Bars", "Auto-Volume Match", FPS-related fields; SteelSeries / Voicemeeter brand context | <30% plain English |
+| 2 | **Text Glow** | "Glow Intensity" + the "HUE-SHIFTED Artist Glow" tooltip explaining "60° apart on the colour wheel" | ~50% plain |
+| 3 | **Card Shape** | "BG Angle" (abbreviation), "BG Top", "BG Bottom", "Border Thickness" (geometry), "Background Blur" (which interacts with Background Opacity in a non-obvious way) | ~50% plain |
+| 4 | **Layout** | "Snap Grid", "vis/lock", "layout template", emoji-prefixed node names that double as legends | ~60% plain (helped by emoji labels) |
+| 5 | **Outer Glow** | "Blur Radius", "Spread", glow-effect terminology generally | ~60% plain |
+
+### 2.3 Discoverability gaps
+
+Specific examples of things a new user would have trouble finding:
+
+| Buried thing | Where it lives | Why hard to find |
+|---|---|---|
+| **Overall card size / scale** | Currently NOT a top-level control. The card auto-fills the OBS browser source dimensions. New users may look in "General" or "Layout" for a "Size" control; there isn't one. | Common request, no obvious home |
+| **Accent color** (i.e. the dominant brand color of the card) | NOT a single control. Each text element / glow / progress fill has its OWN color picker (~25 separate pickers). New users look for "Accent Color" or "Theme Color" and don't find one. | Decentralized across 16 sections |
+| **"Make text bigger / more readable"** | Spread across Track & Artist, Now Playing Label, Platform Badge sections -- each with its own Font Size slider, no global "Text Size" setting | Decentralized across 3 sections |
+| **First-time setup / "what do I do first?"** | No setup wizard. No "Quick Start" guide inside customize.html. The Stage 7.13 design assumes the user picks a theme from Visual Themes first, then tweaks. But Visual Themes is collapsed by default. | No onboarding affordance |
+| **How to disable a single feature** (e.g. "I don't want the spinning border") | Spread across multiple sections: Spinning Border has its own toggle, Outer Glow has its own, Text Glow has 5 toggles, Dynamic Colors has 16 toggles. To "turn off everything fancy" the user has to find each section. | Decentralized opt-outs |
+| **Why a slider does what it does (preview-free)** | Many sliders affect properties that have no immediate preview animation. Slide-In Animation duration only triggers on track change; Glow Intensity changes are subtle. | Settings with delayed/subtle feedback |
+| **Effect of "Background Blur" alone** | Background Blur only renders when Background Opacity < 100%. New users move the Blur slider with Opacity at default 100%, see nothing happen, and assume the Blur slider is broken. The Card Shape section's `sec-help` mentions this interplay, but it's easy to miss. | Hidden dependency on Opacity |
+
+### 2.4 Redundancy / cruft (candidates for review -- DO NOT REMOVE)
+
+Things that MAY be redundant. Flagged for operator's review; brief explicitly says DO NOT REMOVE in this audit:
+
+| Candidate | Where | Type of redundancy |
+|---|---|---|
+| **Marquee Speed + Marquee Pause for Title AND Artist** | Track & Artist section | The user almost always wants Title and Artist to scroll at the same speed. Having FOUR sliders (Title Speed, Title Pause, Artist Speed, Artist Pause) where two would do is a candidate for a "Marquee" sub-group with single speed + single pause. |
+| **5 separate Text Glow blocks (one per element)** | Text Glow section | Each text element gets identical Enable/Color/Intensity controls. A user who wants "glow on title only, off everywhere else" has to toggle 5 individually. Candidate for a master toggle + per-element overrides. |
+| **16 Dynamic Colors toggles** | Dynamic Colors section | Many users will want "all on" or "all off". A master toggle + a sub-group of overrides is a candidate. |
+| **"Reset to Defaults" button in header AND "↺ Reset" buttons next to many sliders** | Header + sliders | Per-slider reset is good UX. Header-level reset is also good. The two coexist; not actually redundant on examination, just dense. |
+| **Preset Manager + Apply to OBS as separate buttons** | Header | The functional distinction is real (presets save *current state* with a name; Apply pushes current state to OBS without naming). May be unclear to new users. |
+| **Visual Themes section (theme cards) + Customize Overlay window itself** | Whole UI | The "Visual Themes" picker writes ~30 settings at once. The rest of the customize UI lets you tweak those 30 settings individually. For a new user, picking a theme is sufficient; for a power user, the rest of the panel is essential. The UI doesn't surface this two-tier model. |
+
+### 2.5 v12 baseline comparison
+
+Stage 7.13 rebuilt customize.html visually (v14 design tokens) but explicitly preserved the structural layout. Comparing `_archive/v12_customize_baseline/customize.html` (4204 lines) with current `src/customize.html` (4346 lines):
+
+| Metric | v12 baseline | v14 current | Delta |
+|---|---:|---:|---:|
+| Total lines | 4204 | 4346 | +142 (token additions, reduced-motion guard, accent bar HTML, comments) |
+| File size (bytes) | 207 199 | 214 752 | +7 553 (+3.6 %) |
+| Number of sections | 16 | 16 | unchanged |
+| Section ORDER | identical | identical | unchanged |
+| Section names | identical | identical | unchanged |
+| Top-level header (Logo + Preset Manager + Reset + Apply) | present | present | accent bar added (cosmetic) |
+| Number of controls (per inventory above) | ~132 sidebar + 12 themes | ~132 sidebar + 12 themes | unchanged |
+| Default collapsed/expanded state of sections | all collapsed | all collapsed | unchanged |
+
+**Conclusion:** Stage 7.13 was a **pure visual rebuild** -- it did NOT change information architecture, control count, section count, section order, default-state. Whatever UX complaints exist about customize.html, **Stage 7.13 did NOT cause them** -- they predate v14. The visual rebuild made things look "more polished" but didn't address density, jargon density, or discoverability. Operator complaints about "too much text" / "not friendly enough" are about the underlying IA, not Stage 7.13's visual changes.
+
+This is critical context for the future redesign brief: the answer is NOT "undo Stage 7.13" or "fix what Stage 7.13 broke." It's "address an IA issue that has existed across versions."
+
+### 2.6 First-impression pass (Ruflo as fresh-eyes simulator)
+
+Numbered observations, written as if encountering the file for the first time:
+
+1. **The accent bar at the very top** of the page (3-px animated brand-purple) catches the eye first. Suggests "this is a polished product with thoughtful styling." Positive first signal.
+
+2. **The header reads "Master's FM | Overlay Customizer"** with a small icon and the three action buttons (Preset Manager / Reset / Apply) right-aligned. Clear. I know what app I'm in.
+
+3. **The sidebar dominates the left side.** I see ~6 section headers visible before scrolling: "🎨 Visual Themes", "⚙️ General", "📐 Layout", "🅰️ Font", "🟦 Card Shape", "🌈 Dynamic Colors". The emoji icons help skim. The labels are nouns I can parse.
+
+4. **The right side is a live preview** showing the actual overlay rendered. This is great -- I can immediately see what I'm customizing. Probably the single biggest UX strength of this surface.
+
+5. **The "Apply to OBS" button on the top right** is bright brand-purple and clearly the primary action. I assume "this is what I click when I'm done." Good signal.
+
+6. **I want to start customizing. Where?** My eye goes back to Visual Themes (top of the sidebar, emoji is the most "themey"). I click. The section expands. I see 12 theme cards. I pick "Cool Blue." The preview updates. Cool, I'm in.
+
+7. **Now I want to change something specific** -- say, the album art size. Where is "Album Art"? I scan the sidebar headers. I see "Album Art" at the bottom of what's visible. I scroll, find it, click. The section expands. I see "Size" slider. I drag it. Preview updates. Great.
+
+8. **Now I want to change the OVERALL card size** ("make the whole thing smaller"). Where? I look for "Size" or "Scale" or "Card Size". I check "General" (1 control: Opacity). Nope. I check "Card Shape" (corners + colors + blur). Nope. I check "Layout" (drag elements around). Nope. **I cannot find an overall card-size control.** Time spent: ~30-60 seconds of scanning, then I give up.
+
+9. **Now I want to change the "accent color"** (the dominant brand color of the card). Where? I look for "Accent" or "Color" or "Theme Color". There's no such section. There IS "Dynamic Colors" but that's about extracting from album art. **The actual accent color is decentralized across ~25 separate color pickers.** Time spent: ~1-2 minutes of confusion. I might give up and just pick a different Visual Theme.
+
+10. **The "Spectrum Visualizer" section** -- I expand it because the name sounds interesting. I see 16 controls, a long help paragraph mentioning SteelSeries Sonar and Voicemeeter, sliders called "Loudness Boost" and "Reaction Speed", and "Color Mode" with multiple options. **This feels like a different app** -- way more technical than the rest of customize.html.
+
+11. **The "Layout" section** -- I expand it. There's a "Use Custom Layout" toggle, an intro paragraph explaining drag-and-drop, eight rows that each have TWO toggles (visibility + lock) with emoji prefixes. After reading the inline "Left toggle = visible. Right toggle (🔒) = lock" hint, I get it. But the hint is positioned ABOVE the first row, not inline -- I almost missed it.
+
+12. **No search bar** anywhere. If I knew the control was called "Spinning Border Speed" or "Outer Glow Pulse Duration", I couldn't search for it. I have to know which section to look in.
+
+13. **No "first-time setup" affordance.** I'm dropped into a 16-section settings panel. There's no "Start here" / "Quick setup" / "Recommended for new users" path.
+
+14. **Reset to Defaults in the header is helpful and findable.** If I muck things up, I have a panic button. Good.
+
+15. **Time-to-find for common tasks** (Ruflo's mental stopwatch):
+    - "Change accent color" -- never directly findable; ~1-2 min of scanning, then accept that you have to pick a theme
+    - "Make overlay smaller" -- not findable as a single control; never resolved
+    - "First-time setup" -- not findable; assumed to be "pick a theme"
+    - "Turn off the spinning border" -- ~20 sec (scan headers, find "Spinning Border", expand, toggle off)
+    - "Change font" -- ~10 sec (find "Font" section, change dropdown)
+    - "Hide album art" -- ~30 sec (find "Album Art", find toggle inside)
+    - "Stop the marquee scrolling on the title" -- ~1 min (which section? "Track & Artist"? Try, find Marquee Speed slider -- but how do I just turn it OFF? There's a speed slider but no enable toggle? Need to set speed to 0?)
+
+---
+
+*Section 4 (synthesis -- pain-point ranking, themes, open questions, non-recommendations) follows in STEP 8 commit. This file is built incrementally per the brief's STEP structure. STEP 8 is the final commit; HARD HALT applies post-commit.*
