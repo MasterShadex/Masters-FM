@@ -183,3 +183,113 @@ Exact proposed diff:
 Files staged: `V14_S7_18_TASK_A_LOG.md` only. No source edits in STEP 0.
 
 Commit message: `Stage 7.18: STEP 0 -- start-on-login default diagnosis (Task A pre-fix)`
+
+**Committed:** `7eb52b6` -- *Stage 7.18: STEP 0 -- start-on-login default diagnosis (Task A pre-fix)*
+
+---
+
+## STEP 1 -- Apply Task A fix
+
+### S1.1 Applied
+
+Five-line edit to `src/tray_csharp/App.xaml.cs`:
+- Comment block at lines 278-282 updated (now lines 278-287; added Stage 7.18 attribution)
+- `GetValue` flag name: `autostart_defaulted_v14rc3` -> `autostart_defaulted_v14_0_0`
+- Log message: `"AutoStart defaulted ON (v14 rc3 first run)"` -> `"AutoStart defaulted ON (v14.0.0 first run)"`
+- `SetValue` flag name: `autostart_defaulted_v14rc3` -> `autostart_defaulted_v14_0_0`
+
+`git diff --stat`: 1 file changed, 13 insertions(+), 8 deletions(-).
+
+### S1.3 Build check
+
+`dotnet build --no-restore -c Release` (tray_csharp project): 0 Warning(s), 0 Error(s). 8.87 s elapsed.
+
+### S1.4 Commit
+
+**Committed:** `dd1d28d` -- *Stage 7.18: STEP 1 -- Task A start-on-login default-on*
+
+---
+
+## STEP 2 -- Full rebuild
+
+`_full_rebuild.ps1` ran as background task `b0t651jno` (~10 min cold, 18:10:11 -> 18:19:25 local). All 5 stages exit=0. MSI signed `CN=MasterShadex`. Installed OK. Tray + server + audio_spectrum relaunched.
+
+Installed `MastersFM_Tray_v14.dll` ProductVersion: `14.0.0+dd1d28d88c87a684b6567207e15ad5153600456e` -- matches STEP 1 commit.
+
+---
+
+## STEP 3 -- Internal sanity + verification gate
+
+### S3.1 Sanity check (3 processes + HTTP)
+
+| Process | Status |
+|---|---|
+| `MastersFM_Tray` (PID 18064) | running |
+| `server` (PID 41612) | running |
+| `audio_spectrum` (PID 35572) | running |
+| HTTP `GET /current` | 200 OK |
+
+### S3.2 Registry / config check (Ruflo-side, pre-gate)
+
+All three signals confirm the fix works:
+
+```
+%APPDATA%\Roaming\MastersFM\config.json:
+  ...
+  "autostart_defaulted_v14rc3": true,         <-- prior rc3 flag (preserved)
+  "autostart_defaulted_v14_0_0": true         <-- NEW v14.0.0 flag (just written)
+```
+
+```
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Master's FM.lnk
+  2141 bytes, mtime 2026-05-21 18:19  <-- created by this install
+```
+
+Tray log shows the EXACT expected sequence:
+```
+[2026-05-21 18:19:26.239] [AutoStart] AutoStartService initialized; initial state=False
+[2026-05-21 18:19:26.339] [AutoStart] enabled; lnk=...\Master's FM.lnk -> target=...\MastersFM.exe
+[2026-05-21 18:19:26.343] [AutoStart] AutoStart defaulted ON (v14.0.0 first run)
+[2026-05-21 18:19:26.353] [Config] set autostart_defaulted_v14_0_0 = True; persisted
+```
+
+This is the Flavor B scenario from S0.3 (returning user upgrading) -- now resolved. The rebuild's uninstall step removed the prior `.lnk`, install booted with `initial state=False`, new flag absent from config -> default-on block fired -> `.lnk` recreated -> flag written. Same code path also covers Flavor A (brand-new user, no prior config) since both lead to `defaulted=false` and `IsEnabled=false` at first launch.
+
+### S3.3 Operator verification gate
+
+Operator replied **PASS** ("Start on logon works"). First attempt. No FAIL handling needed.
+
+---
+
+## STEP 4 -- Task A wrap-up
+
+### S4.1 Protected files SHA256 recheck
+
+All 4 protected source files SHA256 MATCH `V14_S7_REPLAN_PROTECTED_BASELINE.md`:
+
+| File | Observed |
+|---|---|
+| `src/tray.ps1` | `19011f0b...09533f` MATCH |
+| `src/tray_native/tray_native.cs` | `6b9804a1...fa9148` MATCH |
+| `src/launcher.cs` | `291ed4c9...e0bd9d` MATCH |
+| `src/server.js` | `c15ed931...02a16af` MATCH |
+
+### S4.2 No commit at this STEP
+
+Per brief: "Task A is committed at STEP 1. STEP 4 is just the closure checkpoint." This closing note will travel with the next Task B commit (STEP 6 inventory).
+
+### S4.3 Task A outcome summary
+
+| | |
+|---|---|
+| Diagnosis commit | `7eb52b6` (Case C confirmed via tray log) |
+| Fix commit | `dd1d28d` (1 file, 13/8 lines, 5 logical edits) |
+| Rebuild | exit 0, `14.0.0+dd1d28d...` ProductVersion |
+| Sanity check | PASS (3 procs + HTTP 200 + config flag + .lnk + log sequence) |
+| Operator gate | PASS first attempt ("Start on logon works") |
+| Strikes consumed | 0 |
+| Protected files | UNCHANGED |
+| Files touched | `src/tray_csharp/App.xaml.cs` (5 logical edits, version-string-style flag bump) |
+
+Task A closed. Proceeding to Task B (read-only UX audit).
+
