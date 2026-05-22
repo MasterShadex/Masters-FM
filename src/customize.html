@@ -658,6 +658,16 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   margin-bottom: var(--sp-1);
 }
 
+/* Stage 7.19: per-control help text == sits between rows, smaller / muted.
+   Distinct from .sec-help (section intro) and .sub-label (sub-section header). */
+.control-help {
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: var(--sp-1) var(--sp-1) var(--sp-2);
+  padding: 0;
+}
+
 /* ─── Theme grid ────────────────────────────────────────────────────────────── */
 .theme-grid {
   display: grid; grid-template-columns: 1fr 1fr;
@@ -839,6 +849,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-card-radius">56px</span>
           </div>
         </div>
+        <p class="control-help">How rounded the card corners look. 0 = sharp corners.</p>
         <div class="row">
           <div class="row-label">Border thickness</div>
           <div class="row-ctrl">
@@ -846,6 +857,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-card-thick">5px</span>
           </div>
         </div>
+        <p class="control-help">How thick the spinning border ring is. Set to 0 to hide.</p>
         <div class="row">
           <div class="row-label">Background gradient angle</div>
           <div class="row-ctrl">
@@ -853,6 +865,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-card-angle">148°</span>
           </div>
         </div>
+        <p class="control-help">Direction of the color blend across the card.</p>
         <div class="row">
           <div class="row-label">Top background color</div>
           <div class="row-ctrl">
@@ -860,6 +873,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <input type="text"  id="c-card-top"   class="hex-in" placeholder="rgba(...)">
           </div>
         </div>
+        <p class="control-help">Color at one end of the gradient.</p>
         <div class="row">
           <div class="row-label">Bottom background color</div>
           <div class="row-ctrl">
@@ -867,6 +881,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <input type="text"  id="c-card-bot"   class="hex-in" placeholder="rgba(...)">
           </div>
         </div>
+        <p class="control-help">Color at the other end of the gradient.</p>
         <div class="row">
           <div class="row-label">Blur behind the card</div>
           <div class="row-ctrl">
@@ -874,6 +889,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-card-blur">0px</span>
           </div>
         </div>
+        <p class="control-help">Only works if Card transparency is below 100.</p>
         <div class="row">
           <div class="row-label">Card transparency</div>
           <div class="row-ctrl">
@@ -881,7 +897,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-card-opacity">99%</span>
           </div>
         </div>
-        <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Card transparency. Lower values let Background Blur become visible (the card needs some transparency for blur to show through). 99% = current default look.</p>
+        <p class="control-help">How see-through the card is. 100 = fully solid. Lower values let "Blur behind the card" become visible.</p>
       </div>
     </div>
 
@@ -1064,24 +1080,28 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <p class="sec-help">Add a soft neon glow halo around any text element on the card — Now Playing label, Platform badge, Track title, Artist, and the Timestamps. Each element gets its own enable toggle, glow color, and intensity slider. Default 6 px is subtle and works with most themes; crank it up for synthwave / retro looks.</p>
 
         <div class="sub-label">Now Playing Label Glow</div>
+        <p class="control-help">Soft halo around the "Now Playing" label. Set the size to 0 to hide.</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-np-glow-on"><span class="track"></span></label></div></div>
         <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-np-glow-color-p"><input type="text" id="c-np-glow-color" class="hex-in"></div></div>
         <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-np-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-np-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Platform Badge Glow</div>
+        <p class="control-help">Soft halo around the platform badge (SoundCloud, Spotify, etc.).</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-platform-glow-on"><span class="track"></span></label></div></div>
         <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-platform-glow-color-p"><input type="text" id="c-platform-glow-color" class="hex-in"></div></div>
         <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-platform-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-platform-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Track Title Glow</div>
+        <p class="control-help">Soft halo around the track title.</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-title-glow-on"><span class="track"></span></label></div></div>
         <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-title-glow-color-p"><input type="text" id="c-title-glow-color" class="hex-in"></div></div>
         <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-title-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-title-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Artist Glow</div>
+        <p class="control-help">Soft halo around the artist name.</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-artist-glow-on"><span class="track"></span></label></div></div>
         <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-artist-glow-color-p"><input type="text" id="c-artist-glow-color" class="hex-in"></div></div>
         <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-artist-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-artist-glow-size">6px</span></div></div>
@@ -1089,6 +1109,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 
         <div class="divider"></div>
         <div class="sub-label">Timestamps Glow</div>
+        <p class="control-help">Soft halo around the time text.</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-ts-glow-on"><span class="track"></span></label></div></div>
         <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-ts-glow-color-p"><input type="text" id="c-ts-glow-color" class="hex-in"></div></div>
         <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-ts-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-ts-glow-size">6px</span></div></div>
@@ -1291,6 +1312,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-title-size">68px</span>
           </div>
         </div>
+        <p class="control-help">Font size of the track title.</p>
         <div class="row">
           <div class="row-label">Title boldness</div>
           <div class="row-ctrl">
@@ -1304,6 +1326,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             </select>
           </div>
         </div>
+        <p class="control-help">Heavier = thicker letters.</p>
         <div class="row">
           <div class="row-label">Title color</div>
           <div class="row-ctrl">
@@ -1311,6 +1334,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <input type="text"  id="c-title-color" class="hex-in">
           </div>
         </div>
+        <p class="control-help">Color of the title text.</p>
         <div class="row">
           <div class="row-label">How fast title scrolls</div>
           <div class="row-ctrl">
@@ -1318,6 +1342,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-title-mspd">68</span>
           </div>
         </div>
+        <p class="control-help">Pixels per second when title is too long to fit.</p>
         <div class="row">
           <div class="row-label">Title scroll pause</div>
           <div class="row-ctrl">
@@ -1325,6 +1350,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-title-mpause">2s</span>
           </div>
         </div>
+        <p class="control-help">Pause time at each end of the scroll.</p>
         <div class="row">
           <div class="row-label">Title letter spacing</div>
           <div class="row-ctrl">
@@ -1332,6 +1358,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-title-spacing">0px</span>
           </div>
         </div>
+        <p class="control-help">Extra space between each letter.</p>
         <div class="divider"></div>
         <div class="sub-label">Artist</div>
         <div class="row">
@@ -1341,6 +1368,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-artist-size">44px</span>
           </div>
         </div>
+        <p class="control-help">Font size of the artist name.</p>
         <div class="row">
           <div class="row-label">Artist boldness</div>
           <div class="row-ctrl">
@@ -1353,6 +1381,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             </select>
           </div>
         </div>
+        <p class="control-help">Heavier = thicker letters.</p>
         <div class="row">
           <div class="row-label">Artist color</div>
           <div class="row-ctrl">
@@ -1360,6 +1389,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <input type="text"  id="c-artist-color" class="hex-in">
           </div>
         </div>
+        <p class="control-help">Color of the artist text.</p>
         <div class="row">
           <div class="row-label">Artist letter spacing</div>
           <div class="row-ctrl">
@@ -1367,6 +1397,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-artist-spacing">0px</span>
           </div>
         </div>
+        <p class="control-help">Extra space between each letter.</p>
         <div class="row">
           <div class="row-label">How fast artist scrolls</div>
           <div class="row-ctrl">
@@ -1374,6 +1405,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-artist-mspd">68</span>
           </div>
         </div>
+        <p class="control-help">Pixels per second when name is too long to fit.</p>
         <div class="row">
           <div class="row-label">Artist scroll pause</div>
           <div class="row-ctrl">
@@ -1381,6 +1413,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-artist-mpause">2s</span>
           </div>
         </div>
+        <p class="control-help">Pause time at each end of the scroll.</p>
         <p class="sec-help" style="margin-top:-4px;font-size:11px;opacity:0.7;">Long artist names scroll left-to-right and pause at each end (same as track title).</p>
       </div>
     </div>
@@ -1402,6 +1435,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <label class="toggle"><input type="checkbox" id="c-spec-on"><span class="track"></span></label>
           </div>
         </div>
+        <p class="control-help">Turns the audio bars on or off.</p>
 
         <!-- ② SMART AUTO-TUNE — set-and-forget magic -->
         <div class="divider"></div>
@@ -1413,6 +1447,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Bars stay full even when audio is quiet</span>
           </div>
         </div>
+        <p class="control-help">Normalizes loud and quiet music to similar bar heights.</p>
         <div class="row">
           <div class="row-label">Make quiet sounds louder</div>
           <div class="row-ctrl">
@@ -1421,6 +1456,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <button type="button" id="c-spec-sensitivity-reset" class="reset-btn" title="Reset to default (1.0×)">↺</button>
           </div>
         </div>
+        <p class="control-help">Helpful if your music sounds quiet on stream. 1.0× = no boost.</p>
         <!-- ③ LOOK & FEEL — colour, shape, layout -->
         <div class="divider"></div>
         <div class="sub-label">🎨 Look &amp; feel</div>
@@ -1434,6 +1470,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             </select>
           </div>
         </div>
+        <p class="control-help">Rainbow cycles through hues. Solid uses one color. Gradient blends three.</p>
         <div class="row">
           <div class="row-label">Base color</div>
           <div class="row-ctrl">
@@ -1441,6 +1478,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <input type="text"  id="c-spec-color" class="hex-in">
           </div>
         </div>
+        <p class="control-help">Used by Solid and Gradient color modes.</p>
         <div class="row">
           <div class="row-label">Mirror the bars</div>
           <div class="row-ctrl">
@@ -1448,6 +1486,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Symmetric mirror effect</span>
           </div>
         </div>
+        <p class="control-help">Makes the bar pattern symmetric around the center.</p>
         <div class="row">
           <div class="row-label">Opacity</div>
           <div class="row-ctrl">
@@ -1455,6 +1494,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-opacity">100%</span>
           </div>
         </div>
+        <p class="control-help">How see-through the bars are.</p>
 
         <!-- ④ BAR SHAPE — physical look of each bar -->
         <div class="divider"></div>
@@ -1466,6 +1506,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-bars">480</span>
           </div>
         </div>
+        <p class="control-help">More bars = finer frequency detail.</p>
         <div class="row">
           <div class="row-label">Spacing between bars</div>
           <div class="row-ctrl">
@@ -1473,6 +1514,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-gap">0px</span>
           </div>
         </div>
+        <p class="control-help">Gap between bars. 0 for a solid block.</p>
         <div class="row">
           <div class="row-label">How round the bar tops are</div>
           <div class="row-ctrl">
@@ -1480,6 +1522,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-radius">0px</span>
           </div>
         </div>
+        <p class="control-help">Rounded vs. flat bar tops.</p>
         <div class="row">
           <div class="row-label">Minimum bar height</div>
           <div class="row-ctrl">
@@ -1487,6 +1530,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-min">0px</span>
           </div>
         </div>
+        <p class="control-help">Shortest bar height even when quiet. 0 for full reactivity.</p>
         <div class="row">
           <div class="row-label">Maximum bar height</div>
           <div class="row-ctrl">
@@ -1494,6 +1538,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-height">×1.0</span>
           </div>
         </div>
+        <p class="control-help">How tall bars can grow on loud peaks.</p>
 
         <!-- ⑤ ANIMATION FEEL — speed of the dance -->
         <div class="divider"></div>
@@ -1505,7 +1550,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-response">0.01 ms</span>
           </div>
         </div>
-        <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Lower = snappier, closer to real-time. Higher = lazier, less CPU. Default already feels real-time on modern machines.</p>
+        <p class="control-help">Lower = snappier, closer to real-time. Higher = lazier and uses less CPU.</p>
         <div class="row">
           <div class="row-label">Smoothness</div>
           <div class="row-ctrl">
@@ -1513,7 +1558,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-smooth">0.60</span>
           </div>
         </div>
-        <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Lower = punchier, more responsive transients. Higher = silkier, dreamier flow.</p>
+        <p class="control-help">Lower = punchier transients. Higher = silkier flow.</p>
         <div class="row">
           <div class="row-label">Animation frame rate (advanced)</div>
           <div class="row-ctrl">
@@ -1521,7 +1566,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <span class="range-val" id="v-spec-fps">120</span>
           </div>
         </div>
-        <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">How often the bars are redrawn per second. Match this to your monitor (60 / 144 / 240) for the smoothest result.</p>
+        <p class="control-help">How often bars redraw per second. Match to your monitor (60 / 144 / 240).</p>
       </div>
     </div>
 
