@@ -1393,7 +1393,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <span class="sec-chevron">▼</span>
       </div>
       <div class="sec-body" id="s-spectrum">
-        <p class="sec-help">Animated frequency bars that dance to your music. If no microphone is connected, they still animate on their own to keep things lively.</p>
+        <p class="sec-help">Audio bars react to your music. Adjust height, color, smoothness, and how they react to loud vs quiet sounds.</p>
 
         <!-- ① ON/OFF -->
         <div class="row">
@@ -1407,27 +1407,25 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">✨ Smart auto-tune</div>
         <div class="row">
-          <div class="row-label">Auto-Volume Match</div>
+          <div class="row-label">Keep bars at a consistent height</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-spec-autogain"><span class="track"></span></label>
             <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Bars stay full even when audio is quiet</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Loudness Boost</div>
+          <div class="row-label">Make quiet sounds louder</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-sensitivity" min="0.5" max="100" step="0.5">
             <span class="range-val" id="v-spec-sensitivity">1.0×</span>
             <button type="button" id="c-spec-sensitivity-reset" class="reset-btn" title="Reset to default (1.0×)">↺</button>
           </div>
         </div>
-        <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Higher = quieter music fills the bars. 1.0× matches actual volume. Range is now 0.5×–100× (v9.6.5 bump): SteelSeries Sonar / Voicemeeter / virtual-mixer users may need 50×+ because those mixers scale the digital signal by their own volume slider. Click ↺ to reset. Auto-Gain (toggle below) is also stronger now — normalizes to whatever the audio is actually sending so you don't need to manually crank for quiet sources.</p>
-
         <!-- ③ LOOK & FEEL — colour, shape, layout -->
         <div class="divider"></div>
         <div class="sub-label">🎨 Look &amp; feel</div>
         <div class="row">
-          <div class="row-label">Color Mode</div>
+          <div class="row-label">What color the bars are</div>
           <div class="row-ctrl">
             <select id="c-spec-mode">
               <option value="rainbow">Rainbow</option>
@@ -1444,7 +1442,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Mirror Bars</div>
+          <div class="row-label">Mirror the bars</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-spec-mirror"><span class="track"></span></label>
             <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Symmetric mirror effect</span>
@@ -1476,21 +1474,21 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Bar Roundness</div>
+          <div class="row-label">How round the bar tops are</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-radius" min="0" max="10" step="1">
             <span class="range-val" id="v-spec-radius">0px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Lowest Bar Height</div>
+          <div class="row-label">Minimum bar height</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-min" min="0" max="20" step="1">
             <span class="range-val" id="v-spec-min">0px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Tallest Bar Height</div>
+          <div class="row-label">Maximum bar height</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-height" min="0.2" max="3.0" step="0.1">
             <span class="range-val" id="v-spec-height">×1.0</span>
@@ -1501,7 +1499,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">🎬 Animation feel</div>
         <div class="row">
-          <div class="row-label">Reaction Speed</div>
+          <div class="row-label">How quickly bars react to music</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-response" min="0.01" max="42" step="0.01">
             <span class="range-val" id="v-spec-response">0.01 ms</span>
@@ -1517,7 +1515,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Lower = punchier, more responsive transients. Higher = silkier, dreamier flow.</p>
         <div class="row">
-          <div class="row-label">Frame Rate</div>
+          <div class="row-label">Animation frame rate (advanced)</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-fps" min="30" max="120" step="10">
             <span class="range-val" id="v-spec-fps">120</span>
