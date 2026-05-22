@@ -3683,3 +3683,106 @@ After operator reviews `V14_S7_18_CUSTOMIZE_UX_AUDIT.md`, a UX redesign brief ca
 - All `src/` outside `App.xaml.cs` (Task A confined to one file; Task B touched none)
 
 ### Status: HALT. Stage 7.18 closed. Task A fix live in build; Task B audit awaiting operator review. No Stage 7.19 planned -- next brief is operator-commissioned based on audit findings. v14 still at 14.0.0 (fix-forward); no version bump.
+
+---
+
+## 2026-05-22 23:51 UTC -- Stage 7.19: customize redesign foundation (Stage 1 of 3)
+
+**Commits:**
+- `dbf9dba` STEP 0 -- checkpoint + design decisions locked
+- `25c1966` STEP 1 -- archive customize.html pre-redesign baseline
+- `43e5ede` STEP 2 -- section name renames (16 headers)
+- `4e2ed4c` STEP 3 -- Spectrum Visualizer renames + intro rewrite
+- `04dcd17` STEP 4 -- Card Shape + Track & Artist renames
+- `eb6fac3` STEP 5 -- remaining control renames (11 sections)
+- `55eaebe` STEP 6 -- inline help text (Spectrum, Card Shape, Track & Artist, Text Glow)
+- `c2abdb1` STEP 7 -- inline help text (remaining sections, skip-where-self-explanatory)
+- `b5b7c8f` STEP 8 -- animation tokens added + applied to section expand/collapse
+- `f0a02e9` STEP 9 -- animation tokens applied to toggles, sliders, modal
+- `6ab3980` STEP 10 -- section sub-grouping (sub-headers in 7 sections)
+- (this entry) STEP 13 -- memory APPEND + foundation stage closure
+
+**Outcome:** PASS at first operator gate attempt. Zero SE5 diagnosis-fix pairs. Zero strikes consumed (0 / 24).
+
+### What this stage did
+
+First of 3 customize.html redesign stages, per `V14_S7_18_CUSTOMIZE_UX_AUDIT.md` findings and `V14_S7_19_CUSTOMIZE_REDESIGN_PROPOSAL.md` scope:
+
+- **Rename pass.** Every section header + control row-label rewritten in friendly, non-technical voice. ~110 labels. Examples: "Spectrum Visualizer" -> "Audio bars", "Card Shape" -> "Card appearance", "Dynamic Colors" -> "Auto-color from album art", "Loudness Boost" -> "Make quiet sounds louder", "Now Playing Label" -> `"Now Playing" label`. Brand-name wall-of-text paragraph (SteelSeries Sonar / Voicemeeter) deleted. Engineer-jargon "(advanced)" tags added to two power-user sections: "Layout (advanced)", "Spinning border (advanced)".
+- **Inline help text.** New `.control-help` CSS class added (`var(--fs-caption)`, `var(--text-secondary)`, 4-8px vertical margin). 46 help paragraphs inserted under controls where the renamed label wasn't already self-explanatory. STEP 7 documented explicit skip-criteria (single-control sections, self-explanatory labels, redundant-with-section-intro cases) so future stages can mirror.
+- **Animation token revision.** v14 snappy tokens (Stage 7.13/7.16 lineage) preserved as fallback. NEW v2 tokens added to `:root`: `--dur-fast-v2: 200ms`, `--dur-standard-v2: 300ms`, `--dur-slow-v2: 450ms`, `--ease-windows: cubic-bezier(0.1,0.9,0.2,1)`, `--ease-macos: cubic-bezier(0.4,0,0.2,1)`, `--ease-emphasized: cubic-bezier(0.05,0.7,0.1,1)`. `.sec-body` open/close converted from `display:none/block` to `max-height + opacity + padding` transitions (300ms / ease-windows). Toggle background + thumb (200ms / ease-windows). Slider thumb hover (200ms / ease-macos). Preset Manager modal entry (450ms / ease-emphasized).
+- **Section sub-grouping.** New `.sec-subheader` uppercase tiny-caps divider class. Applied to 7 sections with 8+ controls: Card appearance (Corners and edges / Border / Background), Track and artist text (Title / Artist), Audio bars (Reactivity / Basics / Bar shape / Animation), `"Now Playing"` label (Text / Style), Progress bar and time (Progress bar / Timestamps), Auto-color from album art (Master / Per-element overrides), Text glow (Per-element overrides). Existing `.sub-label` element-specific dividers (5 in Text glow, 2 in NP, 1 in Progress) kept as nested sub-sub-grouping below.
+
+### Constraints honored (absolute rules from brief)
+
+- Apply-to-OBS CSS variable contract preserved (Stage 7.13/7.16 lineage; ~38 customize-bound variable names + 149 `c-*` setting IDs untouched)
+- Stage 7.15 clock fix preserved (no transitions on `#time-current` / `#time-total` content/visibility; `tabular-nums` kept)
+- No JS logic changes (only text-content + CSS + minimal HTML sub-header wrappers)
+- No controls added or removed (every existing control survives)
+- `overlay.html` UNTOUCHED (out of scope; Stage 7.21 possibly, or v14.1.0)
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (verified at S0.2, S12.1, S13.1)
+- No `version.json` bump (stays `14.0.0`; fix-forward via SHA suffix)
+- No git tag, no GitHub push, no GitHub release modification (rule 9 honored)
+- No em-dash characters in any source file edit (double-hyphen `--` used throughout)
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification before next STEP: yes
+- **SE2** mandatory log inspection after STEP 11 rebuild: yes. ONE ERROR surfaced (WPF Setup Wizard `SelectedDevice` TwoWay binding on read-only property). Diagnosed as **pre-existing** from commit `23c4c54` (Stage 7.12 Batch A STEP 3 rev16, 2026-05-17). SE3 diffs at every Stage 7.19 commit verified zero WPF files touched. Operator authorized "Option 1 -- pre-existing, proceed to gate" with explicit instruction to document the diagnosis for a future Stage 7.19.5 fix brief.
+- **SE3** mandatory diff review after every commit: yes
+- **SE4** no "continue" shortcut at gate (strict PASS / FAIL `<reason>` only): yes
+- **SE5** mistake diagnosis-then-fix pairs: zero needed (no SE5 commits)
+- **SE6** three-strike escalation: not triggered (0 strikes / 24 budget)
+- **SE7** no autonomous scope expansion. 3 temptations parked in V14_S7_19_LOG.md:
+  1. `sec-help` paragraph inline-style cleanup (~lines 757/779/1088) -- defer to v14.1.0
+  2. Hardcoded inline `font-size:11px` in `sec-help` paragraphs -- defer to v14.1.0
+  3. WPF Setup Wizard `SelectedDevice` binding fix -- Stage 7.19.5 (separate brief)
+- **SE8** protected files SHA256 verified at STEP 0 and STEP 12 (and STEP 13): all UNCHANGED
+
+### v14 status
+
+Still v14.0.0 (no version bump). Stage 7.19 lands as fix-forward via commit SHA suffix. Installed `MastersFM_Tray_v14.dll` `ProductVersion`: `14.0.0+<closure-commit-sha>` (this entry's commit suffix bumped from `6ab3980` to whatever the closure commit hashes to).
+
+### Files touched in this stage
+
+- `src/customize.html` (+224 / -132 net; 4346 -> ~4438 lines)
+- `_archive/v14_customize_pre_redesign/customize.html` (NEW; 4346-line byte-identical pre-redesign snapshot; SHA256 `6d1d4a98...`)
+- `V14_S7_19_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore; running log throughout the brief)
+- `V14_S7_19_REPORT.md` (NEW; tracked; 14-section closure deliverable per S13.3)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-22_13-25_S7_19_FOUNDATION_PRE/` (disk-only snapshot; NOT tracked)
+
+### Files NOT touched
+
+- All 4 protected source files (rule 1; SHA256 UNCHANGED)
+- `src/overlay.html` (rule 4)
+- All `src/tray_csharp/**` WPF source (rule 5; no JS/logic changes)
+- All `src/server/**` (no server-side changes)
+- `version.json` (rule 3)
+
+### Build reproducibility note
+
+S13.2 dual-build verification confirmed source-level reproducibility: warm-cache rebuild (~33 sec, exit code 0) produced an installed `MastersFM_Tray_v14.dll` with identical `ProductVersion` SHA suffix to the STEP 11 build (`14.0.0+6ab39802db9a56f846556eb336cff07c76b4c540` in both). The MSI SHA256 itself differs between the two builds (`104bb9ef...` vs `cc30fb63...`) because WiX MSI output embeds Authenticode signing timestamps + build timestamps -- this is expected and not a regression. The reproducibility property that matters (same source -> same compiled DLL identity) holds.
+
+### Operator gate
+
+PASS at attempt 1. SE4 strict acceptance held: no "continue"-style shortcut accepted (operator gave explicit `PASS`).
+
+### Remaining for customize redesign cycle
+
+- **Stage 7.20** -- master controls (Accent, Size, Text Size, Glow, Animations) + search bar + advanced toggle (operator-commissioned, separate brief)
+- **Stage 7.21** -- onboarding banner + sidebar structural revision + final polish (operator-commissioned, separate brief)
+
+### Pre-existing items NOT part of this redesign track
+
+- **Stage 7.19.5** -- WPF Setup Wizard `SelectedDevice` binding fix. Diagnosis already captured in V14_S7_19_LOG.md S11.3 + trailing S0.6-style section. Operator will commission as separate diagnosis-then-fix brief.
+
+### Lessons learned (durable, future-stage relevant)
+
+- **Friendly-voice rename pattern works at scale.** ~110 labels rewritten without breaking the Apply-to-OBS contract because the `c-*` setting IDs are decoupled from the visible label text. Future stages can rename freely as long as the input `id`/`name` attributes survive.
+- **Help-text-with-skip-criteria beats help-text-everywhere.** STEP 7 documented a 5-skip-criteria rule (single-control section, label-is-help, section-intro-covers-it, etc.) that produced 7 paragraphs in 11 sections instead of 30+. Density-without-purpose was an audit pain point we deliberately did NOT recreate.
+- **v2-token-alongside-v14-token approach preserves cache.** New `--dur-*-v2` and `--ease-windows/macos/emphasized` tokens added without removing the v14 snappy tokens. Any future code path that still references the v14 tokens keeps working. Stage 7.20/7.21 can lean on either set.
+- **MSI SHA256 is not reproducible across signed builds** (WiX + Authenticode timestamp). DLL `ProductVersion` SHA suffix IS reproducible from identical source. Brief language "same MSI SHA256 = reproducible" should be read as DLL-level reproducibility, not MSI-level.
+- **SE4 strict-acceptance discipline pays off.** Operator's `PASS` reply went straight through; no ambiguity about "did they say yes?" Future stages should keep the same SE4 wording verbatim.
+
+### Status: HALT. Stage 7.19 foundation stage CLOSED. Customize redesign Stage 2 (master controls + search) and Stage 3 (onboarding + sidebar) remain as operator-commissioned briefs. Stage 7.19.5 (WPF Setup Wizard binding fix) commissioned by operator post-closure as a separate diagnosis-then-fix brief. v14 still at 14.0.0 (fix-forward).
