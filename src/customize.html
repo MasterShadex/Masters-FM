@@ -737,7 +737,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-general">
         <p class="sec-help">Global settings that affect the entire overlay — opacity makes the whole widget more transparent so it blends into your stream background.</p>
         <div class="row">
-          <div class="row-label">Overlay Opacity</div>
+          <div class="row-label">Overall transparency</div>
           <div class="row-ctrl">
             <input type="range" id="c-overlay-opacity" min="0.05" max="1" step="0.05">
             <span class="range-val" id="v-overlay-opacity">100%</span>
@@ -756,7 +756,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-layout">
         <p class="sec-help">Drag-and-drop the position of every element on the card. Pick a template to start, then click "Edit" to drag elements around in the live preview. Off by default — your existing preset layout is preserved until you opt in.</p>
         <div class="row">
-          <div class="row-label">Use Custom Layout</div>
+          <div class="row-label">Use custom layout</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-layout-on"><span class="track"></span></label>
           </div>
@@ -765,7 +765,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
              width slider, and height slider are removed — the live overlay always
              renders at 1000x200 (Master's FM standard size). -->
         <div class="row">
-          <div class="row-label">Snap Grid</div>
+          <div class="row-label">Snap elements to a grid when dragging</div>
           <div class="row-ctrl">
             <select id="c-layout-grid">
               <option value="1">1 px (free)</option>
@@ -907,19 +907,19 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Outer Glow</div>
+          <div class="row-label">Outer glow</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-glow"><span class="track"></span></label>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Track Title</div>
+          <div class="row-label">Track title</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-title"><span class="track"></span></label>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Title Glow</div>
+          <div class="row-label">Title glow</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-titleglow"><span class="track"></span></label>
           </div>
@@ -931,27 +931,27 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Artist Glow</div>
+          <div class="row-label">Artist glow</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-artistglow"><span class="track"></span></label>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Now Playing Label</div>
+          <div class="row-label">"Now Playing" label</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-np"><span class="track"></span></label>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Platform Badge</div>
+          <div class="row-label">Platform badge</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-platform"><span class="track"></span></label>
           </div>
         </div>
-        <div class="row"><div class="row-label">Now Playing Glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-npglow"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Platform Badge Glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-platformglow"><span class="track"></span></label></div></div>
+        <div class="row"><div class="row-label">"Now Playing" glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-npglow"><span class="track"></span></label></div></div>
+        <div class="row"><div class="row-label">Platform badge glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-platformglow"><span class="track"></span></label></div></div>
         <div class="row">
-          <div class="row-label">Spectrum Bars</div>
+          <div class="row-label">Audio bars</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-spectrum"><span class="track"></span></label>
           </div>
@@ -962,15 +962,15 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
             <label class="toggle"><input type="checkbox" id="c-dyn-timestamps"><span class="track"></span></label>
           </div>
         </div>
-        <div class="row"><div class="row-label">Timestamps Glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-tsglow"><span class="track"></span></label></div></div>
+        <div class="row"><div class="row-label">Timestamps glow</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-dyn-tsglow"><span class="track"></span></label></div></div>
         <div class="row">
-          <div class="row-label">Progress Bar</div>
+          <div class="row-label">Progress bar</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-progressbar"><span class="track"></span></label>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Spinning Border</div>
+          <div class="row-label">Spinning border</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dyn-border"><span class="track"></span></label>
           </div>
@@ -994,7 +994,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Spin Speed</div>
+          <div class="row-label">How fast it spins</div>
           <div class="row-ctrl">
             <input type="range" id="c-border-spd" min="0.5" max="20" step="0.5">
             <span class="range-val" id="v-border-spd">4s</span>
@@ -1023,28 +1023,28 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color 1</div>
+          <div class="row-label">First color</div>
           <div class="row-ctrl">
             <input type="color" id="c-glow-c1-p">
             <input type="text"  id="c-glow-c1" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color 2</div>
+          <div class="row-label">Second color</div>
           <div class="row-ctrl">
             <input type="color" id="c-glow-c2-p">
             <input type="text"  id="c-glow-c2" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Intensity</div>
+          <div class="row-label">How strong the glow is</div>
           <div class="row-ctrl">
             <input type="range" id="c-glow-int" min="0" max="3" step="0.1">
             <span class="range-val" id="v-glow-int">1.0</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Pulse Speed</div>
+          <div class="row-label">How fast it pulses</div>
           <div class="row-ctrl">
             <input type="range" id="c-glow-pulse" min="0.5" max="10" step="0.5">
             <span class="range-val" id="v-glow-pulse">3s</span>
@@ -1065,33 +1065,33 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 
         <div class="sub-label">Now Playing Label Glow</div>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-np-glow-on"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Glow Color</div><div class="row-ctrl"><input type="color" id="c-np-glow-color-p"><input type="text" id="c-np-glow-color" class="hex-in"></div></div>
-        <div class="row"><div class="row-label">Glow Intensity</div><div class="row-ctrl"><input type="range" id="c-np-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-np-glow-size">6px</span></div></div>
+        <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-np-glow-color-p"><input type="text" id="c-np-glow-color" class="hex-in"></div></div>
+        <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-np-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-np-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Platform Badge Glow</div>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-platform-glow-on"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Glow Color</div><div class="row-ctrl"><input type="color" id="c-platform-glow-color-p"><input type="text" id="c-platform-glow-color" class="hex-in"></div></div>
-        <div class="row"><div class="row-label">Glow Intensity</div><div class="row-ctrl"><input type="range" id="c-platform-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-platform-glow-size">6px</span></div></div>
+        <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-platform-glow-color-p"><input type="text" id="c-platform-glow-color" class="hex-in"></div></div>
+        <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-platform-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-platform-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Track Title Glow</div>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-title-glow-on"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Glow Color</div><div class="row-ctrl"><input type="color" id="c-title-glow-color-p"><input type="text" id="c-title-glow-color" class="hex-in"></div></div>
-        <div class="row"><div class="row-label">Glow Intensity</div><div class="row-ctrl"><input type="range" id="c-title-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-title-glow-size">6px</span></div></div>
+        <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-title-glow-color-p"><input type="text" id="c-title-glow-color" class="hex-in"></div></div>
+        <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-title-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-title-glow-size">6px</span></div></div>
 
         <div class="divider"></div>
         <div class="sub-label">Artist Glow</div>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-artist-glow-on"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Glow Color</div><div class="row-ctrl"><input type="color" id="c-artist-glow-color-p"><input type="text" id="c-artist-glow-color" class="hex-in"></div></div>
-        <div class="row"><div class="row-label">Glow Intensity</div><div class="row-ctrl"><input type="range" id="c-artist-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-artist-glow-size">6px</span></div></div>
+        <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-artist-glow-color-p"><input type="text" id="c-artist-glow-color" class="hex-in"></div></div>
+        <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-artist-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-artist-glow-size">6px</span></div></div>
         <p class="sec-help" style="margin-top:-4px;font-size:11px;opacity:0.7;">When Dynamic Colors is on, the artist glow gets a HUE-SHIFTED tint vs. the title glow (around 60° apart on the colour wheel) so the two channels don't clash. Toggle this off to keep just the title glow.</p>
 
         <div class="divider"></div>
         <div class="sub-label">Timestamps Glow</div>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-ts-glow-on"><span class="track"></span></label></div></div>
-        <div class="row"><div class="row-label">Glow Color</div><div class="row-ctrl"><input type="color" id="c-ts-glow-color-p"><input type="text" id="c-ts-glow-color" class="hex-in"></div></div>
-        <div class="row"><div class="row-label">Glow Intensity</div><div class="row-ctrl"><input type="range" id="c-ts-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-ts-glow-size">6px</span></div></div>
+        <div class="row"><div class="row-label">Glow color</div><div class="row-ctrl"><input type="color" id="c-ts-glow-color-p"><input type="text" id="c-ts-glow-color" class="hex-in"></div></div>
+        <div class="row"><div class="row-label">How strong the glow is</div><div class="row-ctrl"><input type="range" id="c-ts-glow-size" min="0" max="60" step="2"><span class="range-val" id="v-ts-glow-size">6px</span></div></div>
       </div>
     </div>
 
@@ -1121,14 +1121,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Width</div>
+          <div class="row-label">Album art width</div>
           <div class="row-ctrl">
             <input type="range" id="c-art-w" min="80" max="500" step="10">
             <span class="range-val" id="v-art-w">310px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Fade Width</div>
+          <div class="row-label">How much the edges fade</div>
           <div class="row-ctrl">
             <input type="range" id="c-art-fade" min="0" max="300" step="10">
             <span class="range-val" id="v-art-fade">130px</span>
@@ -1147,25 +1147,25 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-np">
         <p class="sec-help">The small header above the song title. You can change the text (e.g. "Now Playing" or "🎧 On Air"), its color, and the tiny animated bars that dance next to it.</p>
         <div class="row">
-          <div class="row-label">Label Text</div>
+          <div class="row-label">What the label says</div>
           <div class="row-ctrl"><input type="text" id="c-np-text" placeholder="Now Playing"></div>
         </div>
         <div class="row">
-          <div class="row-label">Font Size</div>
+          <div class="row-label">Label size</div>
           <div class="row-ctrl">
             <input type="range" id="c-np-size" min="20" max="80" step="2">
             <span class="range-val" id="v-np-size">44px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Label color</div>
           <div class="row-ctrl">
             <input type="color" id="c-np-color-p">
             <input type="text"  id="c-np-color" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Letter Spacing</div>
+          <div class="row-label">Space between letters</div>
           <div class="row-ctrl">
             <input type="range" id="c-np-spacing" min="0" max="20" step="1">
             <span class="range-val" id="v-np-spacing">5px</span>
@@ -1180,21 +1180,21 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Bars color</div>
           <div class="row-ctrl">
             <input type="color" id="c-bars-color-p">
             <input type="text"  id="c-bars-color" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Count</div>
+          <div class="row-label">Number of bars</div>
           <div class="row-ctrl">
             <input type="range" id="c-bars-count" min="1" max="12" step="1">
             <span class="range-val" id="v-bars-count">4</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Animation Speed</div>
+          <div class="row-label">How fast the bars animate</div>
           <div class="row-ctrl">
             <input type="range" id="c-bars-speed" min="0.2" max="3" step="0.05">
             <span class="range-val" id="v-bars-speed">0.85s</span>
@@ -1203,7 +1203,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">Pause Behaviour</div>
         <div class="row">
-          <div class="row-label">Keep Visible on Pause</div>
+          <div class="row-label">Keep bars visible when paused</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-keep-on-pause"><span class="track"></span></label>
             <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Overlay stays on screen instead of fading out</span>
@@ -1228,32 +1228,32 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">SoundCloud Label</div>
+          <div class="row-label">Label for SoundCloud</div>
           <div class="row-ctrl"><input type="text" id="c-platform-sc-label" placeholder="SoundCloud"></div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Badge color</div>
           <div class="row-ctrl">
             <input type="color" id="c-platform-color-p">
             <input type="text"  id="c-platform-color" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Dot Color</div>
+          <div class="row-label">Dot color</div>
           <div class="row-ctrl">
             <input type="color" id="c-platform-dot-p">
             <input type="text"  id="c-platform-dot" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Font Size</div>
+          <div class="row-label">Badge size</div>
           <div class="row-ctrl">
             <input type="range" id="c-platform-size" min="14" max="60" step="1">
             <span class="range-val" id="v-platform-size">30px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Font Weight</div>
+          <div class="row-label">Badge boldness</div>
           <div class="row-ctrl">
             <select id="c-platform-weight">
               <option value="400">400 — Regular</option>
@@ -1265,7 +1265,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Letter Spacing</div>
+          <div class="row-label">Space between letters</div>
           <div class="row-ctrl">
             <input type="range" id="c-platform-spacing" min="0" max="10" step="1">
             <span class="range-val" id="v-platform-spacing">2px</span>
@@ -1435,7 +1435,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Base Color</div>
+          <div class="row-label">Base color</div>
           <div class="row-ctrl">
             <input type="color" id="c-spec-color-p">
             <input type="text"  id="c-spec-color" class="hex-in">
@@ -1460,14 +1460,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">📊 Bar shape</div>
         <div class="row">
-          <div class="row-label">Number of Bars</div>
+          <div class="row-label">Number of bars</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-bars" min="10" max="480" step="1">
             <span class="range-val" id="v-spec-bars">480</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Spacing Between Bars</div>
+          <div class="row-label">Spacing between bars</div>
           <div class="row-ctrl">
             <input type="range" id="c-spec-gap" min="0" max="10" step="1">
             <span class="range-val" id="v-spec-gap">0px</span>
@@ -1541,21 +1541,21 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Bar Height</div>
+          <div class="row-label">Progress bar height</div>
           <div class="row-ctrl">
             <input type="range" id="c-prog-h" min="2" max="30" step="1">
             <span class="range-val" id="v-prog-h">9px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Bar Radius</div>
+          <div class="row-label">Progress bar roundness</div>
           <div class="row-ctrl">
             <input type="range" id="c-prog-radius" min="0" max="15" step="1">
             <span class="range-val" id="v-prog-radius">6px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Track Color</div>
+          <div class="row-label">Progress bar background color</div>
           <div class="row-ctrl">
             <input type="color" id="c-prog-track-p">
             <input type="text"  id="c-prog-track" class="hex-in" placeholder="rgba(...)">
@@ -1563,21 +1563,21 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <div class="sub-label">Fill Gradient</div>
         <div class="row">
-          <div class="row-label">Color 1</div>
+          <div class="row-label">First fill color</div>
           <div class="row-ctrl">
             <input type="color" id="c-prog-f0-p">
             <input type="text"  id="c-prog-f0" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color 2</div>
+          <div class="row-label">Second fill color</div>
           <div class="row-ctrl">
             <input type="color" id="c-prog-f1-p">
             <input type="text"  id="c-prog-f1" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color 3</div>
+          <div class="row-label">Third fill color</div>
           <div class="row-ctrl">
             <input type="color" id="c-prog-f2-p">
             <input type="text"  id="c-prog-f2" class="hex-in">
@@ -1586,14 +1586,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">Timestamps</div>
         <div class="row">
-          <div class="row-label">Font Size</div>
+          <div class="row-label">Timestamp size</div>
           <div class="row-ctrl">
             <input type="range" id="c-ts-size" min="20" max="80" step="2">
             <span class="range-val" id="v-ts-size">46px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Timestamp color</div>
           <div class="row-ctrl">
             <input type="color" id="c-ts-color-p">
             <input type="text"  id="c-ts-color" class="hex-in">
@@ -1612,21 +1612,21 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-anim">
         <p class="sec-help">When a new song starts, the card smoothly slides and fades in. "Duration" controls how long that animation takes; "Slide Distance" is how far it travels before landing in place.</p>
         <div class="row">
-          <div class="row-label">Duration</div>
+          <div class="row-label">How long the animation lasts</div>
           <div class="row-ctrl">
             <input type="range" id="c-anim-dur" min="0.1" max="2" step="0.1">
             <span class="range-val" id="v-anim-dur">0.5s</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Slide Distance</div>
+          <div class="row-label">How far the card slides in</div>
           <div class="row-ctrl">
             <input type="range" id="c-anim-slide" min="0" max="100" step="2">
             <span class="range-val" id="v-anim-slide">28px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Direction</div>
+          <div class="row-label">From which side</div>
           <div class="row-ctrl">
             <select id="c-anim-dir">
               <option value="up">↑ Slide Up</option>
@@ -1637,7 +1637,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Easing</div>
+          <div class="row-label">Easing curve (advanced)</div>
           <div class="row-ctrl">
             <select id="c-anim-easing">
               <option value="spring">🌀 Spring (bouncy)</option>
@@ -1649,7 +1649,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <div class="divider"></div>
         <div class="row">
-          <div class="row-label">Fade Text on Skip</div>
+          <div class="row-label">Fade title and artist when track changes</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-anim-crossfade"><span class="track"></span></label>
             <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Title, artist &amp; art fade to the new song — card never moves</span>
