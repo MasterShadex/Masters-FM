@@ -398,7 +398,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--brand-base);
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
-  cursor: pointer; transition: transform 0.1s, box-shadow 0.15s;
+  cursor: pointer; transition: transform var(--dur-fast-v2) var(--ease-macos), box-shadow var(--dur-fast-v2) var(--ease-macos);
 }
 input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.18);
@@ -454,13 +454,13 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 .track {
   position: absolute; inset: 0;
   background: rgba(255,255,255,0.09); border-radius: var(--r-pill);
-  transition: background 0.2s;
+  transition: background var(--dur-fast-v2) var(--ease-windows);
 }
 .track::before {
   content: ''; position: absolute;
   width: 13px; height: 13px; left: 3px; top: 3px;
   background: #fff; border-radius: 50%;
-  transition: transform 0.2s;
+  transition: transform var(--dur-fast-v2) var(--ease-windows);
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 .toggle input:checked + .track { background: var(--accent); }
@@ -4228,6 +4228,15 @@ async function pmImport(file) {
   width: min(90vw, 900px); max-height: 80vh; overflow: auto;
   padding: var(--sp-5);
   box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+  /* Stage 7.19: smooth entry == fade + slight rise when modal opens. */
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity var(--dur-slow-v2) var(--ease-emphasized),
+              transform var(--dur-slow-v2) var(--ease-emphasized);
+}
+.lt-modal.open .lt-modal-card {
+  opacity: 1;
+  transform: translateY(0);
 }
 .lt-modal-header {
   display: flex; align-items: center; justify-content: space-between;
