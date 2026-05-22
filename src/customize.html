@@ -689,6 +689,17 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   padding: 0;
 }
 
+/* Stage 7.19: section sub-grouping header (cleaner than .sub-label).
+   Used for the 7 sub-grouped sections per V14_S7_19_LOG.md S0.5. */
+.sec-subheader {
+  font-size: var(--fs-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  margin: var(--sp-4) var(--sp-1) var(--sp-2);
+  font-weight: var(--fw-semibold);
+}
+
 /* ─── Theme grid ────────────────────────────────────────────────────────────── */
 .theme-grid {
   display: grid; grid-template-columns: 1fr 1fr;
@@ -864,6 +875,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       </div>
       <div class="sec-body" id="s-card">
         <p class="sec-help">Controls the shape of the card. Round the corners, adjust how thick the border is, and set the background gradient colors and angle.</p>
+        <h4 class="sec-subheader">Corners and edges</h4>
         <div class="row">
           <div class="row-label">Corner roundness</div>
           <div class="row-ctrl">
@@ -872,6 +884,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <p class="control-help">How rounded the card corners look. 0 = sharp corners.</p>
+        <h4 class="sec-subheader">Border</h4>
         <div class="row">
           <div class="row-label">Border thickness</div>
           <div class="row-ctrl">
@@ -880,6 +893,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <p class="control-help">How thick the spinning border ring is. Set to 0 to hide.</p>
+        <h4 class="sec-subheader">Background</h4>
         <div class="row">
           <div class="row-label">Background gradient angle</div>
           <div class="row-ctrl">
@@ -932,12 +946,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       </div>
       <div class="sec-body" id="s-dyncolors">
         <p class="sec-help">Extracts the dominant color from the album art and applies it to the selected elements. The background fades slowly between colors when a new song starts. Falls back to your preset when no art is available.</p>
+        <h4 class="sec-subheader">Master</h4>
         <div class="row">
           <div class="row-label">Enable</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-dynamic-colors"><span class="track"></span></label>
           </div>
         </div>
+        <h4 class="sec-subheader">Per-element overrides</h4>
         <div class="row">
           <div class="row-label">Background</div>
           <div class="row-ctrl">
@@ -1101,6 +1117,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-textglow">
         <p class="sec-help">Add a soft neon glow halo around any text element on the card — Now Playing label, Platform badge, Track title, Artist, and the Timestamps. Each element gets its own enable toggle, glow color, and intensity slider. Default 6 px is subtle and works with most themes; crank it up for synthwave / retro looks.</p>
 
+        <h4 class="sec-subheader">Per-element overrides</h4>
         <div class="sub-label">Now Playing Label Glow</div>
         <p class="control-help">Soft halo around the "Now Playing" label. Set the size to 0 to hide.</p>
         <div class="row"><div class="row-label">Enabled</div><div class="row-ctrl"><label class="toggle"><input type="checkbox" id="c-np-glow-on"><span class="track"></span></label></div></div>
@@ -1190,11 +1207,13 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       </div>
       <div class="sec-body" id="s-np">
         <p class="sec-help">The small header above the song title. You can change the text (e.g. "Now Playing" or "🎧 On Air"), its color, and the tiny animated bars that dance next to it.</p>
+        <h4 class="sec-subheader">Text</h4>
         <div class="row">
           <div class="row-label">What the label says</div>
           <div class="row-ctrl"><input type="text" id="c-np-text" placeholder="Now Playing"></div>
         </div>
         <p class="control-help">Common: "Now Playing", "🎧 On Air", or any text you like.</p>
+        <h4 class="sec-subheader">Style</h4>
         <div class="row">
           <div class="row-label">Label size</div>
           <div class="row-ctrl">
@@ -1329,7 +1348,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       </div>
       <div class="sec-body" id="s-text">
         <p class="sec-help">Controls how the song title and artist name look. Size, boldness, and color are all adjustable. "Marquee Speed" sets how fast the title scrolls when it's too long to fit.</p>
-        <div class="sub-label">Track Title</div>
+        <h4 class="sec-subheader">Title</h4>
         <div class="row">
           <div class="row-label">Title size</div>
           <div class="row-ctrl">
@@ -1384,8 +1403,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <p class="control-help">Extra space between each letter.</p>
-        <div class="divider"></div>
-        <div class="sub-label">Artist</div>
+        <h4 class="sec-subheader">Artist</h4>
         <div class="row">
           <div class="row-label">Artist size</div>
           <div class="row-ctrl">
@@ -1462,9 +1480,8 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <p class="control-help">Turns the audio bars on or off.</p>
 
-        <!-- ② SMART AUTO-TUNE — set-and-forget magic -->
-        <div class="divider"></div>
-        <div class="sub-label">✨ Smart auto-tune</div>
+        <!-- Stage 7.19: sub-grouping converted to .sec-subheader per S0.5. -->
+        <h4 class="sec-subheader">Reactivity</h4>
         <div class="row">
           <div class="row-label">Keep bars at a consistent height</div>
           <div class="row-ctrl">
@@ -1482,9 +1499,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <p class="control-help">Helpful if your music sounds quiet on stream. 1.0× = no boost.</p>
-        <!-- ③ LOOK & FEEL — colour, shape, layout -->
-        <div class="divider"></div>
-        <div class="sub-label">🎨 Look &amp; feel</div>
+        <h4 class="sec-subheader">Basics</h4>
         <div class="row">
           <div class="row-label">What color the bars are</div>
           <div class="row-ctrl">
@@ -1521,9 +1536,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <p class="control-help">How see-through the bars are.</p>
 
-        <!-- ④ BAR SHAPE — physical look of each bar -->
-        <div class="divider"></div>
-        <div class="sub-label">📊 Bar shape</div>
+        <h4 class="sec-subheader">Bar shape</h4>
         <div class="row">
           <div class="row-label">Number of bars</div>
           <div class="row-ctrl">
@@ -1565,9 +1578,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         </div>
         <p class="control-help">How tall bars can grow on loud peaks.</p>
 
-        <!-- ⑤ ANIMATION FEEL — speed of the dance -->
-        <div class="divider"></div>
-        <div class="sub-label">🎬 Animation feel</div>
+        <h4 class="sec-subheader">Animation</h4>
         <div class="row">
           <div class="row-label">How quickly bars react to music</div>
           <div class="row-ctrl">
@@ -1604,6 +1615,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       </div>
       <div class="sec-body" id="s-progress">
         <p class="sec-help">A progress bar that fills up as the song plays, with the elapsed and total time shown on each side. You can adjust the bar height, color, and how bold the time numbers look.</p>
+        <h4 class="sec-subheader">Progress bar</h4>
         <div class="row">
           <div class="row-label">Enabled</div>
           <div class="row-ctrl">
@@ -1655,7 +1667,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="divider"></div>
-        <div class="sub-label">Timestamps</div>
+        <h4 class="sec-subheader">Timestamps</h4>
         <div class="row">
           <div class="row-label">Timestamp size</div>
           <div class="row-ctrl">
