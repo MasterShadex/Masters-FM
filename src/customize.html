@@ -108,6 +108,15 @@
   --ease-spring:    cubic-bezier(0.16, 1, 0.3, 1);   /* ElasticEase Spring=3 */
   --ease-in:        cubic-bezier(0.4, 0, 1, 1);      /* QuadraticEase In */
 
+  /* Stage 7.19 v14.x redesign tokens == Windows 11 / macOS feel.
+     v14 snappy tokens above KEPT as fallback (don't replace, don't rename). */
+  --dur-fast-v2:      200ms;
+  --dur-standard-v2:  300ms;
+  --dur-slow-v2:      450ms;
+  --ease-windows:     cubic-bezier(0.1, 0.9, 0.2, 1);    /* WinUI/Fluent decel */
+  --ease-macos:       cubic-bezier(0.4, 0, 0.2, 1);      /* Apple HIG standard */
+  --ease-emphasized:  cubic-bezier(0.05, 0.7, 0.1, 1);   /* Material emphasized */
+
   /* Layout constants (unchanged from v12) */
   --sidebar-w:      370px;
   --topbar-h:       52px;
@@ -315,11 +324,23 @@ html, body {
 }
 .sec-header.open .sec-chevron { transform: rotate(180deg); opacity: 0.7; }
 
+/* Stage 7.19: section expand/collapse uses max-height + opacity transitions
+   for a smooth Windows 11 / macOS feel. Display: none replaced with max-height:0
+   + overflow: hidden so the transition can interpolate. JS still toggles .open. */
 .sec-body {
-  padding: 2px 6px 6px;
-  display: none;
+  padding: 0 6px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--dur-standard-v2) var(--ease-windows),
+              opacity var(--dur-standard-v2) var(--ease-windows),
+              padding var(--dur-standard-v2) var(--ease-windows);
 }
-.sec-body.open { display: block; }
+.sec-body.open {
+  padding: 2px 6px 6px;
+  max-height: 4000px;
+  opacity: 1;
+}
 
 /* ─── Rows ──────────────────────────────────────────────────────────────────── */
 /* .row padding intentionally off-4px-grid (5px 4px) == tight sidebar density.
