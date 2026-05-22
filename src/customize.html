@@ -833,49 +833,49 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
       <div class="sec-body" id="s-card">
         <p class="sec-help">Controls the shape of the card. Round the corners, adjust how thick the border is, and set the background gradient colors and angle.</p>
         <div class="row">
-          <div class="row-label">Border Radius</div>
+          <div class="row-label">Corner roundness</div>
           <div class="row-ctrl">
             <input type="range" id="c-card-radius" min="0" max="120" step="2">
             <span class="range-val" id="v-card-radius">56px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Border Thickness</div>
+          <div class="row-label">Border thickness</div>
           <div class="row-ctrl">
             <input type="range" id="c-card-thick" min="0" max="20" step="1">
             <span class="range-val" id="v-card-thick">5px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">BG Angle</div>
+          <div class="row-label">Background gradient angle</div>
           <div class="row-ctrl">
             <input type="range" id="c-card-angle" min="0" max="360" step="5">
             <span class="range-val" id="v-card-angle">148°</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">BG Top</div>
+          <div class="row-label">Top background color</div>
           <div class="row-ctrl">
             <input type="color" id="c-card-top-p">
             <input type="text"  id="c-card-top"   class="hex-in" placeholder="rgba(...)">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">BG Bottom</div>
+          <div class="row-label">Bottom background color</div>
           <div class="row-ctrl">
             <input type="color" id="c-card-bot-p">
             <input type="text"  id="c-card-bot"   class="hex-in" placeholder="rgba(...)">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Background Blur</div>
+          <div class="row-label">Blur behind the card</div>
           <div class="row-ctrl">
             <input type="range" id="c-card-blur" min="0" max="20" step="1">
             <span class="range-val" id="v-card-blur">0px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Background Opacity</div>
+          <div class="row-label">Card transparency</div>
           <div class="row-ctrl">
             <input type="range" id="c-card-opacity" min="0" max="1" step="0.01">
             <span class="range-val" id="v-card-opacity">99%</span>
@@ -1285,14 +1285,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <p class="sec-help">Controls how the song title and artist name look. Size, boldness, and color are all adjustable. "Marquee Speed" sets how fast the title scrolls when it's too long to fit.</p>
         <div class="sub-label">Track Title</div>
         <div class="row">
-          <div class="row-label">Font Size</div>
+          <div class="row-label">Title size</div>
           <div class="row-ctrl">
             <input type="range" id="c-title-size" min="30" max="120" step="2">
             <span class="range-val" id="v-title-size">68px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Font Weight</div>
+          <div class="row-label">Title boldness</div>
           <div class="row-ctrl">
             <select id="c-title-weight">
               <option value="400">400 — Regular</option>
@@ -1305,28 +1305,28 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Title color</div>
           <div class="row-ctrl">
             <input type="color" id="c-title-color-p">
             <input type="text"  id="c-title-color" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Marquee Speed</div>
+          <div class="row-label">How fast title scrolls</div>
           <div class="row-ctrl">
             <input type="range" id="c-title-mspd" min="10" max="200" step="5">
             <span class="range-val" id="v-title-mspd">68</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Marquee Pause</div>
+          <div class="row-label">Title scroll pause</div>
           <div class="row-ctrl">
             <input type="range" id="c-title-mpause" min="0" max="10" step="0.5">
             <span class="range-val" id="v-title-mpause">2s</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Letter Spacing</div>
+          <div class="row-label">Title letter spacing</div>
           <div class="row-ctrl">
             <input type="range" id="c-title-spacing" min="-5" max="20" step="1">
             <span class="range-val" id="v-title-spacing">0px</span>
@@ -1335,14 +1335,14 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="divider"></div>
         <div class="sub-label">Artist</div>
         <div class="row">
-          <div class="row-label">Font Size</div>
+          <div class="row-label">Artist size</div>
           <div class="row-ctrl">
             <input type="range" id="c-artist-size" min="20" max="80" step="2">
             <span class="range-val" id="v-artist-size">44px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Font Weight</div>
+          <div class="row-label">Artist boldness</div>
           <div class="row-ctrl">
             <select id="c-artist-weight">
               <option value="400">400 — Regular</option>
@@ -1354,28 +1354,28 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Color</div>
+          <div class="row-label">Artist color</div>
           <div class="row-ctrl">
             <input type="color" id="c-artist-color-p">
             <input type="text"  id="c-artist-color" class="hex-in">
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Letter Spacing</div>
+          <div class="row-label">Artist letter spacing</div>
           <div class="row-ctrl">
             <input type="range" id="c-artist-spacing" min="-5" max="15" step="1">
             <span class="range-val" id="v-artist-spacing">0px</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Marquee Speed</div>
+          <div class="row-label">How fast artist scrolls</div>
           <div class="row-ctrl">
             <input type="range" id="c-artist-mspd" min="10" max="200" step="5">
             <span class="range-val" id="v-artist-mspd">68</span>
           </div>
         </div>
         <div class="row">
-          <div class="row-label">Marquee Pause</div>
+          <div class="row-label">Artist scroll pause</div>
           <div class="row-ctrl">
             <input type="range" id="c-artist-mpause" min="0" max="10" step="0.5">
             <span class="range-val" id="v-artist-mpause">2s</span>
