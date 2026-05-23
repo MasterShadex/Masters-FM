@@ -4134,3 +4134,109 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S10.2 rebuild: `14.0.0
 - **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle (~6-10 h)
 - **Stage 7.20.6** (optional, narrow) -- theme rework so non-default themes also auto-follow master accent; would require lifting absolute rule 2 OR is a small targeted customize.html change
 - **Pause + ship** -- ALL 5 masters now visibly work on Default theme; non-default theme users have the "Use accent" affordance; build is shippable to friends as-is
+
+---
+
+## 2026-05-23 23:41 UTC -- Stage 7.20.6: non-default themes accent propagation
+
+**Commits:**
+- `8c1ea09` STEP 0 -- checkpoint + theme inventory + conversion plan
+- `83473f3` STEP 1 -- theme definitions use var(--accent-master) sentinel for accent-following keys
+- `00688c2` STEP 2 -- theme-apply flow verification (no code changes needed; existing pipeline handles sentinel)
+- (no commit; STEP 3 rebuild + SE2 documented in log)
+- (this entry) STEP 5 -- memory APPEND + non-default theme accent propagation closure
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles.
+
+### What this stage did
+
+Closed the Stage 7.20.5 documented limitation: Master Accent Color now propagates on ALL 22 themes, not just Default.
+
+- **DEFAULTS object:** 6 accent-following keys + 2 platform-badge keys (nowPlaying / bars / platformBadge.color / platformBadge.dotColor / title / artist / spectrum / timestamps `.color`) converted from factory hex to literal `'var(--accent-master)'` string.
+- **21 non-default themes:** each got the same 6 accent-following keys converted to sentinel + a new `masters:{ accentColor:'<theme accent>' }` block so applying the theme sets the master picker to the theme's intended accent. Themes covered: Neon Blue, Hot Pink, Retro Orange, Synthwave, Forest Green, Crimson, Midnight, Cherry Blossom, Minimal White, Vaporwave, Aurora, Royal Purple, Coffee, Volcano, Ice Crystal, Galaxy, Sunset, Lime, Vintage Sepia, Cyber Matrix, Dreamcore.
+- **Non-accent theme values preserved as hex:** card backgrounds, spinning border gradient stops, outer glow color1/color2, per-element text glow colors, progress bar gradient stops, and all non-color per-element styling (letter spacing, font weight, glow size, spectrum mode, etc.) stay theme-specific.
+
+### Locked behavior decisions honored
+
+- **Master vs per-element:** per-element wins. Master is "set all" shortcut.
+- **Theme = comprehensive reset:** switching themes overwrites manual per-element overrides (theme's deepMerge preserve list excludes per-element accent values).
+- **Sentinel:** literal string `'var(--accent-master)'` is the "follow master" marker stored in per-element JS values.
+
+### How it works end-to-end now
+
+1. User picks a theme (e.g., Neon Blue) in customize.html.
+2. `applyTheme()` deepMerges theme over DEFAULTS into S. S.title.color etc. become `'var(--accent-master)'`. S.masters.accentColor becomes the theme's hex (e.g., `#00c8ff`).
+3. syncAll() updates the picker UI: master accent picker shows the theme's hex; per-element pickers show black swatch + `'var(--accent-master)'` text (same UX as Stage 7.20 "Use accent" link).
+4. preview() POSTs S to /preview-config. Server.js (pass-through) SSE-broadcasts to overlay.html.
+5. Overlay.html applyConfig() sets `--accent-master` from cfg.masters.accentColor (Stage 7.20.5 STEP 7). Per-element setProperty calls write the literal `'var(--accent-master)'` string. CSS resolves the chain to master accent. Spectrum WebGL path (Stage 7.20.5 STEP 7 patch) substitutes master hex for the literal string.
+6. OBS overlay updates: accent elements show theme accent. Background / border / glow gradients stay theme-specific.
+7. User changes master accent: same propagation pipeline writes new master hex, all sentinel-holding elements update.
+8. User manually overrides Title color: S.title.color becomes the hex (per-element wins). Other sentinel-holding elements still follow master.
+9. User switches theme: deepMerge OVERWRITES S.title.color back to sentinel. Theme acts as comprehensive reset.
+
+### Stage 7.20.5 SE5 fix status
+
+The overlay.html SE5 substitution fix (factory-default detection) becomes a HARMLESS NO-OP for post-Stage-7.20.6 configs (no factory hex remains to substitute). It stays in place for backward compat with pre-Stage-7.20.6 saved configs that still hold factory hex values. Removing it is parked per SE7 as a future cleanup.
+
+### Trade-off accepted at gate
+
+Themes that previously had subtle accent-shade gradients between elements (e.g., Neon Blue had slightly different blues for nowPlaying vs timestamps) now share ONE master accent color when applied. Users wanting subtle intra-theme variation can manually override per-element colors after applying the theme (per-element wins) or use the "Use accent" link to restore follow-master. Operator-accepted at gate.
+
+### Constraints honored
+
+- `src/overlay.html` UNCHANGED (`git diff ba79b66..HEAD -- src/overlay.html` empty)
+- `src/server.js` UNCHANGED (pass-through verified at S0.5)
+- All 4 protected source files SHA256 UNCHANGED (S0.2 + S4.1 + S5.1)
+- Stage 7.15 clock fix preserved
+- Stage 7.19 / 7.19.5 / 7.20 / 7.20.5 surfaces preserved
+- No `version.json` bump (stays `14.0.0`)
+- No git tag, no GitHub push, no GitHub interaction
+- No em-dash characters in source edits; UTF-8 no-BOM
+- No new external dependencies
+- No new themes added; no themes removed (22 themes total preserved)
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** mandatory log inspection after STEP 3 rebuild: PASS (0 IOE, 0 real ERROR/WARN, documented false positive)
+- **SE3** mandatory diff review after every commit: yes (5 commits, all scope-matched: customize.html + log only; overlay.html + server.js + protected files empty diff)
+- **SE4** no "continue" shortcut at gate: yes (operator gave explicit `PASS`)
+- **SE5** mistake handling: zero diagnosis-fix pairs (clean execution)
+- **SE6** three-strike escalation: not triggered (0 strikes / 3 budget)
+- **SE7** no autonomous scope expansion: 4 temptations parked in V14_S7_20_6_LOG.md S0.7 + V14_S7_20_6_REPORT.md section 12 ("Following master" badge UI; theme-side per-key opt-out; removal of Stage 7.20.5 SE5 fix; master glow color)
+- **SE8** protected files SHA256 verified at STEP 0 + STEP 4.1 + STEP 5.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.20.6 lands as fix-forward via commit SHA suffix.
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S5.2 rebuild: `14.0.0+00688c2c58be81a455e3a06b142e5c47231713cf` (matches HEAD `00688c2` STEP 2; closure commit follows).
+
+### Files touched in this stage
+
+- `src/customize.html` (+118 / -97 net; 22 theme blocks edited including DEFAULTS; 104 `var(--accent-master)` sentinels + 21 masters blocks)
+- `V14_S7_20_6_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_20_6_REPORT.md` (NEW; tracked; 14-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-23_23-00_S7_20_6_PRE/` (disk-only snapshot)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/overlay.html` (absolute rule 2)
+- All `src/tray_csharp/**`
+- `version.json`
+
+### Lessons learned (durable, future-stage relevant)
+
+- **Sentinel-in-data design works across the entire pipeline** (customize.html themes -> S object -> /save-overlay-config or /preview-config POST -> server.js pass-through -> overlay.html applyConfig -> CSS variable -> CSS resolution). The Stage 7.20.5 STEP 7 + SE5 fix did all the heavy lifting in overlay.html; Stage 7.20.6 just needed to populate the right sentinels at the customize.html data source.
+- **Stage 7.20.5 SE5 substitution remains useful for backward compat.** Pre-Stage-7.20.6 saved configs still hold factory hex; the fix catches them. New configs after Stage 7.20.6 hold sentinels directly. Both work.
+- **22 themes is a LOT of mechanical conversions.** Each theme block needs the same 6-key sentinel substitution + 1 masters block addition. Doing it via multiple single-theme Edit calls is reliable but tedious; future bulk theme-edit briefs could benefit from a brief-helper script or single-block JS transform. Worked fine via 21 individual Edits + 2 DEFAULTS edits.
+- **Theme richness vs. master simplicity is a real design trade-off.** Themes that intentionally had multiple accent shades (e.g., Neon Blue's 3 blue variants) lose that subtle gradient when converted. Users get one master accent applied uniformly. The "Use accent" affordance + per-element manual override give users the escape hatch. Acceptable per operator's locked decision.
+
+### Status: HALT. Stage 7.20.6 CLOSED. Master Accent Color now visibly propagates on ALL 22 themes (Default + 21 non-default). customize.html / themes converted; overlay.html / server.js / protected files unchanged. v14 still at 14.0.0 (fix-forward).
+
+### Next briefs (operator decision)
+
+- **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle (~6-10 h)
+- **Pause + ship** -- customize redesign is now substantively complete (masters + search + advanced toggle + theme-wide master propagation all working); build is shippable to friends as-is
