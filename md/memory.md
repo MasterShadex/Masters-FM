@@ -4399,3 +4399,160 @@ Engineering quality preserved across the cycle:
 ### Next operator action
 
 Ship the current build to friends, gather feedback, plan v14.1.0 from real signal.
+
+---
+
+## 2026-05-24 01:20 UTC -- Stage 7.22: WPF tray menu polish + autostart force-ON
+
+**Brief:** Two operator-feedback tweaks after shipping v14.0.0. Operator response to Stage 7.21 ship: "WAY NICER AND GOOD EFFORT!!!" -- but two corrections requested. 11 STEPs (0-10). All Ruflo-side; one operator gate at STEP 9.
+
+**Commits (on `9b27a82` Stage 7.21 closure):**
+
+- `0736d18` STEP 0 -- checkpoint + tray menu inventory + autostart code path + design plan
+- `6a49826` STEP 1 -- autostart force-ON every install (remove flag gate)
+- `b791e19` STEP 2 -- tray menu design tokens (hover/pressed/separator + art drop shadow)
+- `4d39068` STEP 3 -- MenuItem template refresh (rounded hover + accent Win11 checkmark + IsPressed)
+- `b915bd6` STEP 4 -- header polish (album art CornerRadius 6 + drop shadow + accent SemiBold + 12px track + 16,12 padding)
+- `75253e5` STEP 5 -- Separator style (translucent TrayMenuSeparatorBrush + 12,4 margin)
+- `6e93e3e` STEP 6 -- icon consistency (all menu item icons bumped to 16x16)
+- `84cacc5` STEP 7 -- ContextMenu container polish (CornerRadius 8, Padding 6, MinWidth 240)
+- `963cb61` SE5 DIAGNOSIS -- XML comment '--' violation broke WPF tray build (strike 1/3)
+- `a7d53dd` SE5 FIX -- replace '--' inside XML comments (XML spec forbids '--' in comments)
+- (this entry) STEP 10 -- memory APPEND + WPF tray polish + autostart force-ON closure
+
+**Outcome:** PASS at attempt 2 (post-SE5). Strikes consumed: **1 / 3**. One SE5 cycle (XML comment violation). One mid-stage build infrastructure observation (silent WARN -> shipped stale DLL).
+
+### Tweak 1: WPF tray context menu polish
+
+Win11 modern feel applied to the existing tray menu without renaming, reordering, or restructuring items:
+
+- **4 new design tokens** in `Theme/Colors.xaml`:
+  - `TrayMenuHoverBrush` = `#1A7C3AED` (10% accent overlay)
+  - `TrayMenuPressedBrush` = `#337C3AED` (20% accent overlay)
+  - `TrayMenuSeparatorBrush` = `#33FFFFFF` (50% translucent white)
+  - `TrayMenuArtShadow` `DropShadowEffect` (blur 6, depth 2, opacity 0.45, `x:Shared="False"` because WPF DropShadowEffect is element-owned in the rendering pipeline)
+- **MenuItem template refresh** in `Theme/ContextMenu.xaml`:
+  - Rounded 6px container per row; padding 12,0
+  - `IsHighlighted` -> `TrayMenuHoverBrush` (translucent purple tint)
+  - `IsPressed` -> `TrayMenuPressedBrush` (stronger tint)
+  - `IsChecked` -> Win11 accent checkmark Path `M 0 7 L 5 12 L 14 0` stroked with `BrandPurpleDeep` (#7C3AED), 14x12, StrokeLineCap Round
+  - `IsEnabled=False` -> 45% opacity, arrow cursor
+- **Header polish** in `MainWindow.xaml`:
+  - Album art `CornerRadius` 6 (was 4) + `TrayMenuArtShadow` + 12px right margin (was 10)
+  - "Master's FM" wordmark 15px SemiBold `BrandPurpleDeep` (was 14px Bold `BrandPurpleBase`)
+  - Marquee track text 12px (was 11px)
+  - Header padding 16,12 (was 12,10)
+- **Separator** redesigned: `TrayMenuSeparatorBrush` + 12,4 margin (was opaque `BorderSubtle` + 8,4)
+- **Icon consistency**: all 11 menu item icons bumped to 16x16 (was mix of 14 and 12)
+- **ContextMenu container**: `CornerRadius` 8 (was 12; tighter Win11 feel), `Padding` 6 (was 4), `MinWidth` 240 (was 220)
+- Win11 22H2+ Acrylic backdrop wiring preserved (existing code-behind path in `MainWindow.xaml.cs`)
+
+### Tweak 2: autostart force-ON every install
+
+`src/tray_csharp/App.xaml.cs` bootstrap path simplified:
+
+- Removed `autostart_defaulted_v14_0_0` flag-gated block (Stage 7.18 Task A mechanism that preserved user toggle preferences across runs)
+- Unconditional `_autoStartService.Enable()` on every bootstrap
+- New log line: `[AutoStart] AutoStart forced ON (every install)`
+- +12 / -21 net (App.xaml.cs only)
+
+Operator-locked decision: every install/update unconditionally enables autostart regardless of prior user toggle state. Operator accepts the tradeoff (any user who explicitly disabled autostart in a prior session will see it re-enabled on next install).
+
+### Constraints honored
+
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (S0.2 + S9.1 + S10.1: `tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`)
+- `src/customize.html` UNCHANGED (`git diff 9b27a82..HEAD --` empty)
+- `src/overlay.html` UNCHANGED
+- `build_tools/build_msi.py` UNCHANGED
+- `version.json` UNCHANGED (no bump; fix-forward via SHA suffix)
+- `_full_rebuild.ps1` UNCHANGED (silent WARN behavior parked for v14.1.0 -- see below)
+- Setup Wizard XAML UNCHANGED (absolute rule 4: STEP 0-7 brief locked the wizard surface)
+- No menu item text changed, no menu items reordered, no items added/removed
+- No new external NuGet dependencies (used existing WPF DropShadowEffect + Path)
+- No em-dash characters in source edits (with one caveat: XML comments can't contain `--`; see SE5 cycle below)
+- UTF-8 no-BOM throughout
+
+### SE5 cycle: XML comment `--` violation (strike 1 / 3)
+
+**Symptom (STEP 8 first rebuild):** `=== REBUILD DONE OK ===` reported, but tucked inside was `WARN: WPF tray dotnet publish failed (exit 1) -- continuing`. The "continuing" branch let the rebuild ship the PRIOR (Stage 7.21 STEP 5 `d091812`) DLL. Post-install SE2 verification caught it: installed `MastersFM_Tray_v14.dll` ProductVersion still `14.0.0+d091812...`, autostart log line ABSENT. Stage 7.22 work was in repo but not in running install.
+
+**Root cause:** W3C XML 1.0 spec section 2.5 forbids `--` inside `<!-- ... -->` comments. The project's em-dash hard constraint ("use `--` instead of em-dash character `—`") was applied to new comments in STEPs 3 and 4 (e.g., "IsHighlighted -- translucent accent tint"), violating the XML parser's rules. Stage 7.7B (original ContextMenu.xaml author) avoided this naturally by not using `--` inside XML comments. The em-dash constraint is normally honored fine in C#/JS/CSS source where `--` is legal -- XML comments are the one source-environment where the rule can't be honored literally.
+
+**Fix (`a7d53dd`):** Replace ` -- ` inside XML comments with ` : ` (key:value style) or ` * ` (bullet style). Preserve em-dash semantic content elsewhere. 2 XAML files, 6 line edits across 4 comment blocks. Manual `dotnet build` confirms 0 MC3000 errors. Retry `_full_rebuild.ps1` runs clean: `=== WPF tray built ===` at 01:09:51; installed DLL ProductVersion now `14.0.0+a7d53dd...`; autostart log line PRESENT.
+
+**Diagnosis-fix pair documented at commits `963cb61` (diag) + `a7d53dd` (fix).** Clean SE5 cycle; strike accounting: 1 / 3.
+
+### Build infrastructure observation parked for v14.1.0
+
+`_full_rebuild.ps1` silently shipped a stale DLL when the WPF tray dotnet publish failed. The `WARN: ... -- continuing` branch is permissive by design (lets ObsCleanup + audio_spectrum + MSI build proceed even if one component fails), but for the tray DLL specifically this is wrong -- a broken tray DLL is a release-stopper.
+
+Maintenance candidate for v14.1.0: change the WPF tray dotnet publish failure handling from `WARN ... continuing` to a HARD ERROR + abort the script. Same pattern likely applies to MastersFM.exe (`[1b]`) and customize.exe (`[1c]`) publishes. Not touched this stage per absolute rule "no infrastructure changes".
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** mandatory log inspection after STEP 8 rebuild: PASS only after SE5 retry; first rebuild FAILed (silently). The catch was the literal "did the new log line appear in overlay.log?" check, which forced inspection of the binary on disk.
+- **SE3** mandatory diff review after every commit: yes (10 commits)
+- **SE4** no "continue" shortcut at gate: yes (operator gave explicit `PASS`, interrupting the gate text mid-print)
+- **SE5** mistake handling: 1 cycle (XML comment `--` violation -> `963cb61` diag -> `a7d53dd` fix -> retry rebuild PASS)
+- **SE6** three-strike escalation: not triggered (1 / 3)
+- **SE7** no autonomous scope expansion: 5 temptations parked (see v14.1.0 backlog below; also kept hands off `_full_rebuild.ps1` per absolute rule)
+- **SE8** protected files SHA256 verified at S0.2 + S9.1 + S10.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.22 lands as fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain since v14.0.0 cut:
+- Stage 7.17 `718e3e1` (v14.0.0 cut)
+- Stage 7.18 -> Stage 7.21 `9b27a82` (customize redesign cycle CLOSED)
+- Stage 7.22 (closure SHA assigned by this commit)
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S10.2 warm rebuild: `14.0.0+a7d53dd569f1f1355f7de724c4eaf7df107a0eeb` (matches HEAD up to SE5 FIX; closure commit follows this APPEND).
+
+### Files touched in this stage
+
+- `src/tray_csharp/App.xaml.cs` (autostart Tweak 2; +12 / -21 net)
+- `src/tray_csharp/Theme/Colors.xaml` (4 new design tokens; +17 lines)
+- `src/tray_csharp/Theme/ContextMenu.xaml` (MenuItem template + Separator + container refresh; +43 / -23 net across STEPs 3+5+7+SE5)
+- `src/tray_csharp/MainWindow.xaml` (header polish + icon bump; +28 / -16 net across STEPs 4+6+SE5)
+- `V14_S7_22_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_22_REPORT.md` (NEW; tracked; 13-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-24_S7_22_PRE/` (disk-only snapshot)
+
+### Files NOT touched
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`) -- SHA256 UNCHANGED end-to-end
+- `src/customize.html`, `src/overlay.html` -- 0-line diff vs `9b27a82`
+- `build_tools/build_msi.py` -- 0-line diff vs `9b27a82`
+- All other `src/tray_csharp/**` (Setup Wizard XAML, ViewModels, Services -- only the 4 files above touched)
+- `version.json`
+- `_full_rebuild.ps1`
+
+### Lessons learned (Stage 7.22)
+
+- **XML comments cannot contain `--`.** The em-dash hard constraint (`--` instead of `—`) is universally honorable in C#/JS/CSS source but NOT in XML/XAML/HTML comments where the parser rejects `--` per W3C spec. Mitigation: in XML/XAML comments, use ` : ` (key:value) or ` * ` (bullet) or single hyphens. Add to `md/hard_constraints.md` next time hard constraints get touched.
+- **`_full_rebuild.ps1` "WARN ... continuing" branch silently ships stale DLLs.** Trust but verify: ALWAYS post-rebuild check (a) installed DLL ProductVersion matches HEAD SHA AND (b) new log lines from the latest code change appear in fresh logs. If either check fails, the rebuild WARNed something through. SE2 caught this cleanly; the cost was one strike consumed on STEP 8.
+- **The "no infrastructure changes" rule held the line.** Despite the rebuild script being the proximate cause of the failure mode, this stage didn't touch it -- correct call. Maintenance candidate parked for v14.1.0 where it gets its own focused brief.
+- **WPF `DropShadowEffect` with `x:Shared="False"`.** WPF `Effect` resources are element-owned in the rendering pipeline; reusing one effect across multiple elements without `x:Shared="False"` causes the second element to lose the effect. Same shape as Stage 7.7B `CardHoverShadow`.
+- **Win11 checkmark Path geometry `M 0 7 L 5 12 L 14 0`** is the canonical short-leg/long-leg stroke used across modern Microsoft UI. Stretching it to a 14x12 cell with Round line caps gives the exact accent-check look without needing a font asset.
+- **Operator gate interrupt is allowed.** Operator replied PASS mid-print of the gate text. SE4 wording ("PASS or FAIL <reason>", literal, case-insensitive) accepted on first unambiguous PASS regardless of whether the full gate text rendered.
+
+### v14.1.0 candidate backlog (cumulative from full v14 cycle + Stage 7.22 additions)
+
+- Server log rotation policy (parked since Stage 7.15)
+- Overlay.html Stage 7.20.5 SE5 substitution removal (no-op now for post-Stage-7.20.6 configs)
+- WPF parked items (Stage 7.19.5 WizardDeviceItemStyle dedup; DeviceRowTemplate consolidation; SystemColors guard cleanup)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- `_full_rebuild.ps1` `WARN: WPF tray dotnet publish failed (exit 1) -- continuing` -> HARD ERROR + abort (Stage 7.22 SE5 lesson)
+- Version-string consolidation (hardcoded fallbacks in various files; Stage 7.18 STEP 2.5 caught the obvious ones but more may surface)
+- Theme glow color follow-master (parked from Stage 7.20.6 -- master glow color picker if operator wants symmetric treatment with accent)
+- Real user feedback from shipping to friends
+- **Stage 7.22 parks:** (a) audit other tray menu items for the rounded-Win11 treatment (only ContextMenu+MenuItem styles refreshed -- ScrollViewer, TextBox in About dialog, etc. unchanged); (b) cross-component `Theme/ContextMenu.xaml` reuse if any other context menus exist in the codebase; (c) MainWindow.xaml em-dash audit (caught the ones inside XML comments; quick scan suggests no others escaped).
+
+### Status: HALT. Stage 7.22 closed. v14 still at 14.0.0 (fix-forward via SHA). Customize redesign cycle remains closed (Stage 7.21 closure unchanged).
+
+### Next operator action
+
+Ship the latest build to friends with both tweaks live. Gather feedback. Plan v14.1.0 from real signal (which now includes the Stage 7.22 backlog adds: rebuild-script hardening + tray menu reuse audit).
