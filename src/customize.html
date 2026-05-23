@@ -589,6 +589,20 @@ body.show-advanced .advanced-only { display: revert; }
 }
 body.show-advanced .discovery-link { display: none; }
 
+/* Stage 7.20 STEP 13: prefers-reduced-motion polish. Users who request
+   reduced motion at the OS level get instant transitions instead of the
+   smooth Stage 7.19 animation feel. Stage 7.15 clock guard already keeps
+   the clock from animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  #settings-search,
+  .search-clear,
+  .use-accent-link,
+  .sec-body,
+  .discovery-link {
+    transition: none !important;
+  }
+}
+
 /* ─── Toggle switch ─────────────────────────────────────────────────────────── */
 .toggle {
   position: relative; width: 34px; height: 19px;
@@ -3745,6 +3759,11 @@ function initSearchBar() {
   const input = document.getElementById('settings-search');
   const clearBtn = document.getElementById('search-clear');
   if (!input || !clearBtn) return; // defensive; absent in older HTML snapshots
+
+  // Stage 7.20 STEP 13 polish: hard cap on input length so a pathological
+  // 10,000-character paste doesn't churn the filter loop. 200 chars is
+  // generous for any realistic setting search.
+  input.setAttribute('maxlength', '200');
 
   input.addEventListener('input', () => {
     clearBtn.classList.toggle('visible', input.value.length > 0);
