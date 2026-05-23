@@ -603,6 +603,28 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   outline-offset: 1px;
 }
 
+/* Stage 7.21 STEP 4: "Following master" badge for accent pickers showing the
+   var(--accent-master) sentinel. Live color tracking via background-color
+   bound to --accent-master (no JS needed for color sync). Visibility is
+   toggled by .follow-master-active class via updateFollowMasterBadges(). */
+.follow-master-badge {
+  display: none;
+  background: var(--accent-master);
+  color: #ffffff;
+  font-size: var(--fs-tiny);
+  font-weight: var(--fw-semibold);
+  padding: 2px 6px;
+  border-radius: var(--r-tiny);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  line-height: 1.4;
+}
+.follow-master-badge.follow-master-active {
+  display: inline-block;
+}
+
 /* ─── Sidebar header (Stage 7.20: search bar + advanced toggle) ──────────── */
 .sidebar-header {
   position: sticky;
@@ -1583,6 +1605,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-np-color-p">
             <input type="text"  id="c-np-color" class="hex-in">
+            <span class="follow-master-badge" data-target="np-color">Following master</span>
             <button class="use-accent-link" data-target="np-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1606,6 +1629,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-bars-color-p">
             <input type="text"  id="c-bars-color" class="hex-in">
+            <span class="follow-master-badge" data-target="bars-color">Following master</span>
             <button class="use-accent-link" data-target="bars-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1660,6 +1684,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-platform-color-p">
             <input type="text"  id="c-platform-color" class="hex-in">
+            <span class="follow-master-badge" data-target="platform-color">Following master</span>
             <button class="use-accent-link" data-target="platform-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1668,6 +1693,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-platform-dot-p">
             <input type="text"  id="c-platform-dot" class="hex-in">
+            <span class="follow-master-badge" data-target="platform-dot">Following master</span>
             <button class="use-accent-link" data-target="platform-dot" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1737,6 +1763,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-title-color-p">
             <input type="text"  id="c-title-color" class="hex-in">
+            <span class="follow-master-badge" data-target="title-color">Following master</span>
             <button class="use-accent-link" data-target="title-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1792,6 +1819,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-artist-color-p">
             <input type="text"  id="c-artist-color" class="hex-in">
+            <span class="follow-master-badge" data-target="artist-color">Following master</span>
             <button class="use-accent-link" data-target="artist-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -1879,6 +1907,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-spec-color-p">
             <input type="text"  id="c-spec-color" class="hex-in">
+            <span class="follow-master-badge" data-target="spec-color">Following master</span>
             <button class="use-accent-link" data-target="spec-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -2044,6 +2073,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-ctrl">
             <input type="color" id="c-ts-color-p">
             <input type="text"  id="c-ts-color" class="hex-in">
+            <span class="follow-master-badge" data-target="ts-color">Following master</span>
             <button class="use-accent-link" data-target="ts-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
@@ -4088,6 +4118,42 @@ function initAdvancedToggle() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Following-master badges (Stage 7.21 STEP 4) -- reactive visibility on the 8
+//  per-element accent pickers showing var(--accent-master) sentinel state. Badge
+//  background color is bound to --accent-master via CSS so it live-tracks the
+//  master accent automatically (no JS needed for color sync).
+// ════════════════════════════════════════════════════════════════════════════
+
+function updateFollowMasterBadges() {
+  document.querySelectorAll('.follow-master-badge').forEach(badge => {
+    const target = badge.dataset.target;
+    if (!target) return;
+    const text = document.getElementById('c-' + target);
+    if (!text) return;
+    const isFollow = (text.value || '').trim() === 'var(--accent-master)';
+    badge.classList.toggle('follow-master-active', isFollow);
+  });
+}
+
+function initFollowMasterBadges() {
+  // Initial pass at startup (after syncAll has populated text input values).
+  updateFollowMasterBadges();
+  // Listen for changes on the 8 accent pickers' inputs so the badge reactivity
+  // doesn't lag the picker state. The use-accent-link click handler dispatches
+  // an 'input' event on the text input (Stage 7.20 STEP 2), which fires the
+  // listener below; theme apply re-runs syncAll which calls
+  // updateFollowMasterBadges directly.
+  document.querySelectorAll('.follow-master-badge').forEach(badge => {
+    const target = badge.dataset.target;
+    if (!target) return;
+    const text = document.getElementById('c-' + target);
+    const pick = document.getElementById('c-' + target + '-p');
+    if (text) text.addEventListener('input', updateFollowMasterBadges);
+    if (pick) pick.addEventListener('input', updateFollowMasterBadges);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Welcome banner (Stage 7.21 STEP 3) -- first-run onboarding with dismiss +
 //  re-show footer link. localStorage key: customize_welcome_seen.
 // ════════════════════════════════════════════════════════════════════════════
@@ -4316,6 +4382,10 @@ function syncAll() {
   syncToggle('c-anim-crossfade', () => !!(S.showAnimation?.crossfadeOnSkip));
 
   // (v6.2.3: OBS Placement syncs removed along with the Placement sections.)
+
+  // Stage 7.21 STEP 4: refresh following-master badges after every syncAll
+  // (covers init, reset, theme apply, preset load).
+  if (typeof updateFollowMasterBadges === 'function') updateFollowMasterBadges();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -5038,6 +5108,7 @@ async function pmImport(file) {
   addDiscoveryLinks();    // Stage 7.20 STEP 11: append "Want more control?" links
   initAdvancedToggle();   // Stage 7.20 STEP 11: localStorage + checkbox + delegation
   initWelcomeBanner();    // Stage 7.21 STEP 3: first-run welcome banner
+  initFollowMasterBadges();// Stage 7.21 STEP 4: following-master reactive badges
   // v8.0.1: pm-* DOM elements live in the preset-manager-modal markup AFTER
   // the closing script tag, so binding them at script eval time would fail.
   // (Avoid writing the literal close-script string inside JS — even in a
