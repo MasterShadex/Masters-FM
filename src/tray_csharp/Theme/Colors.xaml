@@ -63,4 +63,21 @@
     <SolidColorBrush x:Key="TagRemovedBrush"  Color="#F87171"/>   <!-- red -->
     <SolidColorBrush x:Key="TagNoteBrush"     Color="#5C5C66"/>   <!-- neutral grey -->
 
+    <!-- Stage 7.22: tray context menu polish brushes.
+         Translucent variants for hover/pressed states + low-opacity separator.
+         Win11-style hover uses ~10% accent tint; pressed uses ~20%. The 50%
+         translucent white separator gives a subtle low-contrast divider that
+         reads well over both Surface1 (Win10 branch) and Acrylic (Win11 branch).
+         Accent for active toggleable check-marks uses BrandPurpleDeep (#7C3AED). -->
+    <SolidColorBrush x:Key="TrayMenuHoverBrush"      Color="#1A7C3AED"/>   <!-- 10% accent -->
+    <SolidColorBrush x:Key="TrayMenuPressedBrush"    Color="#337C3AED"/>   <!-- 20% accent -->
+    <SolidColorBrush x:Key="TrayMenuSeparatorBrush"  Color="#33FFFFFF"/>   <!-- 20% white -->
+
+    <!-- Stage 7.22: drop shadow for the tray menu header album art thumbnail.
+         Subtler than CardHoverShadow (smaller blur) so it reads as elevation
+         rather than glow. -->
+    <DropShadowEffect x:Key="TrayMenuArtShadow" x:Shared="False"
+                      BlurRadius="6" ShadowDepth="2" Direction="270"
+                      Color="#000000" Opacity="0.45"/>
+
 </ResourceDictionary>
