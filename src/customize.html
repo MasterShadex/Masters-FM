@@ -3784,6 +3784,118 @@ function initSearchBar() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Advanced toggle (Stage 7.20 STEP 11) -- mark advanced-only elements +
+//  insert discovery links + wire the "Show advanced settings" checkbox with
+//  localStorage persistence. Default state: Basic (advanced hidden).
+// ════════════════════════════════════════════════════════════════════════════
+
+function markAdvancedElements() {
+  // Entire sections that hide in Basic mode. Section body IDs (the .sec-body
+  // children); we walk to the parent .section to apply the class so the
+  // header is hidden alongside the body.
+  const advancedSectionBodyIds = ['s-layout', 's-border', 's-anim', 's-platform'];
+  advancedSectionBodyIds.forEach(id => {
+    const body = document.getElementById(id);
+    if (!body) return;
+    const sec = body.closest('.section');
+    if (sec) sec.classList.add('advanced-only');
+  });
+
+  // Individual rows that hide in Basic mode. Match by lowercased row-label
+  // text so the function survives label tweaks within reason (case + whitespace
+  // tolerated). Per S0.8: keep basics visible, hide letter-spacing / marquee
+  // pause / background blur / reactivity-tuning controls.
+  const advancedRowLabels = new Set([
+    // Card appearance
+    'blur behind the card',
+    // Track and artist text
+    'title letter spacing', 'title scroll pause',
+    'artist letter spacing', 'artist scroll pause',
+    // Audio bars (Reactivity + Animation sub-groups)
+    'make quiet sounds louder', 'how quickly bars react to music',
+    'animation frame rate (advanced)', 'smoothness',
+    // Outer glow color override (keep enabled toggle + intensity visible)
+    'first color', 'second color',
+  ]);
+  document.querySelectorAll('.row').forEach(row => {
+    const labelEl = row.querySelector('.row-label');
+    if (!labelEl) return;
+    const label = (labelEl.textContent || '').trim().toLowerCase();
+    if (advancedRowLabels.has(label)) {
+      row.classList.add('advanced-only');
+    }
+  });
+
+  // Per-element override sub-groups inside Text glow / Auto-color from album art.
+  // These sub-groups are introduced by .sub-label dividers; everything between
+  // the FIRST .sub-label and the next .sec-subheader (or end of .sec-body) is
+  // advanced. Master toggle for each section is BEFORE any .sub-label so it
+  // stays visible by default.
+  ['s-textglow', 's-dyncolors'].forEach(bodyId => {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    let inAdvanced = false;
+    Array.from(body.children).forEach(child => {
+      if (child.classList && child.classList.contains('sub-label')) {
+        inAdvanced = true;
+      }
+      if (inAdvanced) child.classList.add('advanced-only');
+    });
+  });
+}
+
+function addDiscoveryLinks() {
+  // Sections that contain advanced-only content. A single "Want more control?"
+  // link appended at the bottom of each section's .sec-body invites the user
+  // to flip Advanced ON. The link itself hides automatically in Advanced mode
+  // (CSS rule body.show-advanced .discovery-link { display: none }).
+  const sectionsWithHiddenContent = [
+    's-card', 's-text', 's-spectrum',
+    's-glow', 's-textglow', 's-dyncolors',
+  ];
+  sectionsWithHiddenContent.forEach(id => {
+    const body = document.getElementById(id);
+    if (!body) return;
+    if (body.querySelector('.discovery-link')) return; // idempotent
+    const link = document.createElement('a');
+    link.className = 'discovery-link';
+    link.href = '#';
+    link.dataset.toggleAdvanced = '1';
+    link.textContent = 'Want more control? Show advanced settings';
+    body.appendChild(link);
+  });
+}
+
+function initAdvancedToggle() {
+  const checkbox = document.getElementById('show-advanced');
+  if (!checkbox) return;
+  // Restore from localStorage. Defensive try/catch: private-browsing windows
+  // and some embedded WebView configurations throw on localStorage access.
+  let saved = 'false';
+  try {
+    saved = localStorage.getItem('customize_show_advanced') || 'false';
+  } catch (e) { /* localStorage unavailable -- default to Basic */ }
+  const isOn = saved === 'true';
+  checkbox.checked = isOn;
+  document.body.classList.toggle('show-advanced', isOn);
+  checkbox.addEventListener('change', () => {
+    const v = checkbox.checked;
+    document.body.classList.toggle('show-advanced', v);
+    try {
+      localStorage.setItem('customize_show_advanced', v ? 'true' : 'false');
+    } catch (e) { /* localStorage unavailable -- ephemeral session state only */ }
+  });
+  // Delegated click for "Want more control? Show advanced settings" discovery links.
+  document.addEventListener('click', e => {
+    const link = e.target.closest('.discovery-link');
+    if (!link) return;
+    e.preventDefault();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  syncAll — push every S value into the UI controls (no new listeners)
 //  Called on init and on reset.
 // ════════════════════════════════════════════════════════════════════════════
@@ -4654,6 +4766,9 @@ async function pmImport(file) {
   initBindings();    // wire up event listeners exactly once
   buildSearchIndex();// Stage 7.20 STEP 7: attach data-search to every .row
   initSearchBar();   // Stage 7.20 STEP 9: live filter + Ctrl+F + Esc + clear
+  markAdvancedElements(); // Stage 7.20 STEP 11: mark sections + rows .advanced-only
+  addDiscoveryLinks();    // Stage 7.20 STEP 11: append "Want more control?" links
+  initAdvancedToggle();   // Stage 7.20 STEP 11: localStorage + checkbox + delegation
   // v8.0.1: pm-* DOM elements live in the preset-manager-modal markup AFTER
   // the closing script tag, so binding them at script eval time would fail.
   // (Avoid writing the literal close-script string inside JS — even in a
