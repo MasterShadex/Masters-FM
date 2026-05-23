@@ -480,6 +480,66 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   outline-offset: 1px;
 }
 
+/* ─── Sidebar header (Stage 7.20: search bar + advanced toggle) ──────────── */
+.sidebar-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--sidebar-bg);
+  padding: var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.search-bar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+#settings-search {
+  flex: 1;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-input);
+  padding: 6px 28px 6px 10px;
+  font-size: var(--fs-caption);
+  font-family: var(--font-ui);
+  outline: none;
+  transition: border-color var(--dur-fast-v2, 200ms) var(--ease-windows, cubic-bezier(0.1, 0.9, 0.2, 1));
+}
+#settings-search::placeholder { color: var(--text-tertiary); }
+#settings-search:focus { border-color: var(--accent-bright); }
+.search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-tiny);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast-v2, 200ms) var(--ease-windows, cubic-bezier(0.1, 0.9, 0.2, 1));
+}
+.search-clear.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.search-clear:hover { color: var(--text-primary); background: rgba(255,255,255,0.06); }
+
+/* Stage 7.20 STEP 9: live filter classes applied/removed by the search handler. */
+.section.section-hidden-by-search { display: none; }
+.row.row-dimmed { opacity: 0.35; }
+.row.row-highlighted { background: rgba(192, 96, 255, 0.08); }
+.row.row-highlighted .row-label { color: var(--text-primary); }
+
 /* ─── Toggle switch ─────────────────────────────────────────────────────────── */
 .toggle {
   position: relative; width: 34px; height: 19px;
@@ -789,6 +849,15 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
 
   <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
   <aside class="sidebar">
+
+    <!-- SIDEBAR HEADER (Stage 7.20) -- sticky search bar at the top of the sidebar.
+         Advanced toggle joins this header at STEP 10. JS wiring lands at STEP 9. -->
+    <div class="sidebar-header">
+      <div class="search-bar-container">
+        <input type="text" id="settings-search" placeholder="Find a setting..." aria-label="Search overlay settings" autocomplete="off" />
+        <button class="search-clear" id="search-clear" type="button" aria-label="Clear search">×</button>
+      </div>
+    </div>
 
     <!-- QUICK SETTINGS (Stage 7.20) -- 5 master controls at the top of the sidebar.
          Default-OPEN so users see the masters immediately on first load.
