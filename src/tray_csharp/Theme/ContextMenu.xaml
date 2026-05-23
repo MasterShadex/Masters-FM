@@ -42,19 +42,23 @@
         </Setter>
     </Style>
 
-    <!-- === MenuItem row ===
-         36px tall; 3-column layout: 16px icon | 8px gap | * label | 8px gap | 16px check.
-         IsHighlighted trigger: Surface2 hover background.
-         IsChecked trigger: BrandPurpleBase check mark visible in check column.
-         IsEnabled=False: 45% opacity, arrow cursor.
+    <!-- === MenuItem row (Stage 7.22 refresh) ===
+         Win11-style modern feel:
+           * 36px tall; 3-column layout: 16px icon | 8px gap | * label | 8px gap | 16px check
+           * Padding 12,8 for breathing room on left/right edges
+           * IsHighlighted -- translucent accent tint (TrayMenuHoverBrush ~10%)
+           * IsPressed    -- slightly stronger tint (TrayMenuPressedBrush ~20%)
+           * IsChecked    -- Win11-style checkmark Path (M 0 7 L 5 12 L 14 0)
+                             filled with BrandPurpleDeep (#7C3AED accent)
+           * IsEnabled=False -- 45% opacity, arrow cursor
          Icon column: renders MenuItem.Icon content (set per-item in XAML).
-         Check column: Path rendered from IconCheck; hidden by default, shown
-         when IsChecked=True (used for Discord, AutoStart, OBS toggles). -->
+         Check column: inline Path with the Win11 checkmark stroke geometry;
+         hidden by default, shown when IsChecked=True (Discord, AutoStart, OBS). -->
     <Style x:Key="AppMenuItemStyle" TargetType="MenuItem">
         <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily"  Value="Segoe UI"/>
         <Setter Property="FontSize"    Value="13"/>
-        <Setter Property="Padding"     Value="8,0"/>
+        <Setter Property="Padding"     Value="12,0"/>
         <Setter Property="Cursor"      Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -66,14 +70,15 @@
                         <Grid Height="36">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="16"/>
-                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>
                                 <ColumnDefinition Width="16"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Icon column: displays MenuItem.Icon content.
-                                 Items without an icon leave this slot empty. -->
+                                 Items without an icon leave this slot empty (the
+                                 16px column stays reserved so labels still align). -->
                             <ContentPresenter Grid.Column="0"
                                               Content="{TemplateBinding Icon}"
                                               VerticalAlignment="Center"
@@ -88,13 +93,22 @@
                                               VerticalAlignment="Center"
                                               TextBlock.Foreground="{TemplateBinding Foreground}"/>
 
-                            <!-- Check column: brand-purple checkmark for toggle items.
-                                 Collapsed by default; Visible when IsChecked=True. -->
+                            <!-- Check column (Stage 7.22): Win11-style accent checkmark.
+                                 Path "M 0 7 L 5 12 L 14 0" draws the canonical Win11
+                                 check stroke (short leg, long leg). Fill is BrandPurpleDeep
+                                 (operator's locked accent hex #7C3AED). Collapsed by
+                                 default; Visible when IsChecked=True. StrokeThickness
+                                 not needed since the Fill is solid; the geometry is
+                                 closed by Stretch=Uniform stretching to the 12x12 cell. -->
                             <Path x:Name="CheckMark"
                                   Grid.Column="4"
-                                  Data="{DynamicResource IconCheck}"
-                                  Fill="{DynamicResource BrandPurpleBase}"
-                                  Width="12" Height="12"
+                                  Data="M 0 7 L 5 12 L 14 0"
+                                  Stroke="{DynamicResource BrandPurpleDeep}"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Width="14" Height="12"
                                   Stretch="Uniform"
                                   VerticalAlignment="Center"
                                   HorizontalAlignment="Center"
@@ -104,7 +118,11 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Root" Property="Background"
-                                    Value="{DynamicResource Surface2}"/>
+                                    Value="{DynamicResource TrayMenuHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource TrayMenuPressedBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="CheckMark" Property="Visibility"
