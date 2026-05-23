@@ -57,8 +57,31 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     private AudioDeviceInfo? _selectedDevice;
 
-    // Raw accessor used by the code-behind SelectionChanged guard.
-    public AudioDeviceInfo? SelectedDevice => _selectedDevice;
+    // Raw accessor + WPF TwoWay binding write-path.
+    //
+    // Stage 7.19.5 fix: SetupWizardWindow.xaml line 262 binds the audio-step
+    // ListBox's SelectedItem TwoWay to this property. Before Stage 7.12 Batch A
+    // rev14 (commit 23c4c54, 2026-05-17) this property had a setter; rev14
+    // removed the setter, breaking the wizard's audio-step click-to-select
+    // on every fresh install (rc.3 through 7.19) with an InvalidOperationException
+    // at "setup wizard show". The setter is restored but forwards to the
+    // EXISTING user-click path (SelectDevice) so the design rule "User clicks
+    // forwarded via SelectDevice(); programmatic changes via
+    // SetSelectedDeviceSilent()" is honored: WPF TwoWay binding writes
+    // represent user input, which is exactly what SelectDevice handles.
+    //
+    // Null writes (rare; would only happen if WPF clears the binding) route
+    // through SetSelectedDeviceSilent so they update visuals without firing
+    // the persist-to-config + HTTP POST side effects of SelectDevice.
+    public AudioDeviceInfo? SelectedDevice
+    {
+        get => _selectedDevice;
+        set
+        {
+            if (value != null) SelectDevice(value);
+            else               SetSelectedDeviceSilent(null);
+        }
+    }
 
     // WASAPI ListBox binds to this. Returns null when an MME device is active.
     public AudioDeviceInfo? SelectedWasapiDevice =>
