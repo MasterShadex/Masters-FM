@@ -755,6 +755,68 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
   <aside class="sidebar">
 
+    <!-- QUICK SETTINGS (Stage 7.20) -- 5 master controls at the top of the sidebar.
+         Default-OPEN so users see the masters immediately on first load.
+         STEP 1: HTML skeleton only -- inputs are unwired placeholders.
+         STEPs 2-6: JS handlers + per-element coordination land one master per STEP. -->
+    <div class="section" id="sec-quick-settings">
+      <div class="sec-header open" data-sec="quick-settings">
+        <span class="sec-icon">⚡</span>
+        <span class="sec-title">Quick Settings</span>
+        <span class="sec-chevron">▼</span>
+      </div>
+      <div class="sec-body open" id="s-quick-settings">
+        <p class="sec-help">The fastest way to change the overall look. Adjust everything at once, then dive into individual sections below if you want to fine-tune any element.</p>
+
+        <div class="sec-subheader">COLOR AND SIZE</div>
+
+        <div class="row">
+          <div class="row-label">Accent color</div>
+          <div class="row-ctrl">
+            <input type="color" id="c-master-accent-color-p" disabled>
+            <input type="text" id="c-master-accent-color" class="hex-in" disabled>
+          </div>
+        </div>
+        <p class="control-help">Sets the main accent color for every element that hasn't been manually overridden. Click "Use accent" next to any per-element color picker to make that element follow this master.</p>
+
+        <div class="row">
+          <div class="row-label">Overall size</div>
+          <div class="row-ctrl">
+            <input type="range" id="c-master-overall-size" min="50" max="150" step="5" disabled>
+            <span class="range-val" id="v-master-overall-size">100%</span>
+          </div>
+        </div>
+        <p class="control-help">Scales the whole card up or down. 100 percent is the standard size; lower shrinks it, higher grows it.</p>
+
+        <div class="row">
+          <div class="row-label">Text size</div>
+          <div class="row-ctrl">
+            <input type="range" id="c-master-text-size" min="50" max="150" step="5" disabled>
+            <span class="range-val" id="v-master-text-size">100%</span>
+          </div>
+        </div>
+        <p class="control-help">Scales every piece of text (title, artist, label, timestamps) at once. Per-element text sizes stay relative -- the title stays larger than the artist.</p>
+
+        <div class="sec-subheader">EFFECTS</div>
+
+        <div class="row">
+          <div class="row-label">Glow</div>
+          <div class="row-ctrl">
+            <label class="toggle"><input type="checkbox" id="c-master-glow" disabled><span class="track"></span></label>
+          </div>
+        </div>
+        <p class="control-help">Master switch for every glow effect on the card. Turn off for a flat, clean look without changing any per-element glow settings.</p>
+
+        <div class="row">
+          <div class="row-label">Animations</div>
+          <div class="row-ctrl">
+            <label class="toggle"><input type="checkbox" id="c-master-animations" disabled><span class="track"></span></label>
+          </div>
+        </div>
+        <p class="control-help">Master switch for every animation (spinning border, slide-in, marquee scrolling, spectrum bars). Clock time updates always stay smooth.</p>
+      </div>
+    </div>
+
     <!-- THEMES — v8.0.1: default-collapsed so the customize page opens with a
          tidy sidebar; users click the header to expand the theme grid. -->
     <div class="section">
