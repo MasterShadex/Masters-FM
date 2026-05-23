@@ -59,7 +59,7 @@
                             </Grid.ColumnDefinitions>
                             <!-- Stage 7.22 header polish:
                                  - 44x44 thumbnail (unchanged size)
-                                 - CornerRadius 6 (was 4) -- softer Win11 feel
+                                 * CornerRadius 6 (was 4): softer Win11 feel
                                  - TrayMenuArtShadow drop shadow for elevation
                                  - 12px margin-right (was 10) for slight extra breathing room
                                  Same DataTrigger collapses the thumbnail when there is no
@@ -99,7 +99,7 @@
                                      (operator screenshot of "Good Morning Charlie ..." had
                                      the menu blow out 600+ px wide).  The TextBlock is
                                      wrapped in a Canvas so WPF passes Infinity as its
-                                     measure constraint -- TextBlock.ActualWidth therefore
+                                     measure constraint, so TextBlock.ActualWidth therefore
                                      equals the FULL text width (not the clipped 220 px),
                                      which is what the marquee animation needs to know how
                                      far to scroll leftward each loop.
