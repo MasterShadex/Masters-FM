@@ -4027,3 +4027,110 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S16.2 rebuild: `14.0.0
 - **Stage 7.20.5** (recommended, optional, ~3-5 h) -- overlay.html master variable wiring; makes masters visibly affect OBS
 - **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle
 - **Pause + ship** -- current state is fully functional for ALL Stage 7.19 controls; the only invisible-master controls are the Quick Settings sliders; if operator is comfortable with the documented limitation, the build is shippable to friends as-is
+
+---
+
+## 2026-05-23 22:46 UTC -- Stage 7.20.5: overlay.html master variable wiring
+
+**Commits:**
+- `62d072c` STEP 0  -- checkpoint + overlay inventory + wiring plan locked
+- `781f6d4` STEP 1  -- master CSS variables added to overlay.html :root
+- `6635b58` STEP 2  -- per-element accent vars default to var(--accent-master)
+- `2476e5d` STEP 3  -- Overall Size transform on card root
+- `0bbd409` STEP 4  -- Text Size scaling on per-element font-sizes
+- `434596f` STEP 5+6 -- .no-glow and .no-animations CSS class rules
+- `442b9e6` STEP 7  -- JS config-apply for master controls
+- `0dcab30` SE5 DIAGNOSIS -- Master Accent Color not propagating to non-customized elements
+- `30262c6` SE5 FIX -- substitute factory-default per-element accents with var(--accent-master)
+- (this entry) STEP 10 -- memory APPEND + overlay master wiring closure
+
+**Outcome:** PASS at attempt 2. Strikes consumed: **1 / 3** on STEP 9. One SE5 diagnosis-fix pair for the master-accent propagation root cause.
+
+### What this stage did
+
+Closed the Stage 7.20 known limitation: the 5 master controls now visibly affect the OBS overlay (not just the customize preview).
+
+- Added `--accent-master`, `--overall-scale`, `--text-scale` CSS variables to overlay.html `:root` with defaults matching customize.html.
+- Changed 7 per-element accent CSS-driven fallbacks from hex/brand-token to `var(--accent-master)` so the fallback chain resolves to master when the per-element CSS variable is unset OR holds the literal `var(--accent-master)` string.
+- Applied `transform: scale(var(--overall-scale)); transform-origin: center;` on `.card-outer`. Accept OBS browser source clipping at 150% scale; documented.
+- Wrapped 6 per-element font-size declarations with `calc(... * var(--text-scale))`.
+- Added `.no-glow` and `.no-animations` CSS class rules with broad descendant scope + `!important`. Stage 7.15 clock guard preserved by design (time elements have no animation/transition declarations to disable; content updates via JS textContent are unaffected).
+- Extended `applyConfig()` to read `cfg.masters` block and apply: setProperty for the 3 CSS vars + body classList toggle for the 2 master toggles. Defensive defaults for older configs missing the masters block.
+- Patched spectrum WebGL color resolution to handle the literal `var(--accent-master)` string (substitutes current master hex before passing RGB to WebGL).
+
+### SE5 cycle (FAIL -> diagnosis -> fix -> PASS)
+
+**FAIL (attempt 1):** Operator at STEP 9.2 reported `FAIL accent color on quick settings, fix this. All other things passed!` -- Master Accent Color did not visibly change accent-driven elements on Default theme; the 4 other masters worked correctly.
+
+**Diagnosis:** Stage 7.20.5 STEP 2's CSS-fallback change only resolves when a per-element CSS variable is UNSET. customize.html ALWAYS sets per-element accent variables via `R.setProperty('--<element>-color', <hex>)` during applyConfig, populated from saved configs or factory theme defaults. The fallback chain therefore never activated. The "Use accent" link (Stage 7.20 affordance) works -- it writes the literal `'var(--accent-master)'` string which propagates correctly -- but no element starts in "follow master" state out-of-box.
+
+**Fix:** Added overlay.html applyConfig pre-processing block (commit `30262c6`). When `cfg.masters?.accentColor` is set, walk a hardcoded list of 8 factory-default per-element accent values (Default theme palette from customize.html DEFAULTS); for any per-element value that EQUALS its factory default, substitute the literal string `'var(--accent-master)'`. Downstream setProperty calls then write the CSS reference and the chain resolves to master. Per-element wins decision preserved: values that DIFFER from factory defaults (user-customized OR non-default theme) pass through unchanged.
+
+**Re-test:** Operator replied `PASS!` after the SE5 fix rebuild.
+
+### Known limitations (documented honestly)
+
+1. **Non-default themes won't auto-follow master accent.** Themes like Neon Blue, Hot Pink, Retro Orange ship with their own per-element accent values that differ from the factory defaults the SE5 fix checks. On those themes, master accent won't propagate automatically; users still need to click "↺ Use accent" per-element. Future Stage 7.20.6 could add `var(--accent-master)` sentinel to theme accent-following keys (requires lifting absolute rule 2 NO touching customize.html).
+
+2. **Master Overall Size at 150% may clip OBS browser source bounds.** `.card-outer` scale(1.5) exceeds typical 1000x200 OBS dimensions. User resizes OBS source if needed. Accepted at gate.
+
+3. **Stage 7.15 clock guard preserved by design** -- time elements have no animation/transition declarations for `.no-animations` to disable; content updates via JS `.textContent` are unaffected. Operator-verified at gate.
+
+### Constraints honored
+
+- `src/customize.html` UNCHANGED (`git diff cad6fd5..HEAD -- src/customize.html` empty)
+- `src/server.js` UNCHANGED (round-trip verified READ-ONLY at S0.5; pass-through confirmed for `cfg.overlay` POST and GET endpoints)
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (S0.2 + S9.1 + S10.1)
+- Stage 7.15 clock fix preserved
+- Stage 7.19 + 7.19.5 + 7.20 surfaces preserved
+- No `version.json` bump
+- No git tag, no GitHub push, no GitHub interaction
+- No em-dash characters in source edits; UTF-8 no-BOM
+- No new external dependencies
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** mandatory log inspection after STEP 8 rebuild + after SE5 fix rebuild + after S10.2 rebuild: all PASS (0 IOE, 0 real ERROR/WARN, the 1 regex hit is the documented DialogService init INFO-level false positive)
+- **SE3** mandatory diff review after every commit: yes (10 commits, all scope-matched: overlay.html + V14_S7_20_5_LOG.md only; customize.html + server.js + protected files empty diff)
+- **SE4** no "continue" shortcut at gate: yes -- operator's initial FAIL accepted as literal `FAIL <reason>`; post-fix PASS accepted as literal PASS
+- **SE5** mistake handling: 1 diagnosis-fix pair (DIAGNOSIS commit `0dcab30` FIRST, FIX commit `30262c6` SECOND; never combined)
+- **SE6** three-strike escalation: 1 / 3 strikes consumed on STEP 9; no HARD HALT
+- **SE7** no autonomous scope expansion: temptation to touch customize.html themes parked + documented in V14_S7_20_5_REPORT.md section 7.1 (would need Stage 7.20.6 commission)
+- **SE8** protected files SHA256 verified at STEP 0 + STEP 9.1 + STEP 10.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.20.5 lands as fix-forward via commit SHA suffix.
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S10.2 rebuild: `14.0.0+30262c60ddfa3d6ec89b0851dea447cdcbf1cee3` (matches HEAD `30262c6` SE5 FIX commit; the closure commit follows after).
+
+### Files touched in this stage
+
+- `src/overlay.html` (+136 / -14 net; ~3636 -> ~3758 lines)
+- `V14_S7_20_5_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_20_5_REPORT.md` (NEW; tracked; 10-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-23_20-58_S7_20_5_PRE/` (disk-only snapshot)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/customize.html` (absolute rule 2)
+- All `src/tray_csharp/**`
+- `version.json`
+
+### Lessons learned (durable, future-stage relevant)
+
+- **CSS fallback chains only kick in when the variable is unset.** Setting a per-element CSS variable via inline style (`element.style.setProperty('--X', value)`) ALWAYS overrides the `:root` declaration's fallback. To make a master variable propagate to elements with stored values, the stored value itself must be the master reference (`var(--accent-master)` literal string) OR overlay.html must pre-process at applyConfig time to substitute factory defaults. The latter is what Stage 7.20.5 SE5 FIX did.
+- **Theme-bound color values silently disable cross-cutting master controls.** Any future "make X drive all elements" master design needs to consider that themes populate per-element values which override defaults. Best to bake the master reference into theme defaults at design time, not after the fact.
+- **The Stage 7.20.5 fix is brittle to theme changes** (only matches hardcoded factory defaults). For broader theme support, accent-following needs a different architecture -- either a "follow master" flag per element (state change) OR theme defaults that use `var(--accent-master)` sentinel (customize-side change).
+- **SE5 strict diagnosis-fix protocol works.** Operator's "FAIL accent color on quick settings, fix this" parsed cleanly as literal FAIL + reason. DIAGNOSIS commit captured root cause + 4 fix options + chosen option + documented limitations BEFORE the fix landed. FIX commit was scope-matched to the actual remediation. Operator re-test confirmed PASS. The discipline prevented patch-and-pray.
+
+### Status: HALT. Stage 7.20.5 CLOSED. Stage 7.20 masters now visibly affect OBS overlay for Default theme. Per-element wins decision preserved. Non-default themes still need manual "Use accent" per-element (documented honestly; could be addressed in future 7.20.6 if commissioned). customize.html / server.js / protected files unchanged. v14 still at 14.0.0 (fix-forward).
+
+### Next briefs (operator decision)
+
+- **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle (~6-10 h)
+- **Stage 7.20.6** (optional, narrow) -- theme rework so non-default themes also auto-follow master accent; would require lifting absolute rule 2 OR is a small targeted customize.html change
+- **Pause + ship** -- ALL 5 masters now visibly work on Default theme; non-default theme users have the "Use accent" affordance; build is shippable to friends as-is
