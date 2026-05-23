@@ -3786,3 +3786,113 @@ PASS at attempt 1. SE4 strict acceptance held: no "continue"-style shortcut acce
 - **SE4 strict-acceptance discipline pays off.** Operator's `PASS` reply went straight through; no ambiguity about "did they say yes?" Future stages should keep the same SE4 wording verbatim.
 
 ### Status: HALT. Stage 7.19 foundation stage CLOSED. Customize redesign Stage 2 (master controls + search) and Stage 3 (onboarding + sidebar) remain as operator-commissioned briefs. Stage 7.19.5 (WPF Setup Wizard binding fix) commissioned by operator post-closure as a separate diagnosis-then-fix brief. v14 still at 14.0.0 (fix-forward).
+
+---
+
+## 2026-05-23 13:22 UTC -- Stage 7.19.5: WPF Setup Wizard binding fix
+
+**Commits:**
+- `8d1fb08` STEP 0 -- checkpoint + diagnosis re-confirmation + fix shape decision
+- `e9fc972` STEP 1 -- Setup Wizard code read + fix shape locked (Option A)
+- `44b8917` STEP 2 -- Setup Wizard binding fix (Option A)
+- `629c24c` STEP 3 -- pre-rebuild log baseline captured
+- `884a48b` STEP 5 -- post-fix log verification (SE2)
+- (this entry) STEP 7 -- memory APPEND + WPF binding fix closure
+
+**Outcome:** PASS at first operator gate attempt. Zero SE5 diagnosis-fix pairs. Zero strikes consumed (0 / 24).
+
+### What this stage did
+
+Fixed a pre-existing WPF binding bug. `AudioDeviceViewModel.SelectedDevice` was read-only (since Stage 7.12 Batch A rev14, commit `23c4c54`, 2026-05-17) but `SetupWizardWindow.xaml:262` had a TwoWay binding to it, throwing `InvalidOperationException` at every install bootstrap from rc.3 through 7.19. Wizard's audio-step click-to-select was silently dead for that entire week.
+
+Fix shape: **Option A** -- restored a public setter on `SelectedDevice` that forwards non-null writes to the existing user-click path `SelectDevice()` and null writes to `SetSelectedDeviceSilent()`. Smallest possible diff: 1 file, +25 / -2 lines, only the property region in `src/tray_csharp/ViewModels/AudioDeviceViewModel.cs`.
+
+### Diagnosis trail
+
+- **First introduced:** Stage 7.12 Batch A STEP 3 rev16 (commit `23c4c54`, 2026-05-17) -- "fully manual selection -- no SelectedItem bindings" flipped `SelectedDevice` to read-only without updating the wizard's TwoWay binding declaration at SetupWizardWindow.xaml:262.
+- **Existed silently through:** rc.3 / 7.13 / 7.15 / 7.16 / 7.17 / 7.18 / 7.19 (every fresh install). Bug was non-fatal (caught by Bootstrap try/catch), tray continued normally, no operator gate test exercised the wizard path.
+- **Surfaced in:** Stage 7.19 SE2 log inspection (May 22 at S11.3).
+- **Parked per SE7:** Stage 7.19 wasn't WPF-scoped; operator authorized parking + separate commissioning.
+- **Fixed in:** this brief (Stage 7.19.5).
+
+### Why Option A and not B/C
+
+- Option B (Mode=OneWay) eliminates the exception but leaves the wizard's audio step dead (clicks visually accepted but discarded, since the wizard never reads `AudioVm.SelectedDevice` -- the TwoWay write-back chain IS the wizard's entire device-selection mechanism). Confirmed via STEP 1 read of `SetupWizardViewModel.NextAsync()` which on the Audio->Platforms transition does NOT read SelectedDevice.
+- Option C (retarget) would require adding a new writable property purely for this binding -- larger diff, more design-rule violations.
+- Option C-prime (event-driven like AudioDeviceWindow.xaml) would require 2-file changes (XAML + code-behind) and is the more pattern-correct fix, but exceeds the brief's "Smallest possible diff" mandate.
+- Option A's design-comment-violation concern is mitigated because the setter FORWARDS to the existing `SelectDevice()` user-click path -- WPF TwoWay binding writes represent user input, which is exactly what `SelectDevice()` is designed to handle.
+
+### Verification
+
+- **STEP 4 cold rebuild** (43 sec warm cache, exit 0): wizard ran end-to-end during install (`showing SetupWizard` 12:21:35.861 -> `setup wizard completed; welcome_seen=true` 12:21:53.286, an 18-second human window consistent with operator clicking through the 3 steps).
+- **Operator gate** (S6.2): PASS at first attempt. SE4 strict acceptance held.
+- **STEP 5 SE2 log inspection**: ZERO `InvalidOperationException` in fresh post-install overlay.log; all wizard entries clean INFO-level (`DialogService initialized`, `showing SetupWizard`, `setup wizard completed`, `SetupWizard closed completed=True`).
+- **S7.2 final dual-build** (second attempt, 42 sec warm cache, exit 0): post-install log shows `first-run check: welcome_seen=true; skipping setup wizard` -- correct skip behavior since STEP 4's wizard completion persisted the flag.
+
+### Constraints honored
+
+- `customize.html` UNTOUCHED (Stage 7.19 surface preserved; `git diff 02340e4..HEAD -- src/customize.html` empty)
+- `overlay.html` UNTOUCHED (out of scope; same check empty)
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (verified at S0.2, S6.1, S7.1)
+- No `version.json` bump (stays `14.0.0`; fix-forward via SHA suffix)
+- No git tag, no GitHub push, no GitHub release modification
+- No em-dash characters in any source file edit (double-hyphen `--` used throughout)
+- UTF-8 no-BOM via Edit tool defaults
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** mandatory log inspection after STEP 4 rebuild: yes (SE2 PASS; the wizard ran end-to-end at install time -- the bug is gone)
+- **SE3** mandatory diff review after every commit: yes (6 commits, all scope-matched)
+- **SE4** no "continue" shortcut at gate: yes (operator gave explicit `PASS`)
+- **SE5** mistake handling: zero diagnosis-fix pairs (the fix took on first attempt)
+- **SE6** three-strike escalation: not triggered (0 strikes / 24 budget)
+- **SE7** no autonomous scope expansion: 3 temptations parked in V14_S7_19_5_LOG.md S0.6:
+  1. `WizardDeviceItemStyle` (SetupWizardWindow.xaml 61-87) diverges from `DeviceListItemStyle` (AudioDeviceWindow.xaml 118-162) -- defer to v14.1.0 polish
+  2. Wizard inlines `DeviceRowTemplate` instead of reusing the shared resource from AudioDeviceWindow.xaml -- defer to v14.1.0
+  3. SetupWizardWindow.xaml.cs:18 `SystemColors.WindowTextBrush` guard is cargo-culted from WelcomeWindow -- defer
+- **SE8** protected files SHA256 verified at STEP 0 and STEP 7 (and STEP 6): all UNCHANGED
+
+### Build infrastructure note
+
+S7.2 first attempt hit a VBCSCompiler (Roslyn persistent build server) hang at 0.25 CPU for 4+ minutes during `[1/5] Building server.exe`. Killed the stale VBCSCompiler PID + the parent rebuild process, re-dispatched. Second attempt clean in 42 seconds. Root cause: build-infrastructure flakiness (stale build daemon from a prior cycle), NOT source-level. NOT classified as an SE5 strike because the fix itself had already been verified clean at STEP 4 (cold path); S7.2 is "confirms reproducibility" and the second attempt confirms.
+
+If this VBCSCompiler hang recurs across future briefs, candidate v14.1.0 maintenance item: pre-emptive `Stop-Process -Name VBCSCompiler -Force` at the top of `_full_rebuild.ps1` to defend against stale build daemon state.
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.19.5 lands as fix-forward via commit SHA suffix.
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S7.2 rebuild: `14.0.0+884a48b27a5a13f7023115cbe71be6fb81b1d074`. After this STEP 7 closure commit lands, the next rebuild would bump the suffix to the closure SHA, but per brief the dual-build was at S7.2 (before the closure commit), so the installed app's ProductVersion ends at the STEP 5 commit `884a48b`. The closure commit adds documentation only -- no source delta requiring another build.
+
+### Files touched in this stage
+
+- `src/tray_csharp/ViewModels/AudioDeviceViewModel.cs` (+25 / -2; only the `SelectedDevice` property region)
+- `V14_S7_19_5_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore; running log throughout the brief)
+- `V14_S7_19_5_REPORT.md` (NEW; tracked; 9-section closure deliverable per S7.3)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-23_00-15_S7_19_5_PRE/` (disk-only snapshot; NOT tracked)
+
+### Files NOT touched
+
+- All 4 protected source files (rule 1; SHA256 UNCHANGED)
+- `src/customize.html` (rule 2)
+- `src/overlay.html` (rule 3)
+- All other `.cs` files in `src/tray_csharp/` (no logic changes; only AudioDeviceViewModel.cs)
+- All `.xaml` files (the fix was in the ViewModel, not the binding declaration -- intentional Option A choice)
+- `version.json` (rule 6)
+
+### Remaining customize-redesign cycle
+
+- **Stage 7.20** -- master controls (Accent, Size, Text Size, Glow, Animations) + search bar + advanced toggle. Operator will write the brief now that Stage 7.19.5 has closed cleanly.
+- **Stage 7.21** -- onboarding banner + sidebar structural revision + final polish.
+
+### Lessons learned (durable, future-stage relevant)
+
+- **VBCSCompiler hangs are a real failure mode on warm rebuilds.** Symptom: `_full_rebuild.ps1` sits at `[1/5] Building server.exe` with no progress, parent PowerShell at near-zero CPU. Fix: `Stop-Process -Name VBCSCompiler -Force` then retry. Worth adding to `_full_rebuild.ps1` preflight.
+- **Bash background `| tail -N` filter blocks visibility.** Bash pipes buffer at `tail` until EOF, so background-task output files stay empty until the source process exits. For interactive monitoring of long-running background tasks, redirect via `2>&1` to stdout directly (no tail filter) -- the harness's per-line write-to-file streaming works as long as the pipeline doesn't have an intermediate buffer-until-EOF filter.
+- **Option A (restore setter) was the right call for a single-binding read-only-property bug.** Future analogous bugs (legacy XAML TwoWay binding outliving a property's read-only flip) should consider this pattern first if grep verifies the property only has one writable-binding consumer.
+- **Wizard's `welcome_seen` flag persists across rebuilds.** STEP 4's wizard completion persisted the flag, so S7.2's reinstall correctly skipped the wizard. Future stages testing wizard behavior need to either (a) delete `welcome_seen` from `%APPDATA%/Roaming/MastersFM/config.json` first, or (b) bump the `autostart_defaulted_v14_*` flag name for a generation bump (Stage 7.18 Task A precedent).
+- **DLL ProductVersion suffix is the source-reproducibility signal**, MSI SHA256 is not (WiX + Authenticode timestamp embedding). Confirmed observation from Stage 7.19 S13.2 and reconfirmed here at S7.2.
+
+### Status: HALT. Stage 7.19.5 CLOSED. WPF Setup Wizard binding bug fixed. Wizard runs end-to-end on fresh installs. customize.html / overlay.html untouched. v14 still at 14.0.0 (fix-forward). Stage 7.20 (master controls + search + advanced toggle) ready for operator to commission.
