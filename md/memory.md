@@ -3896,3 +3896,134 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S7.2 rebuild: `14.0.0+
 - **DLL ProductVersion suffix is the source-reproducibility signal**, MSI SHA256 is not (WiX + Authenticode timestamp embedding). Confirmed observation from Stage 7.19 S13.2 and reconfirmed here at S7.2.
 
 ### Status: HALT. Stage 7.19.5 CLOSED. WPF Setup Wizard binding bug fixed. Wizard runs end-to-end on fresh installs. customize.html / overlay.html untouched. v14 still at 14.0.0 (fix-forward). Stage 7.20 (master controls + search + advanced toggle) ready for operator to commission.
+
+---
+
+## 2026-05-23 20:55 UTC -- Stage 7.20: customize redesign Stage 2 (masters + search + advanced)
+
+**Commits:**
+- `5f4e50b` STEP 0  -- checkpoint + master/search/advanced specs locked
+- `15d5f3c` STEP 1  -- Quick Settings section HTML skeleton
+- `1bea163` STEP 2  -- master Accent Color picker functional
+- `91e778d` STEP 3  -- master Overall Size slider functional
+- `31cf4e2` STEP 4  -- master Text Size slider functional
+- `888f5ec` STEP 5  -- master Glow toggle functional
+- `6045b63` STEP 6  -- master Animations toggle functional
+- `662b777` STEP 7  -- data-search attributes via buildSearchIndex
+- `d4125db` STEP 8  -- search bar HTML + CSS scaffolding
+- `6fffecc` STEP 9  -- search JS (live filter + Ctrl+F + Esc + clear)
+- `c20a659` STEP 10 -- advanced toggle HTML + CSS scaffolding
+- `c106f37` STEP 11 -- mark advanced-only + discovery links + localStorage
+- `e62456e` STEP 12 -- master save/load verification + Apply-to-OBS reality documentation
+- `9e58b36` STEP 13 -- search polish (prefers-reduced-motion + maxlength)
+- `52e219f` STEP 14 + S15.1 -- post-rebuild SE2 PASS + pre-gate checks PASS
+- (this entry) STEP 16 -- memory APPEND + master controls + search + advanced closure
+
+**Outcome:** PASS. Strikes consumed: 0 / 24. No SE5 diagnosis-fix pairs. No SE6 escalations.
+
+### What this stage did
+
+Second of 3 customize.html redesign stages.
+
+- Added **"Quick Settings"** section at the top of the sidebar with 5 master controls:
+  - **Master Accent Color** -- drives `--accent-master` CSS variable + `S.masters.accentColor`. Default `#c060ff` (brand purple).
+  - **Master Overall Size** -- drives `--overall-scale` (range 0.5-1.5, slider 50-150%). Default `1.0`.
+  - **Master Text Size** -- drives `--text-scale` (same range). Default `1.0`.
+  - **Master Glow toggle** -- drives `--glow-master-enabled` (1/0). Default on.
+  - **Master Animations toggle** -- drives `--animations-master-enabled` (1/0). Default on.
+- Added **"↺ Use accent"** links next to each of 8 per-element accent pickers (Now Playing label, Bars, Platform color, Platform dot, Title, Artist, Spectrum, Timestamps). Clicking writes literal `var(--accent-master)` to the per-element JS value via the existing `bindColor` pipeline.
+- Added **search bar** in a sticky sidebar header (`<div class="sidebar-header">`):
+  - Input with placeholder `Find a setting...` + × clear button
+  - 80 ms debounce + lowercase contains-match against `data-search` attributes
+  - Matched sections auto-expand; sections with zero matches hide via `.section-hidden-by-search`; matching rows get `.row-highlighted`, non-matching in matched sections get `.row-dimmed`
+  - **Ctrl+F** (or Cmd+F) globally focuses + selects search input with `event.preventDefault()` overriding browser find
+  - Esc on input clears + blurs
+  - `maxlength=200` on input + `prefers-reduced-motion` polish on transitions
+- Added **`data-search` attributes on every `.row`** via `buildSearchIndex()` called at init. Each attribute concatenates new friendly label + `JARGON_MAP` entry (covers ~30 high-jargon Stage 7.19 renames: loudness, marquee, border radius, BG angle, letter spacing, etc.) + section name.
+- Added **"Show advanced settings"** checkbox in sidebar header, default OFF, persisted to `localStorage.customize_show_advanced`:
+  - **Entire sections hidden in Basic:** Layout, Spinning border, Slide-in animation, Platform badge
+  - **Individual rows hidden in Basic:** Blur behind the card, Title/Artist letter spacing, Title/Artist scroll pause, Make quiet sounds louder, How quickly bars react to music, Animation frame rate (advanced), Smoothness, Outer glow First/Second color
+  - **Per-element override sub-groups hidden in Basic:** Text glow per-element blocks (5 elements), Auto-color per-element toggles
+- Added **discovery links** at the bottom of 6 sections that have advanced-hidden content: "Want more control? Show advanced settings". Visible only in Basic mode. Click flips Advanced ON.
+
+### Locked behavior decisions (operator-approved at brief commission)
+
+- **Master vs per-element conflict:** per-element wins. Master is a "set all" shortcut for elements that haven't been manually overridden. Per-element JS values that are literal hex strings ignore master; per-element JS values that are `var(--accent-master)` strings follow master via CSS resolution (once overlay.html consumes the var in Stage 7.20.5).
+- **Search shortcut:** Ctrl+F (overrides browser find within customize).
+- **Section name:** "Quick Settings".
+- **Voice:** Friendly/casual per Stage 7.19 guidelines (all new labels + help text + search synonyms follow the established voice).
+
+### Known limitation (intentional, documented honestly)
+
+Per absolute rule 2 (NO touching `src/overlay.html`) + S0.5.E iframe-card finding:
+
+**Master controls work in customize.html UI + persistence + transmission, but visually do NOT apply in the preview iframe or OBS output yet.** The customize.html preview is an `<iframe>` loading `overlay.html`; the card lives inside overlay.html which is out of scope for Stage 7.20. The new CSS variables on customize.html's `:root` are not consumed in the iframe's document.
+
+Operator's initial gate reply was "PASS but FAIL on all settings under Quick Settings" -- a forgotten-limitation report. After SE4 strict re-prompt referencing the documented limitation, operator clarified: "Sorry, then fully PASS." Recorded as PASS at attempt 1 (no SE5 strike; the re-prompt was a clarification).
+
+**Stage 7.20.5 deliverable (optional, operator-commissioned, ~3-5 h):** add overlay.html consumption of `S.masters.*` (transform on card root, calc() wrap on font-sizes, .no-glow / .no-animations classes with Stage 7.15 clock guard). After 7.20.5 the masters visibly take effect in OBS.
+
+### Constraints honored
+
+- `customize.html` only touched (+649 / -0 net)
+- `overlay.html` UNTOUCHED (`git diff b9e18aa..HEAD -- src/overlay.html` empty)
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (verified S0.2 + S15.1 + S16.1)
+- Pre-existing 135 `c-*` setting IDs all preserved (diff-verified pre vs post)
+- Pre-existing 79 `:root` CSS variables all preserved; 5 new master vars added
+- Apply-to-OBS contract on EXISTING controls unchanged (verified via post-rebuild functional check at S14.2)
+- Stage 7.15 clock fix preserved (no transitions on `#time-current` / `#time-total`; Master Animations CSS scope deferred to Stage 7.20.5 where the clock guard is mandated in the brief plan)
+- Stage 7.19 surface preserved (friendly labels, inline help paragraphs, animation tokens, sub-headers all intact; STEP 1 only INSERTED a new section at the top of the sidebar; STEPs 2-13 only ADDED new HTML/CSS/JS, never modified existing rows)
+- Stage 7.19.5 WPF binding fix preserved (0 InvalidOperationException in post-install logs)
+- No `version.json` bump (stays `14.0.0`; fix-forward via SHA suffix)
+- No git tag, no GitHub push, no GitHub interaction
+- No em-dash characters in any source file edit; UTF-8 no-BOM
+- No new external dependencies (vanilla JS + HTML + CSS only)
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification before each next STEP: yes
+- **SE2** mandatory log inspection after STEP 14 cold rebuild: PASS (0 IOE, 0 actual ERROR/WARN, the regex hit on "Error" is the documented false positive on the DialogService init `[INFO]` line listing the `Error` dialog template)
+- **SE3** mandatory diff review after every commit: yes (16 commits, all scope-matched: customize.html and V14_S7_20_LOG.md only, no other files)
+- **SE4** no "continue" shortcut at gate: yes -- operator's mixed "PASS but FAIL" reply triggered an explicit re-prompt; final "fully PASS" accepted only as literal PASS
+- **SE5** mistake handling: zero diagnosis-fix pairs (clean execution)
+- **SE6** three-strike escalation: not triggered (0 strikes / 24 budget)
+- **SE7** no autonomous scope expansion: 6 temptations parked in V14_S7_20_LOG.md S0.6.5 + V14_S7_20_REPORT.md section 11 (missing PROPOSAL doc, server.log size, dyn-* checkbox consolidation, slide easing IDs, "Use accent" affordance polish, reduced-motion coverage of pre-Stage-7.20 transitions)
+- **SE8** protected files SHA256 verified at STEP 0 + STEP 15.1 + STEP 16.1: all UNCHANGED across the entire stage
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.20 lands as fix-forward via commit SHA suffix.
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S16.2 rebuild: `14.0.0+52e219f54838783f36615c7e43de32051c4fc3cf` (matches STEP 14 / S15.1 commit; the closure commit was after the dual-build per brief sequence).
+
+### Files touched in this stage
+
+- `src/customize.html` (+649 / -0 net; ~4438 -> ~5087 lines)
+- `V14_S7_20_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_20_REPORT.md` (NEW; tracked; 15-section closure deliverable per S16.3)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-23_13-30_S7_20_PRE/` (disk-only snapshot; NOT tracked)
+
+### Files NOT touched
+
+- All 4 protected source files (rule 1; SHA256 UNCHANGED)
+- `src/overlay.html` (absolute rule 2)
+- All `src/tray_csharp/**` WPF source (no logic changes)
+- All `src/server/**` (no server-side changes)
+- `version.json` (rule 6)
+
+### Lessons learned (durable, future-stage relevant)
+
+- **Iframe-based preview architecture means master CSS variables in customize.html don't reach the overlay** unless overlay.html actively consumes them. Stage 7.20.5 is the cleanest fix; lifting absolute rule 2 in a future redesign brief is the alternative.
+- **JS-driven `data-search` index** (rather than 154 hardcoded HTML attributes) is the right pattern for this kind of cross-cutting metadata. `buildSearchIndex()` walks the DOM, derives most of the search text from existing `.row-label` + section `.sec-title`, and uses a focused `JARGON_MAP` only for jargony renames the user might recall from pre-Stage-7.19. Total new code: ~80 lines vs. ~150-200 lines of HTML attribute additions.
+- **SE4 mixed-reply protocol works as designed.** Operator's "PASS but FAIL" was correctly identified as a forgotten-limitation report, re-prompted per strict rules with documentation reference, and resolved to literal PASS. No autonomous interpretation = no false-PASS-then-rebuild risk.
+- **`prefers-reduced-motion` polish should be added at design time**, not retrofitted. Stage 7.20 STEP 13's media query covered new transitions; pre-existing transitions (`.sec-body` from Stage 7.19 STEP 8) inherit the same protection because the rule is broad.
+- **The "PASS but FAIL on Quick Settings" reply pattern is a discovery-of-known-limitation signal.** Future stages with documented deferred-scope items should explicitly mention them BOTH in the brief AND in the gate text so operator can pattern-match faster.
+
+### Status: HALT. Stage 7.20 CLOSED. 5 master controls + search + advanced toggle live in customize.html. Masters are wired-but-not-yet-visible until Stage 7.20.5 wires overlay.html consumption. customize.html / overlay.html / protected files unchanged at protected files. v14 still at 14.0.0 (fix-forward).
+
+### Next briefs (operator decision)
+
+- **Stage 7.20.5** (recommended, optional, ~3-5 h) -- overlay.html master variable wiring; makes masters visibly affect OBS
+- **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle
+- **Pause + ship** -- current state is fully functional for ALL Stage 7.19 controls; the only invisible-master controls are the Quick Settings sliders; if operator is comfortable with the documented limitation, the build is shippable to friends as-is
