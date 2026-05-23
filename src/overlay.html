@@ -99,6 +99,14 @@
   --ease-out:       cubic-bezier(0.0, 0, 0.2, 1);
   --ease-spring:    cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in:        cubic-bezier(0.4, 0, 1, 1);
+
+  /* Stage 7.20.5: master CSS variables. Driven by customize.html Quick Settings
+     section via the existing applyConfig setProperty pipeline (see STEP 7
+     wiring in this file's <script>). Defaults below kick in for fresh installs
+     that pre-date Stage 7.20 (no S.masters block in saved config). */
+  --accent-master:  #c060ff;
+  --overall-scale:  1.0;
+  --text-scale:     1.0;
 }
 
 /* v14 reduced-motion respect.
