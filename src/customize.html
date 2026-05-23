@@ -35,6 +35,18 @@
   /* v14 accent bar (3-stop horizontal gradient, signature top-of-dialog visual) */
   --accent-bar:     linear-gradient(90deg, #8B5CF6 0%, #A78BFA 50%, #8B5CF6 100%);
 
+  /* ── Stage 7.20 master CSS variables ────────────────────────────────────────
+     Consumed by overlay.html when Stage 7.20.5 wires them. In Stage 7.20 alone
+     the vars are DEFINED here so per-element CSS references like
+     `color: var(--accent-master)` parse correctly; the actual visual application
+     in OBS depends on the Stage 7.20.5 overlay.html update. See V14_S7_20_LOG.md
+     for the honest scope statement. */
+  --accent-master:             #c060ff;
+  --overall-scale:             1.0;
+  --text-scale:                1.0;
+  --glow-master-enabled:       1;
+  --animations-master-enabled: 1;
+
   /* Semantic tags (lifted from WPF Colors.xaml Tag* brushes) */
   --success:        #22C55E;
   --error:          #F87171;
@@ -445,6 +457,29 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
   flex-shrink: 0;
 }
 
+/* Stage 7.20: "Use accent" link next to per-element accent pickers. Clicking it
+   sets the per-element JS color value to the literal CSS string `var(--accent-master)`
+   so the element follows the master via CSS variable resolution. */
+.use-accent-link {
+  background: transparent;
+  border: none;
+  color: var(--accent-bright);
+  cursor: pointer;
+  font-size: var(--fs-tiny);
+  padding: 1px 4px;
+  border-radius: var(--r-tiny);
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.use-accent-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.use-accent-link:focus-visible {
+  outline: 1.5px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
 /* ─── Toggle switch ─────────────────────────────────────────────────────────── */
 .toggle {
   position: relative; width: 34px; height: 19px;
@@ -773,8 +808,8 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="row">
           <div class="row-label">Accent color</div>
           <div class="row-ctrl">
-            <input type="color" id="c-master-accent-color-p" disabled>
-            <input type="text" id="c-master-accent-color" class="hex-in" disabled>
+            <input type="color" id="c-master-accent-color-p">
+            <input type="text" id="c-master-accent-color" class="hex-in">
           </div>
         </div>
         <p class="control-help">Sets the main accent color for every element that hasn't been manually overridden. Click "Use accent" next to any per-element color picker to make that element follow this master.</p>
@@ -1288,6 +1323,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-np-color-p">
             <input type="text"  id="c-np-color" class="hex-in">
+            <button class="use-accent-link" data-target="np-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <div class="row">
@@ -1310,6 +1346,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-bars-color-p">
             <input type="text"  id="c-bars-color" class="hex-in">
+            <button class="use-accent-link" data-target="bars-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <div class="row">
@@ -1363,6 +1400,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-platform-color-p">
             <input type="text"  id="c-platform-color" class="hex-in">
+            <button class="use-accent-link" data-target="platform-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <div class="row">
@@ -1370,6 +1408,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-platform-dot-p">
             <input type="text"  id="c-platform-dot" class="hex-in">
+            <button class="use-accent-link" data-target="platform-dot" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <div class="row">
@@ -1438,6 +1477,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-title-color-p">
             <input type="text"  id="c-title-color" class="hex-in">
+            <button class="use-accent-link" data-target="title-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <p class="control-help">Color of the title text.</p>
@@ -1492,6 +1532,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-artist-color-p">
             <input type="text"  id="c-artist-color" class="hex-in">
+            <button class="use-accent-link" data-target="artist-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <p class="control-help">Color of the artist text.</p>
@@ -1578,6 +1619,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-spec-color-p">
             <input type="text"  id="c-spec-color" class="hex-in">
+            <button class="use-accent-link" data-target="spec-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
         <p class="control-help">Used by Solid and Gradient color modes.</p>
@@ -1742,6 +1784,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
           <div class="row-ctrl">
             <input type="color" id="c-ts-color-p">
             <input type="text"  id="c-ts-color" class="hex-in">
+            <button class="use-accent-link" data-target="ts-color" type="button" title="Match the master accent color">↺ Use accent</button>
           </div>
         </div>
       </div>
@@ -1851,6 +1894,12 @@ const DEFAULTS = {
   // presets carry the value rather than relying on the overlay's own DEFAULTS
   // fallback at load time.
   liveAudioVisualizer: true,
+  // Stage 7.20: master controls (Quick Settings section). Persisted in saved
+  // presets and transmitted through the save/preview pipeline to overlay.html.
+  // Overlay.html consumption deferred to Stage 7.20.5 (optional, separate brief);
+  // without that wiring the masters are customize-preview-only. See
+  // V14_S7_20_LOG.md S0.5.E for the honest scope statement.
+  masters: { accentColor:'#c060ff', overallSize:100, textSize:100, glowEnabled:true, animationsEnabled:true },
   card:  { borderRadius:56, borderThickness:5, backgroundTop:'rgba(18,6,36,0.99)', backgroundBottom:'rgba(12,4,24,0.99)', backgroundAngle:148, backgroundBlur:0, backgroundOpacity:0.99 },
   border:{ enabled:true, spinDuration:4, colors:['#ff1085','#ff60c8','#d040ff','#8020e0','#4a0ab8'] },
   glow:  { enabled:true, color1:'#e632b4', color2:'#961ee6', intensity:1.0, pulseDuration:3 },
@@ -3161,6 +3210,43 @@ function initBindings() {
     }
   });
 
+  // Quick Settings (masters) -- Stage 7.20
+  // STEP 2: Master Accent Color. Sets the --accent-master CSS variable so any
+  // per-element accent picker that has been "linked" via the "Use accent" button
+  // (per-element JS value = literal string "var(--accent-master)") follows it.
+  // Per-element pickers that have been manually set to a hex value keep their value.
+  bindColor('c-master-accent-color-p', 'c-master-accent-color', v => {
+    S.masters = S.masters || {};
+    S.masters.accentColor = v;
+    document.documentElement.style.setProperty('--accent-master', v);
+  });
+
+  // "Use accent" delegated click handler. Writes the literal CSS function string
+  // `var(--accent-master)` to the per-element JS value via the existing bindColor
+  // input pipeline. The text input drives the bound setter (which dispatches markDirty
+  // + preview() through the existing flow). Per V14_S7_20_LOG.md S0.5.E: overlay.html
+  // does not yet consume var(--accent-master); Stage 7.20.5 wires that consumption.
+  document.addEventListener('click', e => {
+    const link = e.target.closest('.use-accent-link');
+    if (!link) return;
+    e.preventDefault();
+    const target = link.dataset.target;
+    if (!target) return;
+    const text = document.getElementById('c-' + target);
+    const pick = document.getElementById('c-' + target + '-p');
+    if (!text) return;
+    const masterRef = 'var(--accent-master)';
+    text.value = masterRef;
+    // The native color input cannot display a var() reference, so we surface the
+    // master's CURRENT hex on the picker swatch as a visual hint of "what the
+    // element is following right now".
+    if (pick) pick.value = (S.masters?.accentColor) || '#c060ff';
+    // Dispatch input event so the existing bindColor handler captures the change
+    // through the standard markDirty + preview + save pipeline. Bubbles so the
+    // delegated listener on the text input fires correctly.
+    text.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
   // Card
   bindRange('c-card-radius', 'v-card-radius', v => S.card.borderRadius    = v, v => v+'px');
   bindRange('c-card-thick',  'v-card-thick',  v => S.card.borderThickness = v, v => v+'px');
@@ -3366,6 +3452,14 @@ function syncAll() {
   // DEFAULTS as the base and overlays any keys the user has explicitly
   // set, so nothing is lost but every key exists.
   S = deepMerge(DEFAULTS, S);
+
+  // Quick Settings (masters) -- Stage 7.20
+  // Restore master accent picker + propagate the value to --accent-master so any
+  // per-element value already set to "var(--accent-master)" resolves on first paint.
+  syncColor('c-master-accent-color-p', 'c-master-accent-color', () => S.masters?.accentColor ?? '#c060ff');
+  try {
+    document.documentElement.style.setProperty('--accent-master', S.masters?.accentColor ?? '#c060ff');
+  } catch (e) { /* DOM not ready -- safe to skip; bindColor handler will set it on first user input */ }
 
   // General
   syncRange('c-overlay-opacity', 'v-overlay-opacity', () => (S.overlay?.opacity ?? 1.0), v => Math.round(v*100)+'%');
