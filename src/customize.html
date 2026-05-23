@@ -826,7 +826,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="row">
           <div class="row-label">Text size</div>
           <div class="row-ctrl">
-            <input type="range" id="c-master-text-size" min="50" max="150" step="5" disabled>
+            <input type="range" id="c-master-text-size" min="50" max="150" step="5">
             <span class="range-val" id="v-master-text-size">100%</span>
           </div>
         </div>
@@ -3230,6 +3230,17 @@ function initBindings() {
     document.documentElement.style.setProperty('--overall-scale', (v / 100).toFixed(2));
   }, v => Math.round(v) + '%');
 
+  // STEP 4: Master Text Size. Updates the --text-scale CSS variable (range
+  // 0.5 to 1.5, slider 50 to 150). Overlay.html consumes this in Stage 7.20.5
+  // by wrapping each per-element font-size declaration as
+  // calc(<per-element-px> * var(--text-scale)). Per-element font-size sliders
+  // remain independent; the master simply scales the computed result.
+  bindRange('c-master-text-size', 'v-master-text-size', v => {
+    S.masters = S.masters || {};
+    S.masters.textSize = v;
+    document.documentElement.style.setProperty('--text-scale', (v / 100).toFixed(2));
+  }, v => Math.round(v) + '%');
+
   // "Use accent" delegated click handler. Writes the literal CSS function string
   // `var(--accent-master)` to the per-element JS value via the existing bindColor
   // input pipeline. The text input drives the bound setter (which dispatches markDirty
@@ -3467,9 +3478,11 @@ function syncAll() {
   // per-element value already set to "var(--accent-master)" resolves on first paint.
   syncColor('c-master-accent-color-p', 'c-master-accent-color', () => S.masters?.accentColor ?? '#c060ff');
   syncRange('c-master-overall-size', 'v-master-overall-size', () => S.masters?.overallSize ?? 100, v => Math.round(v) + '%');
+  syncRange('c-master-text-size', 'v-master-text-size', () => S.masters?.textSize ?? 100, v => Math.round(v) + '%');
   try {
     document.documentElement.style.setProperty('--accent-master', S.masters?.accentColor ?? '#c060ff');
     document.documentElement.style.setProperty('--overall-scale', ((S.masters?.overallSize ?? 100) / 100).toFixed(2));
+    document.documentElement.style.setProperty('--text-scale', ((S.masters?.textSize ?? 100) / 100).toFixed(2));
   } catch (e) { /* DOM not ready -- safe to skip; binding handlers will set on first user input */ }
 
   // General
