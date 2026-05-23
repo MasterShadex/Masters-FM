@@ -478,7 +478,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
   50%     { transform: scaleY(1);    opacity: 1;   }
 }
 .now-playing-text {
-  font-size:      var(--np-font-size, 44px);
+  font-size:      calc(var(--np-font-size, 44px) * var(--text-scale));
   font-weight: 700;
   letter-spacing: var(--np-letter-spacing, 5px);
   color:          var(--np-color, var(--accent-master));
@@ -486,7 +486,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
   text-transform: uppercase; opacity: 0.9;
 }
 .platform-badge {
-  font-size:     var(--platform-font-size, 30px);
+  font-size:     calc(var(--platform-font-size, 30px) * var(--text-scale));
   font-weight:   var(--platform-font-weight, 600);
   letter-spacing:var(--platform-letter-spacing, 2px);
   color:         var(--platform-color, var(--accent-master));
@@ -501,7 +501,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
    experiments from v6.1.0–v6.1.9. Plain overflow:hidden. */
 .title-wrap { overflow: hidden; width: 100%; flex-shrink: 0; }
 .track-title {
-  font-size:      var(--title-font-size, 68px);
+  font-size:      calc(var(--title-font-size, 68px) * var(--text-scale));
   font-weight:    var(--title-font-weight, 800);
   color:          var(--title-color, var(--accent-master));
   letter-spacing: var(--title-letter-spacing, 0px);
@@ -515,7 +515,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
    title marquee (transform translateX on .artist, clipped by .artist-wrap). */
 .artist-wrap { overflow: hidden; width: 100%; flex-shrink: 0; }
 .artist {
-  font-size:      var(--artist-font-size, 44px);
+  font-size:      calc(var(--artist-font-size, 44px) * var(--text-scale));
   font-weight:    var(--artist-font-weight, 500);
   color:          var(--artist-color, var(--accent-master));
   letter-spacing: var(--artist-letter-spacing, 0px);
@@ -570,14 +570,14 @@ body.layout-mode-on [data-layout-node].layout-hidden {
 .time-bar.hidden { display: none; }
 
 #time-current {
-  font-size:   var(--ts-font-size, 46px);
+  font-size:   calc(var(--ts-font-size, 46px) * var(--text-scale));
   font-weight: 800; font-variant-numeric: tabular-nums;
   letter-spacing: 1px; color: var(--ts-color, var(--accent-master));
   white-space: nowrap; min-width: 104px; line-height: 1;
   text-shadow: var(--ts-text-shadow, 0 0 20px rgba(139, 92, 246, 0.50));   /* == brand-base alpha */
 }
 #time-total {
-  font-size:   calc(var(--ts-font-size, 46px) * 0.92);
+  font-size:   calc(var(--ts-font-size, 46px) * 0.92 * var(--text-scale));
   font-weight: 700; font-variant-numeric: tabular-nums;
   letter-spacing: 1px; color: var(--ts-color, var(--accent-master));
   white-space: nowrap; min-width: 96px; text-align: right; line-height: 1;
