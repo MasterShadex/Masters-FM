@@ -164,16 +164,20 @@
         </Setter>
     </Style>
 
-    <!-- === Separator ===
-         1px BorderSubtle horizontal rule; 8px top and bottom margin, 8px side inset.
-         Replaces the OS-default separator with a design-system-matched divider. -->
+    <!-- === Separator (Stage 7.22 refresh) ===
+         1px low-contrast horizontal rule. Switched from opaque BorderSubtle to
+         the new TrayMenuSeparatorBrush (50% translucent white) for a subtler
+         Win11-style divider that reads well over both Surface1 (Win10 branch)
+         and Acrylic backdrop (Win11 branch). Side inset bumped 8 -> 12 to
+         match the new 12,0 MenuItem padding so separators line up visually
+         with item label edges. -->
     <Style x:Key="AppMenuSeparatorStyle" TargetType="Separator">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Separator">
-                    <Border Margin="8,4"
+                    <Border Margin="12,4"
                             Height="1"
-                            Background="{DynamicResource BorderSubtle}"/>
+                            Background="{DynamicResource TrayMenuSeparatorBrush}"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
