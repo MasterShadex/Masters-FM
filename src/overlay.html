@@ -123,6 +123,34 @@
   }
 }
 
+/* Stage 7.20.5: Master Glow override.
+   Class is added to <body> by applyConfig() when S.masters.glowEnabled is false.
+   Disables every text-shadow + filter + box-shadow that simulates a glow.
+   `backdrop-filter` is a separate property == card background blur survives. */
+.no-glow,
+.no-glow *,
+.no-glow *::before,
+.no-glow *::after {
+  text-shadow: none !important;
+  filter:      none !important;
+  box-shadow:  none !important;
+}
+
+/* Stage 7.20.5: Master Animations override.
+   Class is added to <body> by applyConfig() when S.masters.animationsEnabled is false.
+   Freezes every animation + transition. Stage 7.15 clock guard preserved by
+   design: #time-current / #time-total have NO animation or transition declarations
+   to disable; clock content updates happen via JS .textContent mutations which are
+   unaffected by CSS animation/transition rules. Track changes update via the same
+   .textContent path == also unaffected. */
+.no-animations,
+.no-animations *,
+.no-animations *::before,
+.no-animations *::after {
+  animation:  none !important;
+  transition: none !important;
+}
+
 html, body {
   width: 100%; height: 100%;
   background-color: rgba(0,0,0,0); overflow: hidden;
