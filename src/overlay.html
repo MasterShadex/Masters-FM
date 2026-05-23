@@ -184,6 +184,12 @@ html, body {
   width:  calc(100% - 40px + 2 * (var(--border-thickness, 5px) - 5px));
   height: calc(100% - 40px + 2 * (var(--border-thickness, 5px) - 5px));
   border-radius: var(--card-radius, 56px); overflow: hidden;
+  /* Stage 7.20.5: Master Overall Size. Scales the whole card from center.
+     OBS browser source has fixed dimensions (typically 1000x200 per the
+     layout canvas) so at scales above 1.0 the card content may clip at
+     the OBS source bounds == accepted per Stage 7.20.5 S0.6.A. */
+  transform: scale(var(--overall-scale));
+  transform-origin: center;
 }
 /* Border pseudo-element — background gradient injected by applyConfig().
  * v6.2.8: back to element-transform rotation (the simple pre-v6.2.7 way).
