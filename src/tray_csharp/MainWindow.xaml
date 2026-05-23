@@ -140,7 +140,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconSettings}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -152,7 +152,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconSpeaker}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -164,7 +164,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconSparkle}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -178,7 +178,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconDiscord}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -192,7 +192,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconStartup}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -207,7 +207,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconCamera}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -221,7 +221,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconInfo}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -233,7 +233,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconDocument}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -245,7 +245,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconReset}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -257,7 +257,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconRestart}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="14" Height="14"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
@@ -269,7 +269,7 @@
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconClose}"
                               Fill="{StaticResource TextSecondary}"
-                              Width="12" Height="12"
+                              Width="16" Height="16"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
