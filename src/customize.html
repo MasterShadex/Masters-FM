@@ -845,7 +845,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="row">
           <div class="row-label">Animations</div>
           <div class="row-ctrl">
-            <label class="toggle"><input type="checkbox" id="c-master-animations" disabled><span class="track"></span></label>
+            <label class="toggle"><input type="checkbox" id="c-master-animations"><span class="track"></span></label>
           </div>
         </div>
         <p class="control-help">Master switch for every animation (spinning border, slide-in, marquee scrolling, spectrum bars). Clock time updates always stay smooth.</p>
@@ -3252,6 +3252,18 @@ function initBindings() {
     document.documentElement.style.setProperty('--glow-master-enabled', v ? 1 : 0);
   });
 
+  // STEP 6: Master Animations toggle. Updates the --animations-master-enabled CSS
+  // variable (1 = on, 0 = off). Overlay.html consumes this in Stage 7.20.5 via a
+  // .no-animations class on the card root with `animation: none !important;
+  // transition: none !important` on most descendants -- but with the Stage 7.15
+  // clock guard preserved: the `#time-current` and `#time-total` elements never
+  // get transitions on `content` / `visibility` regardless of this master.
+  bindToggle('c-master-animations', v => {
+    S.masters = S.masters || {};
+    S.masters.animationsEnabled = v;
+    document.documentElement.style.setProperty('--animations-master-enabled', v ? 1 : 0);
+  });
+
   // "Use accent" delegated click handler. Writes the literal CSS function string
   // `var(--accent-master)` to the per-element JS value via the existing bindColor
   // input pipeline. The text input drives the bound setter (which dispatches markDirty
@@ -3491,11 +3503,13 @@ function syncAll() {
   syncRange('c-master-overall-size', 'v-master-overall-size', () => S.masters?.overallSize ?? 100, v => Math.round(v) + '%');
   syncRange('c-master-text-size', 'v-master-text-size', () => S.masters?.textSize ?? 100, v => Math.round(v) + '%');
   syncToggle('c-master-glow', () => S.masters?.glowEnabled ?? true);
+  syncToggle('c-master-animations', () => S.masters?.animationsEnabled ?? true);
   try {
     document.documentElement.style.setProperty('--accent-master', S.masters?.accentColor ?? '#c060ff');
     document.documentElement.style.setProperty('--overall-scale', ((S.masters?.overallSize ?? 100) / 100).toFixed(2));
     document.documentElement.style.setProperty('--text-scale', ((S.masters?.textSize ?? 100) / 100).toFixed(2));
     document.documentElement.style.setProperty('--glow-master-enabled', (S.masters?.glowEnabled ?? true) ? 1 : 0);
+    document.documentElement.style.setProperty('--animations-master-enabled', (S.masters?.animationsEnabled ?? true) ? 1 : 0);
   } catch (e) { /* DOM not ready -- safe to skip; binding handlers will set on first user input */ }
 
   // General
