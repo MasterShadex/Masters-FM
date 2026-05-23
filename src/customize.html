@@ -837,7 +837,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="row">
           <div class="row-label">Glow</div>
           <div class="row-ctrl">
-            <label class="toggle"><input type="checkbox" id="c-master-glow" disabled><span class="track"></span></label>
+            <label class="toggle"><input type="checkbox" id="c-master-glow"><span class="track"></span></label>
           </div>
         </div>
         <p class="control-help">Master switch for every glow effect on the card. Turn off for a flat, clean look without changing any per-element glow settings.</p>
@@ -3241,6 +3241,17 @@ function initBindings() {
     document.documentElement.style.setProperty('--text-scale', (v / 100).toFixed(2));
   }, v => Math.round(v) + '%');
 
+  // STEP 5: Master Glow toggle. Updates the --glow-master-enabled CSS variable
+  // (1 = on, 0 = off). Overlay.html consumes this in Stage 7.20.5 via a .no-glow
+  // class on the card root with `filter: none !important; text-shadow: none !important`
+  // that wins by specificity over per-element glow settings -- a VISUAL OVERRIDE that
+  // does NOT mutate saved per-element glow values.
+  bindToggle('c-master-glow', v => {
+    S.masters = S.masters || {};
+    S.masters.glowEnabled = v;
+    document.documentElement.style.setProperty('--glow-master-enabled', v ? 1 : 0);
+  });
+
   // "Use accent" delegated click handler. Writes the literal CSS function string
   // `var(--accent-master)` to the per-element JS value via the existing bindColor
   // input pipeline. The text input drives the bound setter (which dispatches markDirty
@@ -3479,10 +3490,12 @@ function syncAll() {
   syncColor('c-master-accent-color-p', 'c-master-accent-color', () => S.masters?.accentColor ?? '#c060ff');
   syncRange('c-master-overall-size', 'v-master-overall-size', () => S.masters?.overallSize ?? 100, v => Math.round(v) + '%');
   syncRange('c-master-text-size', 'v-master-text-size', () => S.masters?.textSize ?? 100, v => Math.round(v) + '%');
+  syncToggle('c-master-glow', () => S.masters?.glowEnabled ?? true);
   try {
     document.documentElement.style.setProperty('--accent-master', S.masters?.accentColor ?? '#c060ff');
     document.documentElement.style.setProperty('--overall-scale', ((S.masters?.overallSize ?? 100) / 100).toFixed(2));
     document.documentElement.style.setProperty('--text-scale', ((S.masters?.textSize ?? 100) / 100).toFixed(2));
+    document.documentElement.style.setProperty('--glow-master-enabled', (S.masters?.glowEnabled ?? true) ? 1 : 0);
   } catch (e) { /* DOM not ready -- safe to skip; binding handlers will set on first user input */ }
 
   // General
