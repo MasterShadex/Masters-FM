@@ -275,30 +275,21 @@ public partial class App : Application
         // that pointed the .lnk at the tray host instead of MastersFM.exe.
         _autoStartService.Reconcile();
 
-        // Default autostart ON for v14.0.0+. Uses a fresh flag key
-        // (autostart_defaulted_v14_0_0) so it re-applies once for every user,
-        // including those who upgraded from rc3 and never got a working
-        // shortcut on the rc3-keyed generation.  Flag written once;
-        // subsequent runs honour the user's explicit choice.
-        // Stage 7.18 Task A: bumped from autostart_defaulted_v14rc3 to
-        // autostart_defaulted_v14_0_0 because the rc3 generation flag
-        // short-circuited the default-on logic on the v14.0.0 install for
-        // operators upgrading from rc3 == fresh installs came up with
-        // Start-on-login UNCHECKED.
+        // Stage 7.22 Tweak 2: autostart force-ON every install. No flag-gating.
+        // The prior autostart_defaulted_v14_0_0 mechanism (Stage 7.18 Task A)
+        // preserved user toggle preferences across runs by writing a one-time
+        // flag after defaulting ON. Operator brief Stage 7.22 explicitly
+        // overrides that decision: every install/update unconditionally enables
+        // autostart regardless of any prior user toggle state. Operator accepts
+        // the tradeoff (users who disabled autostart will see it re-enabled on
+        // the next install/update; they can disable again from the tray menu
+        // but the next install/update will turn it back on).
         try
         {
-            var defaulted = _configService?.GetValue<bool>("autostart_defaulted_v14_0_0", false) ?? false;
-            if (!defaulted)
-            {
-                if (!_autoStartService.IsEnabled)
-                {
-                    _autoStartService.Enable();
-                    _logger.Log("AutoStart defaulted ON (v14.0.0 first run)", "AutoStart");
-                }
-                _configService?.SetValue("autostart_defaulted_v14_0_0", true);
-            }
+            _autoStartService.Enable();
+            _logger.Log("AutoStart forced ON (every install)", "AutoStart");
         }
-        catch (Exception ex) { _logger.LogErr("AutoStart default-on", ex, "AutoStart"); }
+        catch (Exception ex) { _logger.LogErr("AutoStart force-on", ex, "AutoStart"); }
 
         // Customizer launcher: dry-run path resolution check (no spawn during
         // smoke per brief absolute rule).
