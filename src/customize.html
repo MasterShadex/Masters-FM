@@ -817,7 +817,7 @@ input[type="color"]::-webkit-color-swatch { border-radius: var(--r-tiny); border
         <div class="row">
           <div class="row-label">Overall size</div>
           <div class="row-ctrl">
-            <input type="range" id="c-master-overall-size" min="50" max="150" step="5" disabled>
+            <input type="range" id="c-master-overall-size" min="50" max="150" step="5">
             <span class="range-val" id="v-master-overall-size">100%</span>
           </div>
         </div>
@@ -3221,6 +3221,15 @@ function initBindings() {
     document.documentElement.style.setProperty('--accent-master', v);
   });
 
+  // STEP 3: Master Overall Size. Updates the --overall-scale CSS variable
+  // (range 0.5 to 1.5, slider 50 to 150). Overlay.html consumes this in
+  // Stage 7.20.5 (transform: scale(var(--overall-scale)) on the card root).
+  bindRange('c-master-overall-size', 'v-master-overall-size', v => {
+    S.masters = S.masters || {};
+    S.masters.overallSize = v;
+    document.documentElement.style.setProperty('--overall-scale', (v / 100).toFixed(2));
+  }, v => Math.round(v) + '%');
+
   // "Use accent" delegated click handler. Writes the literal CSS function string
   // `var(--accent-master)` to the per-element JS value via the existing bindColor
   // input pipeline. The text input drives the bound setter (which dispatches markDirty
@@ -3457,9 +3466,11 @@ function syncAll() {
   // Restore master accent picker + propagate the value to --accent-master so any
   // per-element value already set to "var(--accent-master)" resolves on first paint.
   syncColor('c-master-accent-color-p', 'c-master-accent-color', () => S.masters?.accentColor ?? '#c060ff');
+  syncRange('c-master-overall-size', 'v-master-overall-size', () => S.masters?.overallSize ?? 100, v => Math.round(v) + '%');
   try {
     document.documentElement.style.setProperty('--accent-master', S.masters?.accentColor ?? '#c060ff');
-  } catch (e) { /* DOM not ready -- safe to skip; bindColor handler will set it on first user input */ }
+    document.documentElement.style.setProperty('--overall-scale', ((S.masters?.overallSize ?? 100) / 100).toFixed(2));
+  } catch (e) { /* DOM not ready -- safe to skip; binding handlers will set on first user input */ }
 
   // General
   syncRange('c-overlay-opacity', 'v-overlay-opacity', () => (S.overlay?.opacity ?? 1.0), v => Math.round(v*100)+'%');
