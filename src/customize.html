@@ -354,6 +354,26 @@ html, body {
   opacity: 1;
 }
 
+/* ─── Stage 7.21 STEP 5 polish helpers ──────────────────────────────────
+   Three small classes that replace inline `style="..."` attributes scattered
+   across customize.html. Tokenize via existing --fs-tiny (11px) and
+   --text-muted for consistency with the rest of the design system. */
+.sec-help-emphasized {
+  margin-top: 14px;
+  font-weight: var(--fw-semibold);
+  opacity: 0.9;
+}
+.sec-help-tip {
+  margin-top: 14px;
+  font-size: var(--fs-tiny);
+  opacity: 0.7;
+}
+.inline-hint {
+  font-size: var(--fs-tiny);
+  color: var(--text-muted);
+  margin-left: var(--sp-2);
+}
+
 /* ─── Welcome banner (Stage 7.21 STEP 3) ─────────────────────────────────
    Shown above the live preview on first ever customize.html open. Card-style
    with subtle accent-bar gradient along the top edge. Stage 7.19 design tokens
@@ -1198,7 +1218,7 @@ body.show-advanced .discovery-link { display: none; }
           </div>
         </div>
 
-        <p class="sec-help" style="margin-top:14px;font-weight:600;opacity:0.9;">Show / Lock Elements</p>
+        <p class="sec-help sec-help-emphasized">Show / Lock Elements</p>
         <p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">Left toggle = visible. Right toggle (🔒) = lock so the element can't be dragged or resized in the preview.</p>
         <div class="row le-row"><div class="row-label">🖼  Album Art</div><div class="row-ctrl le-row-ctrl"><label class="toggle" title="Visible"><input type="checkbox" id="c-layout-vis-albumArt"><span class="track"></span></label><label class="toggle le-lock" title="Lock"><input type="checkbox" id="c-layout-lock-albumArt"><span class="track"></span></label></div></div>
         <div class="row le-row"><div class="row-label">📊  EQ Bars</div><div class="row-ctrl le-row-ctrl"><label class="toggle" title="Visible"><input type="checkbox" id="c-layout-vis-animatedBars"><span class="track"></span></label><label class="toggle le-lock" title="Lock"><input type="checkbox" id="c-layout-lock-animatedBars"><span class="track"></span></label></div></div>
@@ -1209,7 +1229,7 @@ body.show-advanced .discovery-link { display: none; }
         <div class="row le-row"><div class="row-label">🎚  Spectrum</div><div class="row-ctrl le-row-ctrl"><label class="toggle" title="Visible"><input type="checkbox" id="c-layout-vis-spectrum"><span class="track"></span></label><label class="toggle le-lock" title="Lock"><input type="checkbox" id="c-layout-lock-spectrum"><span class="track"></span></label></div></div>
         <div class="row le-row"><div class="row-label">⏱  Progress Bar</div><div class="row-ctrl le-row-ctrl"><label class="toggle" title="Visible"><input type="checkbox" id="c-layout-vis-progressBar"><span class="track"></span></label><label class="toggle le-lock" title="Lock"><input type="checkbox" id="c-layout-lock-progressBar"><span class="track"></span></label></div></div>
 
-        <p class="sec-help" style="margin-top:14px;font-size:11px;opacity:0.7;">Tip: with "Use Custom Layout" on, click any element in the preview to drag it. Drag the corner handles to resize. Press Esc to deselect.</p>
+        <p class="sec-help sec-help-tip">Tip: with "Use Custom Layout" on, click any element in the preview to drag it. Drag the corner handles to resize. Press Esc to deselect.</p>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button type="button" id="btn-layout-templates" class="btn btn-ghost">📐 Open Templates…</button>
           <button type="button" id="btn-layout-reset" class="btn btn-ghost">↺ Reset Layout</button>
@@ -1653,7 +1673,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-label">Keep bars visible when paused</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-keep-on-pause"><span class="track"></span></label>
-            <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Overlay stays on screen instead of fading out</span>
+            <span class="inline-hint">Overlay stays on screen instead of fading out</span>
           </div>
         </div>
       </div>
@@ -1877,7 +1897,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-label">Keep bars at a consistent height</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-spec-autogain"><span class="track"></span></label>
-            <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Bars stay full even when audio is quiet</span>
+            <span class="inline-hint">Bars stay full even when audio is quiet</span>
           </div>
         </div>
         <p class="control-help">Normalizes loud and quiet music to similar bar heights.</p>
@@ -1916,7 +1936,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-label">Mirror the bars</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-spec-mirror"><span class="track"></span></label>
-            <span style="font-size:11px;color:var(--text-muted);margin-left:6px">Symmetric mirror effect</span>
+            <span class="inline-hint">Symmetric mirror effect</span>
           </div>
         </div>
         <p class="control-help">Makes the bar pattern symmetric around the center.</p>
@@ -2132,7 +2152,7 @@ body.show-advanced .discovery-link { display: none; }
           <div class="row-label">Fade title and artist when track changes</div>
           <div class="row-ctrl">
             <label class="toggle"><input type="checkbox" id="c-anim-crossfade"><span class="track"></span></label>
-            <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Title, artist &amp; art fade to the new song — card never moves</span>
+            <span class="inline-hint">Title, artist &amp; art fade to the new song -- card never moves</span>
           </div>
         </div>
         <div class="row" style="margin-top:6px;">
