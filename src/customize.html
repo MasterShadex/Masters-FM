@@ -354,6 +354,59 @@ html, body {
   opacity: 1;
 }
 
+/* ─── Super-categories (Stage 7.21) ─────────────────────────────────────────
+   Visual grouping above existing sections. Sections inside a supercat stay
+   byte-identical and keep their existing accordion behavior; the supercat is
+   purely a wrapper that adds a clickable uppercase header and an
+   open/collapsed state with smooth max-height transition. Search auto-expands
+   matched supercats and hides empty ones (see initSearchBar Stage 7.21 patch). */
+.supercat {
+  margin-top: var(--sp-3);
+}
+.supercat-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-tiny);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+.supercat-header:hover {
+  color: var(--text-secondary);
+}
+.supercat-chevron {
+  transition: transform var(--dur-fast-v2) var(--ease-windows);
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  display: inline-block;
+  transform-origin: center;
+}
+.supercat.collapsed .supercat-chevron {
+  transform: rotate(-90deg);
+}
+.supercat-body {
+  overflow: hidden;
+  max-height: 9999px;
+  transition: max-height var(--dur-standard-v2) var(--ease-windows);
+}
+.supercat.collapsed .supercat-body {
+  max-height: 0;
+}
+/* Search hides empty supercats entirely (no header click needed). */
+.supercat.section-hidden-by-search {
+  display: none;
+}
+
 /* ─── Rows ──────────────────────────────────────────────────────────────────── */
 /* .row padding intentionally off-4px-grid (5px 4px) == tight sidebar density.
    Sidebar shows ~50 control rows; lifting vertical padding to 8px would add
