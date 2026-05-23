@@ -3478,6 +3478,93 @@ function initBindings() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  buildSearchIndex (Stage 7.20 STEP 7) -- attach data-search to every .row
+//  Derived from the .row-label text + section .sec-title + a small JARGON_MAP
+//  of pre-Stage-7.19 names + synonyms so users searching by old jargon
+//  ("loudness", "marquee", "border radius") still find renamed controls.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Map: new (Stage 7.19) friendly label  ->  "old-jargon synonym1 synonym2"
+// Keys are lowercased + trimmed against .row-label text. Values are space-
+// separated lowercase tokens. Cover the highest-jargon renames; non-jargon
+// renames rely on the new label itself being the search target.
+const JARGON_MAP = {
+  // Card appearance
+  'corner roundness': 'border radius rounded curve corners',
+  'border thickness': 'border width thick',
+  'background gradient angle': 'bg angle gradient direction degree',
+  'top background color': 'bg top gradient color colour',
+  'bottom background color': 'bg bottom gradient color colour',
+  'blur behind the card': 'background blur backdrop frosted',
+  'card transparency': 'background opacity see through alpha',
+  // Audio bars (Spectrum)
+  'keep bars at a consistent height': 'auto volume match autogain compression normalize',
+  'make quiet sounds louder': 'loudness boost autogain compression normalize',
+  'what color the bars are': 'color mode bar color colour rainbow gradient solid',
+  'mirror the bars': 'mirror symmetric reflection',
+  'how round the bar tops are': 'bar roundness corner radius',
+  'minimum bar height': 'lowest bar height min floor',
+  'maximum bar height': 'tallest bar height max ceiling',
+  'how quickly bars react to music': 'reaction speed reactivity response ms milliseconds smoothing',
+  'animation frame rate (advanced)': 'frame rate fps refresh',
+  // Track and artist
+  'title size': 'font size title px',
+  'title boldness': 'font weight bold heavy title',
+  'title color': 'color colour title hex',
+  'how fast title scrolls': 'marquee speed scroll title',
+  'title scroll pause': 'marquee pause title delay',
+  'title letter spacing': 'letter spacing kerning title tracking',
+  'artist size': 'font size artist px',
+  'artist boldness': 'font weight bold heavy artist',
+  'artist color': 'color colour artist hex',
+  'how fast artist scrolls': 'marquee speed scroll artist',
+  'artist scroll pause': 'marquee pause artist delay',
+  'artist letter spacing': 'letter spacing kerning artist tracking',
+  // Glow + Text glow
+  'how strong the glow is': 'glow size intensity blur strength px',
+  'glow color': 'glow color colour hex',
+  // Slide-in animation
+  'how long the slide-in takes': 'slide in animation duration ms milliseconds time',
+  'how far the card slides in': 'slide distance offset px',
+  // Now Playing
+  'what the label says': 'now playing label text custom',
+  'label color': 'now playing color colour hex',
+  'space between letters': 'letter spacing kerning tracking now playing',
+  // General
+  'overall transparency': 'opacity see through alpha global',
+  // Misc
+  'how thick the spinning border ring is': 'border thickness spinning ring px',
+  'how fast it spins': 'spin duration speed border seconds',
+  'how strong the pulse is': 'glow intensity strength pulse',
+  'how fast it pulses': 'pulse duration speed glow seconds',
+};
+
+function buildSearchIndex() {
+  const rows = document.querySelectorAll('.row');
+  rows.forEach(row => {
+    const labelEl = row.querySelector('.row-label');
+    if (!labelEl) return;
+    const newLabel = (labelEl.textContent || '').trim().toLowerCase();
+    if (!newLabel) return;
+    // Section name via closest .section ancestor -> .sec-header > .sec-title
+    let sectionName = '';
+    const sectionEl = row.closest('.section');
+    if (sectionEl) {
+      const titleEl = sectionEl.querySelector('.sec-header .sec-title');
+      if (titleEl) sectionName = (titleEl.textContent || '').trim().toLowerCase();
+    }
+    const jargon = JARGON_MAP[newLabel] || '';
+    // Build the search string: new label + jargon + section name.
+    // Pipe-separated so individual tokens stay grouped; lowercased so
+    // case-insensitive contains() matching just works.
+    const parts = [newLabel];
+    if (jargon) parts.push(jargon);
+    if (sectionName) parts.push(sectionName);
+    row.setAttribute('data-search', parts.join(' | '));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  syncAll — push every S value into the UI controls (no new listeners)
 //  Called on init and on reset.
 // ════════════════════════════════════════════════════════════════════════════
@@ -4346,6 +4433,7 @@ async function pmImport(file) {
   }
   buildThemeGrid();  // render theme picker buttons
   initBindings();    // wire up event listeners exactly once
+  buildSearchIndex();// Stage 7.20 STEP 7: attach data-search to every .row
   // v8.0.1: pm-* DOM elements live in the preset-manager-modal markup AFTER
   // the closing script tag, so binding them at script eval time would fail.
   // (Avoid writing the literal close-script string inside JS — even in a
