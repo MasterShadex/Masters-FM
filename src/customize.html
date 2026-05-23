@@ -354,6 +354,76 @@ html, body {
   opacity: 1;
 }
 
+/* ─── Welcome banner (Stage 7.21 STEP 3) ─────────────────────────────────
+   Shown above the live preview on first ever customize.html open. Card-style
+   with subtle accent-bar gradient along the top edge. Stage 7.19 design tokens
+   throughout. localStorage gate customize_welcome_seen tracks dismissal. */
+.welcome-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-3) var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--surface-2);
+  border-radius: var(--r-card);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+.welcome-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent-bar);
+}
+.welcome-banner[hidden] { display: none !important; }
+.welcome-banner-emoji {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.welcome-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+.welcome-banner-text strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--fs-body-strong);
+  margin-bottom: 4px;
+}
+.welcome-banner-text p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.welcome-banner-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  padding: 6px 12px;
+  border-radius: var(--r-button);
+  cursor: pointer;
+  transition: border-color var(--dur-fast-v2) var(--ease-windows),
+              color var(--dur-fast-v2) var(--ease-windows);
+}
+.welcome-banner-dismiss:hover {
+  border-color: var(--accent-bright);
+  color: var(--text-primary);
+}
+.welcome-reshow {
+  display: inline-block;
+  margin-left: var(--sp-3);
+  color: var(--text-tertiary);
+  font-size: var(--fs-tiny);
+  text-decoration: none;
+  cursor: pointer;
+}
+.welcome-reshow:hover { color: var(--accent-bright); text-decoration: underline; }
+
 /* ─── Super-categories (Stage 7.21) ─────────────────────────────────────────
    Visual grouping above existing sections. Sections inside a supercat stay
    byte-identical and keep their existing accordion behavior; the supercat is
@@ -2048,6 +2118,17 @@ body.show-advanced .discovery-link { display: none; }
 
   <!-- ── Preview pane ──────────────────────────────────────────────────────── -->
   <main class="preview">
+    <!-- Stage 7.21 STEP 3: welcome banner. Shown only on first ever customize.html
+         open (localStorage gate customize_welcome_seen). Footer "Show welcome
+         message" link re-shows it on demand. -->
+    <div class="welcome-banner" id="welcome-banner" hidden>
+      <span class="welcome-banner-emoji" aria-hidden="true">👋</span>
+      <div class="welcome-banner-text">
+        <strong>New to Master's FM customize?</strong>
+        <p>Start by picking a theme below, or use the Quick Settings to change the main color, size, and text size. Click "Show advanced settings" if you want fine control over everything.</p>
+      </div>
+      <button class="welcome-banner-dismiss" id="welcome-banner-dismiss" type="button">Got it, hide this</button>
+    </div>
     <div class="preview-header">
       <div class="live-dot"></div>
       <span>Live Preview — updates within ~0.5s of any change</span>
@@ -2066,6 +2147,7 @@ body.show-advanced .discovery-link { display: none; }
     </div>
     <div class="preview-footer">
       Adjust controls on the left — preview updates live. Click <strong>Apply to OBS</strong> to save permanently.
+      <a class="welcome-reshow" id="welcome-reshow" href="#" role="button">Show welcome message</a>
     </div>
   </main>
 
@@ -4006,6 +4088,42 @@ function initAdvancedToggle() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Welcome banner (Stage 7.21 STEP 3) -- first-run onboarding with dismiss +
+//  re-show footer link. localStorage key: customize_welcome_seen.
+// ════════════════════════════════════════════════════════════════════════════
+function initWelcomeBanner() {
+  const banner = document.getElementById('welcome-banner');
+  const dismiss = document.getElementById('welcome-banner-dismiss');
+  const reshow = document.getElementById('welcome-reshow');
+  if (!banner || !dismiss || !reshow) return;
+
+  function readSeen() {
+    try { return localStorage.getItem('customize_welcome_seen') === 'true'; }
+    catch (e) { return false; }
+  }
+  function writeSeen(v) {
+    try { localStorage.setItem('customize_welcome_seen', v ? 'true' : 'false'); }
+    catch (e) { /* localStorage unavailable -- ephemeral session only */ }
+  }
+  function show() { banner.hidden = false; }
+  function hide() { banner.hidden = true; }
+
+  // Show on first ever open; otherwise stay hidden.
+  if (readSeen()) hide(); else show();
+
+  dismiss.addEventListener('click', () => {
+    writeSeen(true);
+    hide();
+  });
+
+  reshow.addEventListener('click', e => {
+    e.preventDefault();
+    writeSeen(false);
+    show();
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  syncAll — push every S value into the UI controls (no new listeners)
 //  Called on init and on reset.
 // ════════════════════════════════════════════════════════════════════════════
@@ -4919,6 +5037,7 @@ async function pmImport(file) {
   markAdvancedElements(); // Stage 7.20 STEP 11: mark sections + rows .advanced-only
   addDiscoveryLinks();    // Stage 7.20 STEP 11: append "Want more control?" links
   initAdvancedToggle();   // Stage 7.20 STEP 11: localStorage + checkbox + delegation
+  initWelcomeBanner();    // Stage 7.21 STEP 3: first-run welcome banner
   // v8.0.1: pm-* DOM elements live in the preset-manager-modal markup AFTER
   // the closing script tag, so binding them at script eval time would fail.
   // (Avoid writing the literal close-script string inside JS — even in a
