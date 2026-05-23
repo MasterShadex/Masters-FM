@@ -1822,6 +1822,29 @@ function applyConfig(raw) {
 
   const R = document.documentElement.style;   // shorthand: sets --vars on <html>
 
+  // ── Stage 7.20.5: Master controls (Quick Settings) ──────────────────────
+  // Reads cfg.masters block (added in Stage 7.20 customize.html) and applies:
+  //   * --accent-master  (color string) -- drives per-element accent fallback chain
+  //   * --overall-scale  (0.5-1.5)      -- transform: scale on .card-outer
+  //   * --text-scale     (0.5-1.5)      -- calc(... * scale) on per-element font-sizes
+  //   * .no-glow class   on body when glowEnabled === false
+  //   * .no-animations class on body when animationsEnabled === false
+  // Defensive defaults: missing cfg.masters (configs pre-dating Stage 7.20) leaves
+  // CSS :root defaults in place (brand purple accent, 1.0 scales, glow/anim on).
+  // Per-element wins: customize.html applies user-overridden per-element hex via
+  // R.setProperty('--XXX-color', '#hex') -- inline style overrides :root default;
+  // when per-element holds the literal "var(--accent-master)" string (set via the
+  // customize "Use accent" link in Stage 7.20), CSS resolves the chain back to
+  // --accent-master so the element follows master.
+  {
+    const m = cfg.masters || {};
+    if (m.accentColor) R.setProperty('--accent-master', m.accentColor);
+    R.setProperty('--overall-scale', ((m.overallSize ?? 100) / 100).toFixed(3));
+    R.setProperty('--text-scale',    ((m.textSize    ?? 100) / 100).toFixed(3));
+    document.body.classList.toggle('no-glow',       m.glowEnabled       === false);
+    document.body.classList.toggle('no-animations', m.animationsEnabled === false);
+  }
+
   // ── Font ────────────────────────────────────────────────────────────────
   injectFont(cfg.font);
   // Multi-script fallback chain: after the user's chosen font, cascade through
@@ -3627,7 +3650,15 @@ function drawSpectrum() {
   }
   // Render via WebGL
   if (_renderedBands && _renderedBands.length > 0) {
-    const baseRgb_glFast = _dynSpectrumColor || hexToRgb(_cfg.spectrum.color?.startsWith('#') ? _cfg.spectrum.color : '#c060ff');
+    // Stage 7.20.5: spectrum color follow-master path. When customize.html's
+    // "Use accent" link writes literal "var(--accent-master)" into S.spectrum.color
+    // (and applyConfig propagates it here), the .startsWith('#') check fails and
+    // would fall through to the hardcoded '#c060ff'. Catch this case and substitute
+    // the current master accent so the spectrum follows the master color.
+    const _specColor = (_cfg.spectrum.color === 'var(--accent-master)')
+      ? (_cfg.masters?.accentColor || '#c060ff')
+      : _cfg.spectrum.color;
+    const baseRgb_glFast = _dynSpectrumColor || hexToRgb(_specColor?.startsWith('#') ? _specColor : '#c060ff');
     const hueOffsetDegFast = (now / 1000) * 45;
     // v9.6.7: honour cfg.barCount by decimating 480 bands → barCount groups.
     // canvas2d drew exactly barCount bars by slicing simVals; WebGL always got
