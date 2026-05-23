@@ -3634,6 +3634,102 @@ function buildSearchIndex() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Search filter (Stage 7.20 STEP 9) -- live filter + Ctrl+F + Esc + clear.
+//  data-search attributes are pre-populated by buildSearchIndex(). On each
+//  input keystroke (80 ms debounce) we lowercase-match the query against
+//  every .row[data-search]:
+//    * matching row    -> .row-highlighted
+//    * non-matching row in a section with at least one match -> .row-dimmed
+//    * section with zero matches  -> .section-hidden-by-search on the .section
+//  Sections with matches auto-expand (.sec-body.open + .sec-header.open) so
+//  hits are immediately visible.
+// ════════════════════════════════════════════════════════════════════════════
+
+let _searchDebounceTimer = null;
+
+function runSearchFilter(query) {
+  const q = (query || '').trim().toLowerCase();
+  const sections = document.querySelectorAll('.section');
+  if (!q) {
+    // Empty: clear all search-applied classes; collapse state remains user-driven.
+    sections.forEach(sec => {
+      sec.classList.remove('section-hidden-by-search');
+      sec.querySelectorAll('.row').forEach(r => {
+        r.classList.remove('row-highlighted', 'row-dimmed');
+      });
+    });
+    return;
+  }
+  sections.forEach(sec => {
+    const rows = sec.querySelectorAll('.row[data-search]');
+    let hits = 0;
+    rows.forEach(row => {
+      const hay = row.getAttribute('data-search') || '';
+      if (hay.includes(q)) {
+        row.classList.add('row-highlighted');
+        row.classList.remove('row-dimmed');
+        hits++;
+      } else {
+        row.classList.remove('row-highlighted');
+        row.classList.add('row-dimmed');
+      }
+    });
+    if (hits === 0) {
+      sec.classList.add('section-hidden-by-search');
+    } else {
+      sec.classList.remove('section-hidden-by-search');
+      // Auto-expand matched sections so the user sees the hits without clicking.
+      const header = sec.querySelector('.sec-header');
+      const body = sec.querySelector('.sec-body');
+      if (header) header.classList.add('open');
+      if (body) body.classList.add('open');
+    }
+  });
+}
+
+function initSearchBar() {
+  const input = document.getElementById('settings-search');
+  const clearBtn = document.getElementById('search-clear');
+  if (!input || !clearBtn) return; // defensive; absent in older HTML snapshots
+
+  input.addEventListener('input', () => {
+    clearBtn.classList.toggle('visible', input.value.length > 0);
+    if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+    _searchDebounceTimer = setTimeout(() => {
+      runSearchFilter(input.value);
+    }, 80);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      input.value = '';
+      clearBtn.classList.remove('visible');
+      runSearchFilter('');
+      input.blur();
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    clearBtn.classList.remove('visible');
+    runSearchFilter('');
+    input.focus();
+  });
+
+  // Ctrl+F (or Cmd+F on macOS) -- preventDefault overrides the browser's
+  // native Find within customize.html and routes focus into our search input.
+  // Scope: document-level listener; only fires when customize.html has focus.
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  syncAll — push every S value into the UI controls (no new listeners)
 //  Called on init and on reset.
 // ════════════════════════════════════════════════════════════════════════════
@@ -4503,6 +4599,7 @@ async function pmImport(file) {
   buildThemeGrid();  // render theme picker buttons
   initBindings();    // wire up event listeners exactly once
   buildSearchIndex();// Stage 7.20 STEP 7: attach data-search to every .row
+  initSearchBar();   // Stage 7.20 STEP 9: live filter + Ctrl+F + Esc + clear
   // v8.0.1: pm-* DOM elements live in the preset-manager-modal markup AFTER
   // the closing script tag, so binding them at script eval time would fail.
   // (Avoid writing the literal close-script string inside JS — even in a
