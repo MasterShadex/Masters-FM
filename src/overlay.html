@@ -1843,6 +1843,39 @@ function applyConfig(raw) {
     R.setProperty('--text-scale',    ((m.textSize    ?? 100) / 100).toFixed(3));
     document.body.classList.toggle('no-glow',       m.glowEnabled       === false);
     document.body.classList.toggle('no-animations', m.animationsEnabled === false);
+
+    // Stage 7.20.5 SE5 FIX: master accent propagation for non-customized
+    // elements. Without this pre-processing, per-element accent values
+    // populated from customize.html THEMES factory defaults override the
+    // CSS fallback chain at every downstream setProperty call, so master
+    // accent has no visible effect on default-themed installs. This pass
+    // detects factory-default per-element accent values and substitutes
+    // the literal string 'var(--accent-master)' so the downstream setProperty
+    // calls write the CSS reference and the chain resolves to master.
+    // Manually-customized values pass through unchanged (per-element wins
+    // locked decision honored). Limitation: non-default themes (Neon Blue,
+    // Hot Pink, Retro Orange, etc.) have their own accent values that won't
+    // match factory defaults; users on those themes need to click "Use accent"
+    // per-element in customize.html (Stage 7.20 affordance). See V14_S7_20_5_LOG.md
+    // S9.FAIL.3 for the full diagnosis.
+    if (m.accentColor) {
+      const ACCENT_FACTORY = [
+        ['title',         'color',    '#ffffff'],
+        ['artist',        'color',    'rgba(220,185,255,0.52)'],
+        ['nowPlaying',    'color',    '#c060ff'],
+        ['bars',          'color',    '#c060ff'],
+        ['platformBadge', 'color',    'rgba(200,160,255,0.38)'],
+        ['platformBadge', 'dotColor', 'rgba(200,100,255,0.28)'],
+        ['spectrum',      'color',    '#c060ff'],
+        ['timestamps',    'color',    '#e090ff'],
+      ];
+      const FOLLOW = 'var(--accent-master)';
+      for (const [obj, key, fdef] of ACCENT_FACTORY) {
+        if (cfg[obj] && cfg[obj][key] === fdef) {
+          cfg[obj][key] = FOLLOW;
+        }
+      }
+    }
   }
 
   // ── Font ────────────────────────────────────────────────────────────────
