@@ -4240,3 +4240,162 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S5.2 rebuild: `14.0.0+
 
 - **Stage 7.21** -- onboarding banner + sidebar structural revision (super-categories / tabs) + final polish; final stage of customize redesign cycle (~6-10 h)
 - **Pause + ship** -- customize redesign is now substantively complete (masters + search + advanced toggle + theme-wide master propagation all working); build is shippable to friends as-is
+
+---
+
+## 2026-05-24 00:22 UTC -- Stage 7.21: onboarding + sidebar restructure + final polish (CYCLE COMPLETE)
+
+**Commits:**
+- `66ec074` STEP 0 -- checkpoint + restructure plan + onboarding spec + polish list
+- `0aa603d` STEP 1 -- supercat CSS scaffolding
+- `42585e0` STEP 2 -- HTML wrap sections in supercats + JS toggle + localStorage + search integration
+- `98d040b` STEP 3 -- welcome banner HTML + CSS + JS localStorage gate + footer reshow link
+- `7cddfa0` STEP 4 -- following-master badges for 8 accent pickers
+- `d091812` STEP 5 -- polish pass (inline-style cleanup)
+- (no commit; STEP 6 rebuild + SE2 documented in log; STEP 6 also encountered VBCSCompiler hang and retry per Stage 7.19.5 lesson)
+- (this entry) STEP 8 -- memory APPEND + cycle-complete closure
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles. One STEP 6 infrastructure retry (VBCSCompiler hang) -- not a strike.
+
+### What this stage did
+
+Closed the customize redesign cycle. Stage 7.21 was the third and final restructure stage.
+
+- **Sidebar restructure via 6 super-categories** at the top of the sidebar, wrapping 17 sections at runtime:
+  - **Start here**: Quick Settings, General
+  - **Look**: Themes, Card appearance, Font, Album art, "Now Playing" label, Platform badge
+  - **Text**: Track and artist text, Progress bar and time
+  - **Effects**: Outer glow, Text glow, Spinning border, Auto-color from album art
+  - **Audio**: Audio bars
+  - **Layout (advanced)**: Layout, Slide-in animation
+  Each supercat header is a clickable uppercase pill with smooth max-height transition (Stage 7.19 animation tokens). State persists to `localStorage.supercat_<id>_collapsed`. Search auto-expands matched supercats; hides empty supercats entirely. Implementation: `restructureSidebar()` at runtime replaces prior `reorderSidebar()`.
+- **Welcome banner** at top of preview pane on first ever Customize open. Card-style with subtle accent-bar gradient. Dismiss button + footer "Show welcome message" link. localStorage gate `customize_welcome_seen`.
+- **Following-master badges** on the 8 per-element accent pickers. Reactive visibility: shown when value is `var(--accent-master)` sentinel, hidden when user overrides with hex, reappears on "Use accent" or theme apply restoring sentinel. Live color tracking via `background: var(--accent-master)` CSS (no JS needed for color sync).
+- **Polish pass**: 2 `sec-help` inline-style attributes replaced with `.sec-help-emphasized` + `.sec-help-tip` classes; 4 inline-styled `<span>` "hint" elements replaced with `.inline-hint` class. Tokenized via existing `--fs-tiny` (no new `--text-xs` token needed since `--fs-tiny: 11px` already exists). Sub-header consistency across 7 Stage-7.19 sub-grouped sections verified (no edits needed).
+
+### Constraints honored
+
+- `src/overlay.html` UNCHANGED (`git diff 0be1059..HEAD -- src/overlay.html` empty)
+- `src/server.js` UNCHANGED (pass-through)
+- All 4 protected source files SHA256 UNCHANGED across the entire stage (S0.2 + S7.1 + S8.1)
+- Apply-to-OBS contract preserved (all 141 c-* setting IDs intact; no IDs added/removed; structural-only changes in customize.html)
+- Stage 7.15 clock fix preserved (`tabular-nums` still in overlay.html at 2 sites; clock keeps ticking)
+- Stage 7.19 surface preserved (friendly labels, inline help, animation tokens, sub-headers intact)
+- Stage 7.20 surface preserved (Quick Settings, search, Advanced toggle intact)
+- Stage 7.20.5 surface preserved (master variable wiring in overlay.html intact)
+- Stage 7.20.6 surface preserved (themes-with-sentinel intact)
+- No new themes; no removed themes; no theme value changes
+- No `version.json` bump (stays `14.0.0`)
+- No git tag, no GitHub push, no GitHub interaction
+- No em-dash characters in source edits; UTF-8 no-BOM
+- No new external dependencies (vanilla HTML/CSS/JS only)
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** mandatory log inspection after STEP 6 rebuild: PASS (0 IOE, 0 real ERROR/WARN; same documented INFO-level DialogService init false positive)
+- **SE3** mandatory diff review after every commit: yes (8 commits, all scope-matched: customize.html + log only)
+- **SE4** no "continue" shortcut at gate: yes (operator gave explicit `PASS`)
+- **SE5** mistake handling: zero diagnosis-fix pairs
+- **SE6** three-strike escalation: not triggered
+- **SE7** no autonomous scope expansion: 3 temptations parked (WPF items stay parked for future stage; Stage 7.20.5 SE5 substitution removal parked for v14.1.0; `_full_rebuild.ps1` VBCSCompiler end-of-script cleanup parked for v14.1.0)
+- **SE8** protected files SHA256 verified at STEP 0 + STEP 7.1 + STEP 8.1: all UNCHANGED
+
+### STEP 6 VBCSCompiler infrastructure retry (Stage 7.19.5 lesson reinforced)
+
+First STEP 6 rebuild hung at [1/5] dotnet publish server.exe for 7+ minutes (PowerShell parent at 0.34 CPU; one stale VBCSCompiler PID 11400 alive but idle). Same exact pattern as Stage 7.19.5 S7.2 attempt 1. Killed parent + VBCSCompiler; retry built clean in ~40 sec.
+
+Pre-emptive `Stop-Process -Name VBCSCompiler` at script START doesn't catch this pattern because the stale VBCSCompiler was spawned BY the rebuild itself (not pre-existing). Permanent fix candidate for v14.1.0: add `Stop-Process -Name VBCSCompiler` at script END so the daemon doesn't linger across cycles.
+
+NOT classified as an SE5 strike (build infrastructure, not source).
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.21 lands as fix-forward via commit SHA suffix.
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S8.2 rebuild: `14.0.0+d091812d44c094f72ef56a41750f7cc987016801` (matches HEAD `d091812` STEP 5; closure commit follows).
+
+### Files touched in this stage
+
+- `src/customize.html` (substantial: ~388 lines net change across 6 commits; structural reorganization + 3 new feature blocks + polish)
+- `V14_S7_21_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_21_REPORT.md` (NEW; tracked; 15-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-23_23-50_S7_21_PRE/` (disk-only snapshot)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/overlay.html` (absolute rule 2)
+- All `src/tray_csharp/**`
+- `version.json`
+
+---
+
+## CUSTOMIZE REDESIGN CYCLE COMPLETE (8 stages, ~30+ hours over 4 calendar days)
+
+The cycle ran from Stage 7.18 Task B (audit, 2026-05-21) through Stage 7.21 (2026-05-24).
+
+**Cycle timeline + deliverables:**
+
+| Stage | Date | SHA | What landed |
+|---|---|---|---|
+| 7.17  | 2026-05-20 | `718e3e1` | local v14.0.0 cut (+ hardcoded version-string fixes) |
+| 7.18  | 2026-05-21 | `99c5f2d` | Start-on-login default fix (Task A) + customize UX audit (Task B) -- audit identified the 3 pain points the cycle then resolved |
+| 7.19  | 2026-05-22 | `02340e4` | customize redesign foundation: ~110 friendly-voice rename pass + ~50 inline help paragraphs + 6 v2 animation tokens + 13 sub-headers across 7 sections |
+| 7.19.5 | 2026-05-23 | `b9e18aa` | WPF Setup Wizard binding fix (pre-existing bug from Stage 7.12 surfaced by Stage 7.19 SE2 log inspection; not in original cycle plan but commissioned mid-cycle) |
+| 7.20   | 2026-05-23 | `cad6fd5` | Quick Settings section with 5 master controls (Accent / Overall Size / Text Size / Glow / Animations) + 8 "Use accent" links + search bar with Ctrl+F + Advanced toggle with Basic/Advanced split + discovery links |
+| 7.20.5 | 2026-05-23 | `ba79b66` | overlay.html master variable wiring (masters now visibly affect OBS; one SE5 pair: Master Accent default-theme propagation fix) |
+| 7.20.6 | 2026-05-23 | `0be1059` | 22 themes converted to `var(--accent-master)` sentinel for non-default-theme master accent propagation |
+| 7.21   | 2026-05-24 | (closure SHA) | onboarding banner + 6-supercat sidebar restructure + 8 following-master reactive badges + polish pass (THIS STAGE) |
+
+**8 stages, single fix-forward chain, ZERO version.json bumps.** All work committed locally; no push to GitHub. v14.0.0 stays the operator's local truth.
+
+**Cumulative outcomes:**
+
+What operator + friends get on first run:
+- Welcome banner explains the flow at top of preview pane
+- Friendly, jargon-free control labels everywhere
+- Inline help paragraphs under most controls (skip-criteria-driven)
+- Smooth Windows 11 / macOS feel animations on UI elements
+- Sidebar organized into 6 super-categories (collapsible, persistent)
+- "Quick Settings" at top with 5 master controls that visibly affect OBS
+- Search bar (Ctrl+F) finds renamed controls by old jargon ("loudness", "marquee")
+- "Show advanced settings" toggle keeps sidebar approachable in Basic mode
+- 22 themes work as one-click presets; master accent picks up theme's accent
+- Following-master badges show on accent pickers in real-time when following master
+- Per-element customization (per-element wins) preserved end-to-end
+
+Engineering quality preserved across the cycle:
+- All 4 protected source files SHA256 UNCHANGED across the entire 8-stage cycle (verified at every stage S0.2 + final SHA256 verify)
+- Stage 7.15 clock fix preserved (Apply-to-OBS contract honored across every stage)
+- Stage 7.19.5 WPF Setup Wizard binding fix preserved (post-install IOE count = 0)
+- Apply-to-OBS contract: 141 c-* setting IDs + 5 master IDs + masters block + 22 theme definitions all functional
+- Zero version-string regressions
+- Zero git tag operations; zero GitHub interaction; zero push (operator standing rule)
+- 8 stages × ~30 commits across cycle = clean linear fix-forward chain
+
+### Lessons learned (durable, future-stage relevant)
+
+- **The 5-protected-file system + SHA256 verification at every stage works.** Across 30+ commits and ~30 hours, the four protected files (`tray.ps1`, `tray_native.cs`, `launcher.cs`, `server.js`) stayed byte-identical. The discipline of "verify SHA256 at STEP 0 + final STEP" caught nothing because nothing slipped, which is the desired outcome.
+- **Stage 7.19.5 was the right kind of mid-cycle interrupt.** Discovering a WPF bug via Stage 7.19's SE2 log inspection -> commissioning a focused diagnosis-then-fix brief (Stage 7.19.5) -> closing it before Stage 7.20 kept the customize cycle clean. Future cycles should follow the same pattern: log discoveries park as SE7 temptations and get commissioned as separate focused briefs.
+- **Sentinel-in-data design** (`var(--accent-master)` literal string stored in JS values, propagated through CSS variable resolution) is a powerful pattern. Stage 7.20 introduced it (per-element values can be the sentinel); Stage 7.20.5 wired the overlay.html side; Stage 7.20.6 made themes ship with it; Stage 7.21 made the UI surface it via reactive badges. End-to-end coherent.
+- **SE4 strict mixed-reply protocol pays off twice.** Stage 7.20 operator replied "PASS but FAIL" (mixed) -> re-prompted with documentation reference -> clarified to PASS. Stage 7.20.5 operator gave a specific "FAIL <reason>" that triggered SE5 -> clean diagnosis + fix + re-test PASS. SE4 wording stays valuable.
+- **VBCSCompiler hangs are a recurring infrastructure failure mode** (Stage 7.19.5 + Stage 7.21 STEP 6). Mitigation parked for v14.1.0: add `Stop-Process -Name VBCSCompiler` at end of `_full_rebuild.ps1` cleanup.
+- **8 stages without a version bump.** Fix-forward via commit SHA suffix kept the install identifier honest at every stage. `14.0.0+<SHA>` is the canonical local truth.
+
+### Status: HALT. Customize redesign cycle CLOSED at Stage 7.21. Ship build is ready for friends. v14 still at 14.0.0 (fix-forward via SHA).
+
+### v14.1.0 candidate backlog (from full cycle of parked items)
+
+- Server log rotation policy (parked since Stage 7.15)
+- Overlay.html Stage 7.20.5 SE5 substitution removal (no-op now for post-Stage-7.20.6 configs)
+- WPF parked items (Stage 7.19.5 WizardDeviceItemStyle dedup; DeviceRowTemplate consolidation; SystemColors guard cleanup)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- Version-string consolidation (hardcoded fallbacks in various files; Stage 7.18 STEP 2.5 caught the obvious ones but more may surface)
+- Theme glow color follow-master (parked from Stage 7.20.6 -- master glow color picker if operator wants symmetric treatment with accent)
+- Real user feedback from shipping to friends
+
+### Next operator action
+
+Ship the current build to friends, gather feedback, plan v14.1.0 from real signal.
