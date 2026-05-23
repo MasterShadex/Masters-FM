@@ -3792,6 +3792,7 @@ let _searchDebounceTimer = null;
 function runSearchFilter(query) {
   const q = (query || '').trim().toLowerCase();
   const sections = document.querySelectorAll('.section');
+  const supercats = document.querySelectorAll('.supercat');
   if (!q) {
     // Empty: clear all search-applied classes; collapse state remains user-driven.
     sections.forEach(sec => {
@@ -3800,6 +3801,9 @@ function runSearchFilter(query) {
         r.classList.remove('row-highlighted', 'row-dimmed');
       });
     });
+    // Stage 7.21: also clear supercat search-hide state. Collapse state from
+    // localStorage stays in place (managed by the supercat header click handler).
+    supercats.forEach(sc => sc.classList.remove('section-hidden-by-search'));
     return;
   }
   sections.forEach(sec => {
@@ -3825,6 +3829,19 @@ function runSearchFilter(query) {
       const body = sec.querySelector('.sec-body');
       if (header) header.classList.add('open');
       if (body) body.classList.add('open');
+    }
+  });
+  // Stage 7.21: walk supercats AFTER sections so we know which contain matches.
+  // Supercats with at least one visible (non-hidden) section auto-expand; supercats
+  // with zero visible sections hide entirely via .section-hidden-by-search.
+  supercats.forEach(sc => {
+    const visibleSections = sc.querySelectorAll('.section:not(.section-hidden-by-search)');
+    if (visibleSections.length === 0) {
+      sc.classList.add('section-hidden-by-search');
+    } else {
+      sc.classList.remove('section-hidden-by-search');
+      // Auto-expand: force open during search regardless of user's collapse pref.
+      sc.classList.remove('collapsed');
     }
   });
 }
@@ -4674,38 +4691,78 @@ function pmDeleteStart(row, name) {
 // chrome (visual frame), then per-element manual styling at the bottom. The
 // underlying HTML order is left alone — appendChild on an existing child
 // moves it, so this is a non-destructive DOM reorder. Re-run safely.
-function reorderSidebar() {
+// Stage 7.21 STEP 2: restructureSidebar wraps existing sections in super-category
+// groups (.supercat) with collapsible headers and localStorage persistence. Replaces
+// the prior reorderSidebar() (which only re-appended sections in a flat order). The
+// new structure presents 6 super-categories above sections; sections inside each
+// supercat stay byte-identical and keep their existing accordion behavior.
+function restructureSidebar() {
   const sidebar = document.querySelector('.sidebar');
   if (!sidebar) return;
-  const order = [
-    // ── 1. Automatic / one-click ──────────────────────────────────────────
-    'themes',     // Visual Themes (one-click presets)
-    'dyncolors',  // Dynamic Colors (auto-extracts from album art)
-    // ── 2. Global structure (affects everything) ──────────────────────────
-    'general',    // Overlay opacity, pause behaviour
-    'layout',     // Custom layout positioning + templates
-    'font',       // Typeface choice
-    'anim',       // Slide-in / track-change animation
-    // ── 3. Card frame (the visual chrome) ─────────────────────────────────
-    'card',       // Card Shape — radius, gradient, blur, opacity
-    'border',     // Spinning Border
-    'glow',       // Outer Glow
-    'textglow',   // v8.1.5: Text Glow (NP / Platform / Title / Artist / Timestamps glow controls collected)
-    // ── 4. Per-element manual (fine-tuning each piece of content) ────────
-    'art',        // Album Art
-    'np',         // Now Playing Label + animated EQ bars
-    'platform',   // Platform Badge
-    'text',       // Track Title + Artist
-    'spectrum',   // Spectrum Visualiser
-    'progress',   // Progress + Timestamps
+  // Locked supercat mapping (operator-approved at Stage 7.21 S0.5).
+  // Sections within a supercat are listed in the order they appear inside it.
+  const SUPERCATS = [
+    { id: 'start',   label: 'Start here',         sections: ['quick-settings', 'general'] },
+    { id: 'look',    label: 'Look',               sections: ['themes', 'card', 'font', 'art', 'np', 'platform'] },
+    { id: 'text',    label: 'Text',               sections: ['text', 'progress'] },
+    { id: 'effects', label: 'Effects',            sections: ['glow', 'textglow', 'border', 'dyncolors'] },
+    { id: 'audio',   label: 'Audio',              sections: ['spectrum'] },
+    { id: 'layout',  label: 'Layout (advanced)',  sections: ['layout', 'anim'] },
   ];
-  for (const sec of order) {
-    const header = sidebar.querySelector(`.sec-header[data-sec="${sec}"]`);
-    if (header) {
-      const section = header.closest('.section');
-      if (section) sidebar.appendChild(section);
-    }
+
+  function readCollapsed(id) {
+    try { return localStorage.getItem('supercat_' + id + '_collapsed') === '1'; }
+    catch (e) { return false; }
   }
+
+  // Build supercat wrappers, move sections into them.
+  const newWrappers = [];
+  for (const sc of SUPERCATS) {
+    const wrap = document.createElement('div');
+    wrap.className = 'supercat';
+    wrap.id = 'supercat-' + sc.id;
+    if (readCollapsed(sc.id)) wrap.classList.add('collapsed');
+    const header = document.createElement('button');
+    header.className = 'supercat-header';
+    header.type = 'button';
+    header.dataset.toggleSupercat = sc.id;
+    header.innerHTML = '<span class="supercat-chevron">▾</span><span>' + sc.label + '</span>';
+    const body = document.createElement('div');
+    body.className = 'supercat-body';
+    // Move each section into the supercat body (in the locked order)
+    for (const secId of sc.sections) {
+      const headerEl = sidebar.querySelector('.sec-header[data-sec="' + secId + '"]');
+      if (headerEl) {
+        const sect = headerEl.closest('.section');
+        if (sect) body.appendChild(sect);
+      }
+    }
+    wrap.appendChild(header);
+    wrap.appendChild(body);
+    newWrappers.push(wrap);
+  }
+
+  // Preserve the sidebar-header (search + advanced toggle) at the top.
+  const sidebarHeader = sidebar.querySelector('.sidebar-header');
+  // Remove all existing children except sidebar-header.
+  Array.from(sidebar.children).forEach(child => {
+    if (child !== sidebarHeader) child.remove();
+  });
+  // Append supercats after sidebar-header.
+  for (const w of newWrappers) sidebar.appendChild(w);
+
+  // Wire click handlers for supercat headers.
+  document.querySelectorAll('.supercat-header').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cat = btn.parentElement;
+      cat.classList.toggle('collapsed');
+      const id = btn.dataset.toggleSupercat;
+      try {
+        localStorage.setItem('supercat_' + id + '_collapsed',
+          cat.classList.contains('collapsed') ? '1' : '0');
+      } catch (e) { /* localStorage unavailable */ }
+    });
+  });
 }
 
 function wirePresetManager() {
@@ -4870,7 +4927,7 @@ async function pmImport(file) {
   wirePresetManager();
   // v8.0.1: re-arrange sidebar sections into a logical top-down order:
   // auto/themes → global structure → card chrome → per-element manual.
-  reorderSidebar();
+  restructureSidebar();   // Stage 7.21 STEP 2: wraps sections in supercat groups
   syncAll();         // push S values into every control
   scaleIframe();
   loadPresetList();  // populate preset dropdown
