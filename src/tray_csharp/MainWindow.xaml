@@ -49,7 +49,7 @@
                      top of the menu instead of looking like an icon-less item. -->
                 <MenuItem IsEnabled="False"
                           Style="{StaticResource AppMenuHeaderStyle}"
-                          Padding="16,12"
+                          Padding="{DynamicResource TrayMenuHeaderPadding}"
                           Opacity="1">
                     <MenuItem.Header>
                         <Grid>
@@ -57,17 +57,19 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <!-- Stage 7.22 header polish:
-                                 - 44x44 thumbnail (unchanged size)
-                                 * CornerRadius 6 (was 4): softer Win11 feel
-                                 - TrayMenuArtShadow drop shadow for elevation
-                                 - 12px margin-right (was 10) for slight extra breathing room
-                                 Same DataTrigger collapses the thumbnail when there is no
-                                 current track art (binding === NowPlaying.ArtImageSource null). -->
+                            <!-- Stage 7.23 header polish (Round 2) :
+                                 * 52x52 thumbnail (was 44 in Stage 7.22)
+                                 * CornerRadius 8 (was 6) : matches new ContainerRadius
+                                 * TrayMenuArtShadow drop shadow (unchanged)
+                                 * 14px margin-right (was 12) for the larger art block
+                                 Same DataTrigger collapses the thumbnail when there is
+                                 no current track art (binding NowPlaying.ArtImageSource
+                                 equals null). -->
                             <Border Grid.Column="0"
-                                    Width="44" Height="44"
-                                    Margin="0,0,12,0"
-                                    CornerRadius="6"
+                                    Width="{DynamicResource TrayMenuAlbumArtSize}"
+                                    Height="{DynamicResource TrayMenuAlbumArtSize}"
+                                    Margin="0,0,14,0"
+                                    CornerRadius="8"
                                     ClipToBounds="True"
                                     VerticalAlignment="Center"
                                     Background="{StaticResource Surface2}"
@@ -86,37 +88,40 @@
                                        Stretch="UniformToFill"/>
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <!-- Stage 7.22: 15px SemiBold (was 14px Bold) using
-                                     BrandPurpleDeep (operator's accent hex #7C3AED) for a
-                                     stronger but cleaner Win11 wordmark presence. -->
+                                <!-- Stage 7.23 : 17px SemiBold (was 15) using
+                                     TrayMenuAccentBrush (local alias for #7C3AED).
+                                     Bigger wordmark for the bigger header block. -->
                                 <TextBlock Text="Master's FM"
                                            FontFamily="Segoe UI"
-                                           FontSize="15"
+                                           FontSize="{DynamicResource TrayMenuHeaderAppNameFontSize}"
                                            FontWeight="SemiBold"
-                                           Foreground="{StaticResource BrandPurpleDeep}"/>
-                                <!-- Marquee viewport: FIXED 220-px-wide clipped Grid so a
-                                     long track title can't stretch the whole context menu
-                                     (operator screenshot of "Good Morning Charlie ..." had
-                                     the menu blow out 600+ px wide).  The TextBlock is
-                                     wrapped in a Canvas so WPF passes Infinity as its
-                                     measure constraint, so TextBlock.ActualWidth therefore
-                                     equals the FULL text width (not the clipped 220 px),
-                                     which is what the marquee animation needs to know how
-                                     far to scroll leftward each loop.
-                                     Stage 7.22: 12px (was 11px) for slightly more legible
-                                     secondary text; viewport height bumped 16 -> 17 to fit. -->
+                                           Foreground="{DynamicResource TrayMenuAccentBrush}"/>
+                                <!-- Marquee viewport: FIXED 220-px-wide clipped Grid so
+                                     a long track title can't stretch the whole context
+                                     menu (operator screenshot of "Good Morning Charlie..."
+                                     had the menu blow out 600+ px wide).  The TextBlock
+                                     is wrapped in a Canvas so WPF passes Infinity as its
+                                     measure constraint, so TextBlock.ActualWidth equals
+                                     the FULL text width (not the clipped 220 px), which
+                                     is what the marquee animation needs to know how far
+                                     to scroll leftward each loop.
+                                     Stage 7.23 : 13px (was 12) for the new bigger header;
+                                     viewport height bumped 17 -> 19 to fit the larger font;
+                                     foreground switched to TrayMenuTextSecondaryBrush
+                                     (#B0B0B0, brighter than 7.7B's #9999A1) so the track
+                                     reads cleanly under the new 17px accent wordmark. -->
                                 <Grid x:Name="NowPlayingMarqueeViewport"
                                       Width="220"
-                                      Height="17"
+                                      Height="19"
                                       ClipToBounds="True"
                                       HorizontalAlignment="Left"
-                                      Margin="0,3,0,0">
+                                      Margin="0,4,0,0">
                                     <Canvas>
                                         <TextBlock x:Name="NowPlayingMarquee"
                                                    Text="{Binding NowPlayingHeaderText}"
                                                    FontFamily="Segoe UI"
-                                                   FontSize="12"
-                                                   Foreground="{StaticResource TextSecondary}"
+                                                   FontSize="{DynamicResource TrayMenuHeaderTrackFontSize}"
+                                                   Foreground="{DynamicResource TrayMenuTextSecondaryBrush}"
                                                    TextWrapping="NoWrap"
                                                    Loaded="OnNowPlayingMarqueeLoaded"
                                                    SizeChanged="OnNowPlayingMarqueeSizeChanged">
