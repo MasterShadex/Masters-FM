@@ -609,3 +609,189 @@ NOT in customize.html. These stages touched the tray menu only. **Skip in custom
 2. THEMES font property -- if all themes ended up using the same default font, the font key could be removed. (Not actually the case; ~8 distinct fonts; KEEP.)
 
 == END OF SECTION 5 ==
+
+---
+
+# Section 6: Code quality issues + big-picture observations
+
+This section catalogs the specific reasons "code is all over the place." Each callout has line numbers + suggested fix.
+
+## 6.1 Big picture
+
+**File metrics:**
+- Total lines: **5,473**
+- File size: ~265 KB
+- HTML body region: lines 1077-2231 (~1,154 lines, **21%**)
+- CSS block #1: lines 10-1075 (~1,065 lines)
+- CSS block #2: lines 5260-5470 (~210 lines, late-added Preset Manager styles)
+- CSS total: ~1,275 lines (**23%**)
+- JS block: lines 2232-5211 (~2,979 lines, **54%**)
+- Remaining whitespace/headers/closures: ~65 lines (**1%**)
+
+**Logical "chapter" sense:** The file reads as **CSS top -> HTML middle -> JS bottom** (classic single-file pattern). Within each block, sub-organization is by HTML element class rather than functional concern:
+- CSS is organized "what does it style" (top bar, sidebar, sections, rows, inputs, sliders, color pairs, etc.) -- 24 chapter dividers.
+- JS is organized "init order" (defaults -> themes -> layout helpers -> bindings -> search -> supercat -> preset) -- 30+ functions, mostly in declaration order.
+
+**The "scattered" feeling:** ~145 stage-tagged comments (`/* v9 */`, `/* v14 */`, `/* Stage 7.X */`, `// Stage 7.X`) act as breadcrumbs of the organic-growth history. They're useful as archeology but make first-read confusing.
+
+## 6.2 Inline styles still in HTML (12 locations)
+
+Stage 7.21 STEP 5 already cleaned the most-egregious cases (mid-section `style="..."` attributes replaced with `.sec-help-emphasized`, `.sec-help-tip`, `.inline-hint` classes). Remaining inline styles:
+
+| Line | Issue | Suggested fix in rebuild |
+|---:|---|---|
+| 1248 | `<p class="sec-help" style="margin-top:-6px;font-size:11px;opacity:0.7;">` -- in Layout section help text | Add `.sec-help-tight` class with those exact values |
+| 1259 | `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">` -- layout template grid wrap | Move to `.layout-template-grid` class |
+| 1482, 1483 | `<div class="row" style="align-items:flex-start">` + `<div class="row-label" style="padding-top:5px">` -- spinning border row alignment quirk | Add `.row.row-stretch` modifier class |
+| 1572 | `<p class="sec-help" style="margin-top:-4px;font-size:11px;opacity:0.7;">` -- Text glow tip | Same `.sec-help-tight` as L1248 |
+| 1897 | `<p class="sec-help" style="margin-top:-4px;font-size:11px;opacity:0.7;">` -- Artist marquee tip | Same `.sec-help-tight` |
+| 2184 | `<div class="row" style="margin-top:6px;">` -- Slide-in animation test button row | Add `.row-spaced` modifier |
+| 2185 | `<div class="row-label" style="color:var(--text-muted);font-size:11px;">Test it</div>` -- subtle row label | Add `.row-label-subtle` modifier |
+| 2608 | JS: ``style="background:${c}"`` in `${swatchColors.map(...)}` template literal | Acceptable (dynamic style); move to dedicated `.theme-swatch` data attribute + CSS rule using `attr()` if feasible |
+| 3395 | JS: `style="width:100%;height:100%;display:block;"` on SVG | Move to `.layout-thumb-svg` class |
+| 5247 | `<input ... style="display:none;" />` -- Preset Manager hidden file input | Standard pattern (file input); fine, OR change to `.hidden` utility class |
+
+**Net cleanup target:** ~7 unique HTML inline-style patterns -> 4-5 utility classes (`.sec-help-tight`, `.row-stretch`, `.row-spaced`, `.row-label-subtle`, `.theme-swatch-bg`).
+
+## 6.3 `!important` usage (9 instances)
+
+| Line | Use | Verdict |
+|---:|---|---|
+| 140-143 | `@media (prefers-reduced-motion)` overrides | LEGITIMATE -- reduced-motion must overpower transition/animation properties |
+| 405 | `.welcome-banner[hidden] { display: none !important; }` | LEGITIMATE -- belt-and-suspenders to hidden attribute |
+| 786 | `transition: none !important` in toggle switch | LEGITIMATE -- override default transition during one-shot init |
+| 3615-3627 | Comments referencing `.no-glow` / `.no-animations` !important rules (those rules are in overlay.html scope) | NOT ACTUAL USAGES (comments only) -- but flags that the master-glow/animations classes use !important in overlay.html to override per-element settings. By design. |
+
+**Verdict:** All current `!important` uses are justified. No cleanup needed.
+
+## 6.4 Two `<style>` blocks (lines 10-1075 + 5260-5470)
+
+**The Preset Manager modal styles (CSS block #2, ~210 lines) were appended at the bottom of `<body>` after the script block.** This is the most visible "organic growth" artifact -- it implies the Preset Manager feature was added later and the developer/operator chose to keep its styles co-located with its HTML (which is in a `<template>`-like late block) rather than merge into the main `<style>`.
+
+**Fix in rebuild:** Single `<style>` block at top of `<head>` containing all CSS, organized by functional concern. Preset Manager CSS lives under its own chapter divider (e.g. `/* === MODALS / PRESET MANAGER === */`).
+
+## 6.5 Stage-tagged comments (~145 total)
+
+**~75 CSS comments + ~70 JS comments are tagged with v9/v10/v12/v14 or Stage 7.X attributions.** Useful for archeology -- but in a rebuild they become noise.
+
+**Fix in rebuild:** Drop most stage-tagged comments. Keep ONLY:
+1. Architectural decisions (e.g. "Stage 7.20.5 sentinel substitution lives in overlay.html, not here")
+2. Non-obvious behavior anchors (e.g. "Stage 7.15 clock fix requires tabular-nums on time elements")
+3. "Don't change this without checking X" warnings
+
+Replace ad-hoc "v9 fix"/"v14 redesign" tags with structured comments where helpful.
+
+## 6.6 Duplicated CSS rules / overlap
+
+Less of an issue than expected. The most notable:
+
+| Pattern | Example | Suggested rebuild |
+|---|---|---|
+| 5 button variants (`.btn-ghost`, `.btn-primary`, `.btn-danger`, `.btn-preset-del`, `.btn-anim-preview`) | All have similar `padding`, `border-radius`, `cursor: pointer` setups | Unified `.btn-base` + 5 variant modifiers |
+| 2 separator-like patterns (`.sec-header` border-bottom vs `.supercat-header` no-border) | Visual separators implemented differently | Consistent separator approach |
+| 2 animation token sets (v1 + v2) | `--dur-fast` 150ms + `--dur-fast-v2` 200ms | Consolidate to single canonical set |
+
+## 6.7 Naming inconsistencies
+
+Mixed conventions observed:
+
+- **kebab-case class names** dominate (`.sec-help`, `.btn-ghost`, `.row-label`) -- good consistency
+- **camelCase JS function names** (`buildSearchIndex`, `restructureSidebar`) -- good consistency
+- **Some helper functions use leading underscore** (`_nodeRectCanvas`, `_layoutEditMouseDown`, `_origScaleIframe`) for "private" intent -- mixed, no enforced rule
+- **CSS variable names**: mostly kebab-case (`--text-primary`, `--accent-master`) -- good. Legacy aliases (e.g. `--text` aliasing `--text-primary`) muddle the namespace.
+- **localStorage keys**: snake_case (`customize_show_advanced`, `customize_welcome_seen`, `supercat_<id>_collapsed`) -- internally consistent but differs from the kebab-case CSS convention
+
+**Fix in rebuild:** Pick one convention per layer (CSS = kebab, JS = camel, localStorage = snake or kebab, settled). Document in a comment at top of each block.
+
+## 6.8 Magic numbers / non-tokenized values
+
+Scattered throughout. Quick sample (not exhaustive):
+
+| Location (sample) | Magic value | Suggested token |
+|---|---|---|
+| L1248, L1572, L1897 (inline `font-size:11px`) | 11px | `var(--fs-tiny)` already defined! |
+| L1248, L1572, L1897 (inline `opacity:0.7`) | 0.7 | New `--opacity-tip` token (or just use a `.sec-help-tight` rule that fixes opacity) |
+| Layout editor pixel offsets | various | Layout-specific tokens or kept as magic but commented |
+| Spectrum bar count defaults | `c-spec-bars` min/max 10/480 | Magic numbers in HTML attributes; reasonable but should match overlay rendering capabilities (note in code) |
+
+**Verdict:** Tokenizable values exist but are not blockers. Rebuild can adopt as it goes.
+
+## 6.9 DOM queries inside event loops
+
+Sampling of `initBindings` and other init functions shows `document.getElementById(...)` calls inside event handler closures and inside loops. Each fires once per event, so the cost is small for typical usage (a few queries per user interaction). But the pattern is ~50-100 redundant lookups.
+
+**Fix in rebuild:** Cache DOM refs at init in a `const els = { ... }` table mapped from c-* IDs to DOM nodes. Reference `els['c-master-accent-color']` etc. instead of repeated `getElementById`.
+
+## 6.10 Long functions
+
+| Function | Lines | Issue | Suggested fix |
+|---|---:|---|---|
+| `initBindings` (L3494-3859) | ~370 | Sequential hand-wiring of 141 controls -- monotonous + error-prone | Replace with config-driven loop + data table |
+| `restructureSidebar` (L4907-4990) | ~85 | Builds + wires supercats; reasonable length | Keep, but extract helper `createSupercat(sc)` |
+| `applyTheme` (L2615-2645) | ~30 | Reasonable | Keep |
+| Layout editor mouse handlers (L2833-2957) | ~125 | Drag logic with case branches for each handle | Extract drag-engine module |
+
+`initBindings` is the standout. **Replacing it with a config-driven loop is the single biggest JS simplification opportunity in the rebuild.**
+
+## 6.11 Hardcoded English strings
+
+Friendly labels, help text, search synonyms, theme names, layout node labels -- all hardcoded in English. Not a problem for the current user base (operator + friends, English-speaking) but worth flagging for any future localization.
+
+**Fix:** Out of scope. Note for v15+ if localization ever becomes a concern.
+
+## 6.12 Unused / stale comments
+
+A handful of comments reference old version numbers ("v5.1.6", "v7.0.0", "v8.0.1") that pre-date Stage 7.13 baseline. Many of these reference historical decisions that are still in effect. A few may be stale.
+
+**Examples:**
+- L292 onward: "v8.0.1: topbar dropdown is gone" -- accurate, fine
+- L100 onward (sample): old-version comments that may reference removed code
+
+**Fix in rebuild:** Pass once to remove comments referencing pre-v14 versions unless the comment encodes a "don't undo this" warning.
+
+## 6.13 CSS specificity wars
+
+Reviewed by sampling `.collapsed` interactions, `body.show-advanced .advanced-only`, `.supercat:has(.sec-header.open) > .supercat-header`. The :has() addition (Stage 7.24) is a thoughtful selector, not a specificity hack.
+
+**Verdict:** No major specificity wars. Cleanliness is OK here.
+
+## 6.14 HTML structure inconsistencies
+
+A few:
+
+- Some control rows use `<div class="row">` with a single block; others use nested `<div class="row le-row">` for layout-editor rows
+- The Spinning Border section uses `align-items: flex-start` and `padding-top:5px` inline overrides for vertical alignment quirk (L1482-1483) -- one-off vs reusing a row variant class
+- Glow color picker rows in the Outer Glow section (L1507, L1514) use the canonical `<input type="color"> + <input type="text" class="hex-in">` pair, while a few platform-specific glow rows (L1549, L1556, L1563, L1570, L1578) use a compact `<div class="row"><div class="row-label">Glow color</div>...` shape
+
+**Fix in rebuild:** Standardize one row template per control type. Variant classes (`.row-stretch`, `.row-spaced`) handle the small layout deviations.
+
+## 6.15 Big-picture observations
+
+**The good:**
+- Clean separation of CSS/HTML/JS within the single file
+- Consistent kebab-case class naming and camelCase JS function naming
+- Comprehensive Stage 7.19 friendly-label voice across 110+ controls
+- Comprehensive Stage 7.19 inline help across 50+ sections
+- Comprehensive Stage 7.20 advanced toggle + search system
+- Stage 7.21 supercats provide clean sidebar organization
+
+**The "all over the place" symptoms:**
+- Two `<style>` blocks (1 obvious code smell)
+- 12 inline style attributes (mostly fine but inconsistent)
+- ~370-line `initBindings()` function (the biggest single rework opportunity)
+- 5 button variants without a unified base
+- Duplicated animation token sets (v1 + v2)
+- ~145 stage-tagged comments cluttering the read
+- A separately-maintained `THEME_SWATCH_COLORS` const derivable from `THEMES`
+- Helper functions with leading-underscore "private" intent that's not enforced
+
+**Rebuild opportunity space (in approximate impact order):**
+1. Config-driven `initBindings` (saves ~250 lines, eliminates a class of bugs)
+2. Unified `<style>` block (1 location, easier mental model)
+3. `bindControl()` dispatcher unifying bind*/sync* helpers (saves ~40 lines)
+4. Single button-base + variant modifiers (saves ~30 lines)
+5. Consolidate animation token sets (10 lines)
+6. Drop stage-tagged comments (~145 line-noise reductions)
+7. Cache DOM refs in `els` table (saves dozens of repeated lookups; minor perf + readability)
+
+== END OF SECTION 6 ==
