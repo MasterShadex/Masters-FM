@@ -141,3 +141,108 @@ For verification (this is the inventory deliverable). Order matches HTML reading
 **Slide-in animation (5):** `c-anim-dur`, `c-anim-slide`, `c-anim-dir`, `c-anim-easing`, `c-anim-crossfade`
 
 == END OF SECTION 1 ==
+
+---
+
+# Section 2: CSS Variables + Apply-to-OBS contract
+
+## 2.1 Total counts
+
+| Metric | Count | Source |
+|---|---:|---|
+| Unique `--*` variable definitions in customize.html `:root` | **84** | grep `^\s*--[a-z]` (lines 14-135 + 5 masters at L44-48) |
+| Unique `var(--*)` usages in customize.html | 70 | grep `var\(--`; ~14 vars defined but unused, ~28 vars used multiple times |
+| Unique `var(--*)` usages in overlay.html | **14** | overlay-side consumers (the actual Apply-to-OBS surface) |
+| Unique `--*` variable definitions in overlay.html `:root` | 30+ | overlay defines its OWN :root with locally-scoped copies of the vars it uses; the names happen to match customize's by convention |
+
+## 2.2 The TRUE Apply-to-OBS contract
+
+After tracing the data flow, the Apply-to-OBS contract is NOT the CSS variable names themselves -- both files define their own `:root` and use `var(--name)` resolved against their own scope. The contract is actually:
+
+**(A) The 5 master config keys** (`config.masters.*`), which customize.html writes and overlay.html reads:
+
+| Config key | Customize sets CSS var on its :root | Overlay reads from config and applies | Default |
+|---|---|---|---|
+| `masters.accentColor` (hex string) | `--accent-master` (via setProperty at L3590, L4266) | `--accent-master` (overlay's own :root + per-element `var(--accent-master)`) | `#c060ff` |
+| `masters.overallSize` (number 50-150) | `--overall-scale` (value/100; L3599, L4267) | `--overall-scale` on overlay's :root, used in `transform: scale()` on `.card` | `100` |
+| `masters.textSize` (number 50-150) | `--text-scale` (value/100; L3610, L4268) | `--text-scale` on overlay's :root, used in `calc(* var(--text-scale))` on text font-sizes | `100` |
+| `masters.glowEnabled` (bool) | `--glow-master-enabled` (1/0; L3621, L4269) | `--glow-master-enabled` + `.no-glow` body class (Stage 7.20.5 STEP 5) | `true` |
+| `masters.animationsEnabled` (bool) | `--animations-master-enabled` (1/0; L3633, L4270) | `--animations-master-enabled` + `.no-animations` body class (Stage 7.20.5 STEP 6) | `true` |
+
+**(B) The 141 setting IDs as config keys** (per Section 1). Each `c-X` maps to a `config.<section>.<setting>` path via the bindings established in `initBindings()` at L3494. Overlay.html reads the saved config and applies these to specific element styles.
+
+## 2.3 What this means for the rebuild
+
+The literal CSS variable NAMES in customize.html can be renamed/refactored freely as long as:
+1. The 5 setProperty calls (L3590-3633, L4266-4270) still produce the right CSS variable names that overlay's :root and selectors reference (`--accent-master`, `--overall-scale`, `--text-scale`, `--glow-master-enabled`, `--animations-master-enabled`)
+2. The saved config object preserves its `masters.{accentColor,overallSize,textSize,glowEnabled,animationsEnabled}` keys plus the 141 c-* mapped paths
+
+**Conclusion:** Treat the **5 master CSS variable names** as the IMMUTABLE contract (renaming them requires synchronized changes in BOTH customize.html and overlay.html — out of scope for a customize-only rebuild). The **other 79 CSS variables** in customize.html `:root` are 100% customize-only (UI styling, fonts, spacing, shadows, durations) and can be renamed/consolidated freely.
+
+## 2.4 IMMUTABLE -- the 5 master CSS variables
+
+These names MUST appear unchanged in the rebuild:
+- `--accent-master`
+- `--overall-scale`
+- `--text-scale`
+- `--glow-master-enabled`
+- `--animations-master-enabled`
+
+## 2.5 customize-only CSS variables (free to refactor)
+
+Grouped by purpose for the rebuild reorganization:
+
+### Surfaces / backgrounds
+- `--bg`, `--surface-1`, `--surface-2`, `--surface-3`
+- legacy aliases: `--sidebar-bg`, `--panel`, `--panel-hover`, `--hover`, `--input-bg`
+
+### Text colors
+- `--text-primary`, `--text-secondary`, `--text-tertiary`
+- legacy aliases: `--text`, `--text-muted`
+
+### Brand / accent
+- `--brand-base`, `--brand-deep`, `--brand-glow`
+- `--accent-bar` (linear gradient)
+- legacy aliases: `--accent`, `--accent-hover`, `--accent-bright`, `--accent-glow`
+
+### Borders
+- `--border-subtle`, `--border-focus`
+- legacy aliases: `--border`, `--border-light`, `--input-border`
+
+### Semantic tags
+- `--success`, `--error`, `--warning`, `--info`
+
+### Typography
+- `--font-ui`, `--font-mono`
+- `--fs-display`, `--fs-heading`, `--fs-subheading`, `--fs-body-strong`, `--fs-body`, `--fs-caption`, `--fs-tiny`, `--fs-mono`
+- `--fw-regular`, `--fw-medium`, `--fw-semibold`
+- `--lh-body`, `--lh-caption`
+
+### Radius scale
+- `--r-card`, `--r-button`, `--r-input`, `--r-pill`, `--r-tiny`
+
+### Spacing rhythm (4px grid)
+- `--sp-1` (4px), `--sp-2` (8px), `--sp-3` (12px), `--sp-4` (16px), `--sp-5` (24px), `--sp-6` (32px)
+
+### Shadows
+- `--shadow-dialog`, `--shadow-card-rest`, `--shadow-card-hover`, `--shadow-button-hover`, `--shadow-input-focus`
+
+### Animation durations + easings (DUPLICATED -- code smell)
+**Original Stage 7.13/7.17 tokens:**
+- `--dur-press` (80ms), `--dur-fast` (150ms), `--dur-standard` (220ms), `--dur-slow` (280ms), `--dur-accent-bar` (8000ms)
+- `--ease-standard`, `--ease-out`, `--ease-spring`, `--ease-in`
+
+**Stage 7.19 "v2" tokens (added without retiring the originals):**
+- `--dur-fast-v2` (200ms), `--dur-standard-v2` (300ms), `--dur-slow-v2` (450ms)
+- `--ease-windows`, `--ease-macos`, `--ease-emphasized`
+
+**Code smell:** Stage 7.19 added the v2 tokens for the Windows 11 / macOS feel but kept the v1 set. The rebuild should consolidate -- e.g. retire v1 in favor of v2 with a single rename pass, OR pick a single canonical token set per "what the project actually uses".
+
+### Layout constants
+- `--sidebar-w` (370px), `--topbar-h` (52px)
+
+## 2.6 Stage 7.20 master CSS variables (IMMUTABLE, listed for clarity)
+
+Already covered in 2.4 + the live data flow in 2.2. These are the only contract variables.
+
+== END OF SECTION 2 ==
