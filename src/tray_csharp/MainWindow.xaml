@@ -135,6 +135,7 @@
 
                 <!-- 2. Platform detection -->
                 <MenuItem Header="Platform detection"
+                          Tag="Pick where to read now playing from"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding OpenPlatformDetectionCommand}">
                     <MenuItem.Icon>
@@ -147,6 +148,7 @@
 
                 <!-- 3. Audio source -->
                 <MenuItem Header="Audio source"
+                          Tag="Pick which audio device to visualize"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding OpenAudioSourceCommand}">
                     <MenuItem.Icon>
@@ -159,6 +161,7 @@
 
                 <!-- 4. Customize overlay -->
                 <MenuItem Header="Customize overlay"
+                          Tag="Change colors, fonts, layout"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding OpenCustomizerCommand}">
                     <MenuItem.Icon>
@@ -216,6 +219,7 @@
 
                 <!-- 8. Patch notes -->
                 <MenuItem Header="Patch notes"
+                          Tag="See what's new in this version"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding OpenPatchNotesCommand}">
                     <MenuItem.Icon>
@@ -228,6 +232,7 @@
 
                 <!-- 9. View log -->
                 <MenuItem Header="View log"
+                          Tag="Open the diagnostic log"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding OpenLogCommand}">
                     <MenuItem.Icon>
@@ -240,6 +245,7 @@
 
                 <!-- 10. Check for updates; label is state-driven via UpdateLabel -->
                 <MenuItem Header="{Binding UpdateLabel}"
+                          Tag="Look for a newer version"
                           Style="{StaticResource AppMenuItemStyle}"
                           Command="{Binding CheckUpdatesCommand}">
                     <MenuItem.Icon>
