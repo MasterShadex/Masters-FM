@@ -349,3 +349,136 @@ Deep-merges `THEMES[name]` over `DEFAULTS`, then re-applies bindings + setProper
 - **`applyTheme` + `buildThemeGrid` + `deepMerge` are the minimum required theme JS.** Other current theme-related code (e.g. `THEME_SWATCH_COLORS` derivation) is display optimization.
 
 == END OF SECTION 3 ==
+
+---
+
+# Section 4: JavaScript inventory
+
+## 4.1 Source location
+
+Single `<script>` block at **lines 2232-5211** (~2,979 lines, the largest single block in the file).
+
+No external JS files; everything inline. No imports, no modules; classic script-tag global-scope code.
+
+## 4.2 Top-level structure (constants + main objects)
+
+| Line | Symbol | Purpose |
+|---:|---|---|
+| 2236 | `const DEFAULTS = { ... }` | The default config object (~63 lines). All 141 settings get their default values here. |
+| 2299 | `const DEFAULT_LAYOUT` | Deep-clone of DEFAULTS.layout for reset operations |
+| 2302 | `const THEMES = { ... }` | 22-theme object (Section 3) |
+| 2570 | `const THEME_SWATCH_COLORS = { ... }` | Swatch-preview color derivation |
+| 2674 | `let S = clampLayoutCanvas(deepMerge(DEFAULTS, {}))` | **The global state variable** -- all live settings live here |
+| 2721 | `const LAYOUT_NODE_LABELS = { ... }` | Friendly labels for the 9 layout nodes |
+| 3138 | `const LAYOUT_TEMPLATES = [ ... ]` | 11 layout templates (separate from THEMES) |
+| 3860 | `const JARGON_MAP = { ... }` | Stage 7.20 search synonyms (e.g. "color" -> ["colour", "hue", "tint"]) |
+
+## 4.3 Function inventory (line + brief purpose)
+
+Sorted by line; representative not exhaustive.
+
+| Line | Function | Purpose | Origin stage |
+|---:|---|---|---|
+| 2598 | `buildThemeGrid()` | Renders theme buttons from THEMES const | original |
+| 2615 | `applyTheme(name)` | Deep-merges theme over DEFAULTS, refreshes UI | original + Stage 7.20.6 sentinel handling |
+| 2646 | `deepMerge(tgt, src)` | Recursive object merge for theme/config layering | original |
+| 2663 | `clampLayoutCanvas(s)` | Sanitizes layout coords to canvas bounds | Stage 7.13 |
+| 2682 | `scaleIframe()` | Computes preview-iframe transform:scale() to fit container | original |
+| 2734 | `_nodeRectCanvas(n, cw, ch)` | Layout-node rect in canvas pixels | Stage 7.13 |
+| 2751 | `_rectToCanvasXY(rect, anchor, cw, ch)` | Canvas-relative coord helper | Stage 7.13 |
+| 2762 | `rebuildLayoutEditor()` | Re-renders the visual layout-editor overlay | Stage 7.13 |
+| 2833 | `_layoutEditMouseDown(e)` | Layout-editor drag-handle mousedown | Stage 7.13 |
+| 2989 | `toHex(c)` | Color string normalization (rgba -> #hex) | original |
+| 3007 | `markDirty()` | Marks config dirty (clears preset selection, triggers save) | original |
+| 3017-3088 | `bindRange/Toggle/Select/Text/Color + sync*` | The 5 bind* helpers + 5 sync* helpers (10 functions) used by initBindings | original |
+| 3101 | `buildBorderColors()` | Renders the spinning-border color picker list | original |
+| 3328 | `applyLayoutTemplate(t)` | Applies a layout template to S.layout | Stage 7.13 |
+| 3355 | `renderMiniLayoutThumb(t)` | Tiny preview rendering for layout-template buttons | Stage 7.13 |
+| 3400 | `openLayoutTemplatesModal()` | Opens layout-templates modal | Stage 7.13 |
+| 3494 | `initBindings()` | **THE BIG ONE** -- wires all 141 c-* IDs to bind functions. ~370 lines (3494-3859). Includes the 5 masters' setProperty calls (L3590-3633). |
+| 3911 | `buildSearchIndex()` | Builds search index from data-search attributes + JARGON_MAP | Stage 7.20 |
+| 3950 | `runSearchFilter(query)` | Filters control visibility by query string | Stage 7.20 |
+| 4007 | `initSearchBar()` | Wires the search input, Ctrl+F keyboard binding, clear button | Stage 7.20 |
+| 4060 | `markAdvancedElements()` | Adds `.advanced-only` class to specific rows/sections | Stage 7.20 |
+| 4115 | `addDiscoveryLinks()` | Adds "Want more control?" links inside sections with advanced content | Stage 7.20 |
+| ~4250-4500 | misc apply/save/preset helpers | preset save/load, Apply to OBS button, status indicator | original + various stages |
+| ~4500 | `Reset to Defaults` handler | The destructive reset (Stage 7.24 palette-shifted) | original |
+| 4907 | `restructureSidebar()` | **THE SUPERCAT WRAPPER** -- runtime DOM rewrap of the 17 sections into 6 supercats | Stage 7.21 |
+| 4955 | `readStoredCollapseState(id)` | Per-supercat localStorage helper (Stage 7.24 refactor from readCollapsed) | Stage 7.24 |
+| 4976 | `wirePresetManager()` | Wires Preset Manager modal open/close/save/delete buttons | original Preset Manager era |
+| ~5050 | Welcome banner init/close handlers | Stage 7.21 welcome banner show/dismiss flow | Stage 7.21 |
+| ~5172 | DOM-ready bootstrap | Calls restructureSidebar, markAdvancedElements, initBindings, etc. | Stage 7.21 |
+
+## 4.4 Event handler inventory
+
+**Total `addEventListener` calls: 55** across the script block.
+
+Categories (by sampling):
+
+| Category | Examples | Approx count |
+|---|---|---:|
+| Per-control input bindings | wired inside the bind* helpers in initBindings | varies (140+ via initBindings) |
+| Modal open/close | btn-preset-manager / pm-close / layout-templates-modal | ~8 |
+| Search bar | search-input keyup/focus, Ctrl+F document keydown | 3 |
+| Advanced toggle | sidebar-advanced-toggle change | 1 |
+| Supercat headers | runtime per-header click in restructureSidebar | 6 (one per supercat) |
+| Welcome banner | dismiss button + footer reshow link | 2 |
+| Btn-reset, btn-apply | global top-bar action buttons | 2 |
+| Layout editor mouse events | mousedown/mousemove/mouseup on canvas overlay | 3+ |
+| Window resize / load | scaleIframe re-fit on resize, initial DOM-ready bootstrap | 2+ |
+
+Note: the bind* helpers internally call `addEventListener('input', ...)` on each wired control. So initBindings produces 130+ listeners at runtime; the 55 in-source count is the LITERAL `.addEventListener(` count, which is lower because most listener wires are inside helper-function bodies that get called from initBindings.
+
+## 4.5 localStorage keys inventory
+
+**3 unique key patterns** (read and written by customize.html):
+
+| Key pattern | Set by | Read by | Purpose | Added in |
+|---|---|---|---|---|
+| `customize_show_advanced` | Stage 7.20 advanced toggle change handler | initBindings + on body class init | persists Basic / Advanced mode preference | Stage 7.20 STEP 11 |
+| `customize_welcome_seen` | Welcome banner dismiss button | Bootstrap init (skip banner if seen) | hides banner after first dismiss | Stage 7.21 STEP 3 |
+| `supercat_<id>_collapsed` | Supercat header click handler | `readStoredCollapseState()` in restructureSidebar | per-supercat collapse persistence (6 supercats: start, look, text, effects, audio, layout) | Stage 7.21 STEP 2 |
+
+**Total localStorage operations: 7** (3 read + 3 write calls, plus 1 nuance with the supercat key pattern read in two places: the helper and the click handler).
+
+**No use of:** `sessionStorage`, `IndexedDB`, cookies, or any other persistence layer.
+
+**Notes:**
+- The `customize_welcome_seen` key is also explicitly removed (or set to non-true) by the "Show welcome message" footer link, which triggers the banner to reappear on the next reload. (Per Stage 7.21 STEP 3.)
+- No localStorage cleanup / migration logic exists; if the key schema ever needs to evolve, old keys persist silently.
+
+## 4.6 Global state surface
+
+The global state surface is the single `let S = ...` at L2674. Everything is mutated through S then re-applied through:
+- `markDirty()` (clears preset selection)
+- `applyTheme(name)` (deep-merges theme into S, calls bind syncs)
+- The big initBindings wire-up where each control's input event sets a path inside S and triggers an apply
+
+Other module-scope variables (not exhaustively listed):
+- `_origScaleIframe` at L2957 (cached function reference for resize observer)
+- `_layoutEdit*` series (layout-editor mouse state)
+- `DEFAULTS`, `DEFAULT_LAYOUT`, `THEMES`, `THEME_SWATCH_COLORS`, `LAYOUT_NODE_LABELS`, `LAYOUT_TEMPLATES`, `JARGON_MAP` consts
+
+## 4.7 Duplicated / redundant JS patterns
+
+**1. Repeated `document.getElementById(...)` lookups inside event handlers** -- many handlers do `document.getElementById('c-x')` instead of caching the element at module init. Sampling: ~50-100 redundant `getElementById` calls inside handler bodies that could be cached once.
+
+**2. The 10 bind/sync helper functions** -- bindRange/bindToggle/bindSelect/bindText/bindColor + syncRange/syncToggle/syncSelect/syncText/syncColor are essentially mirror pairs. Could be unified into a single `bindControl(id, type, getter, setter, format?)` helper that handles all 5 types via dispatch. Would shrink ~70 lines to ~30.
+
+**3. The big initBindings function** -- ~370 lines that mostly just call the bind helpers for each of 141 controls. Each control has roughly 1-2 lines of code. Pattern is uniform; could be driven from a config array instead of hand-written for each control. Would shrink to ~50 lines + a 141-entry data array.
+
+**4. Apply Master CSS variables in two places** -- L3590-3633 (per-master input handlers) AND L4266-4270 (on initial load / theme apply). Same 5 setProperty calls duplicated. Could be unified into a single `applyMastersToCss(S.masters)` function called from both sites.
+
+**5. Welcome banner + supercat collapse + advanced-toggle all read/write localStorage individually** -- no unified `Prefs` layer. Each surface has its own try/catch around the localStorage call. Could be unified into 5-10 lines of helper code.
+
+**6. `THEME_SWATCH_COLORS` derives from THEMES** -- but it's a SECOND constant maintained separately. The derivation could happen once at runtime instead of duplicating data.
+
+## 4.8 Implications for rebuild
+
+- **Replace 5 bind* + 5 sync* helpers with a unified `bindControl()`** dispatcher (potential ~40-line shrink).
+- **Refactor initBindings from 370 lines of hand-wiring to a ~50-line config-driven loop + a 141-entry data table.** The data table can live in the same file or be split into per-section files.
+- **Cache DOM lookups at init.** Replace `document.getElementById(...)` inside handlers with closures over pre-cached references.
+- **Unify the dual master-apply call sites** into a single `applyMastersToCss()`.
+- **Introduce a `Prefs` wrapper** around the 3 localStorage keys (and any future ones). 5-line API: `Prefs.get(key, default)`, `Prefs.set(key, value)`, `Prefs.remove(key)`.
+
+== END OF SECTION 4 ==
