@@ -246,3 +246,106 @@ Grouped by purpose for the rebuild reorganization:
 Already covered in 2.4 + the live data flow in 2.2. These are the only contract variables.
 
 == END OF SECTION 2 ==
+
+---
+
+# Section 3: Themes inventory
+
+## 3.1 Source location and structure
+
+`const THEMES = { ... }` at lines **2302-2567** (~265 lines, the largest constant in the JS).
+
+Followed by `const THEME_SWATCH_COLORS = { ... }` at line **2570** (~28 lines) which derives the first 4 border colours per theme for swatch previews.
+
+Theme grid HTML lives in the Themes section header at line 1186; the grid is built at runtime by `function buildThemeGrid()` (L2598). Theme application happens via `function applyTheme(name)` (L2615).
+
+## 3.2 Theme count
+
+| Source | Count | Notes |
+|---|---:|---|
+| Theme keys in THEMES object | 22 | "Rainbow (Default)" + 21 themed presets |
+| Default theme | 1 | "Rainbow (Default)" -- empty object `{}` falls through to DEFAULTS |
+| Themed presets (non-default) | 21 | each has explicit `masters.accentColor` and per-element overrides |
+
+## 3.3 Theme name list
+
+In file order (lines 2303-2554):
+
+| # | Name | Line | masters.accentColor | Primary character |
+|---:|---|---:|---|---|
+| 1 | Rainbow (Default) | 2303 | (none; falls to default) | colorful neutral fallback |
+| 2 | Neon Blue | 2304 | `#00c8ff` | electric blue |
+| 3 | Hot Pink | 2316 | `#ff4499` | pink |
+| 4 | Retro Orange | 2328 | `#ff9900` | orange |
+| 5 | Synthwave | 2340 | `#ff00cc` | magenta/purple |
+| 6 | Forest Green | 2353 | (per-theme hex) | green |
+| 7 | Crimson | 2365 | (per-theme hex) | crimson |
+| 8 | Midnight | 2377 | (per-theme hex) | dark blue |
+| 9 | Cherry Blossom | 2389 | (per-theme hex) | soft pink |
+| 10 | Minimal White | 2401 | (per-theme hex) | neutral white |
+| 11 | Vaporwave | 2414 | (per-theme hex) | cyan/magenta |
+| 12 | Aurora | 2427 | (per-theme hex) | green/teal |
+| 13 | Royal Purple | 2440 | (per-theme hex) | purple |
+| 14 | Coffee | 2453 | (per-theme hex) | brown |
+| 15 | Volcano | 2465 | (per-theme hex) | red/orange |
+| 16 | Ice Crystal | 2478 | (per-theme hex) | ice blue |
+| 17 | Galaxy | 2491 | (per-theme hex) | deep purple |
+| 18 | Sunset | 2504 | (per-theme hex) | sunset orange/red |
+| 19 | Lime | 2517 | (per-theme hex) | yellow-green |
+| 20 | Vintage Sepia | 2529 | (per-theme hex) | sepia brown |
+| 21 | Cyber Matrix | 2541 | `#00ff41` | matrix green |
+| 22 | Dreamcore | 2554 | `#d9b3ff` | pastel purple |
+
+## 3.4 Sentinel vs hex keys (Stage 7.20.6 pattern)
+
+Each non-default theme follows the pattern established in Stage 7.20.6:
+
+**Accent-following keys (hold the sentinel string `var(--accent-master)`):** values that the operator wants to "follow" the active master accent. When the user changes the Master Accent Color via Quick Settings, these elements update live. The following-master badge in the customize UI (Stage 7.21) makes this visible.
+
+Per-theme accent-following keys (consistent across all 21 themed presets):
+- `nowPlaying.color`
+- `bars.color`
+- `title.color`
+- `artist.color`
+- `spectrum.color` (nested inside spectrum object)
+- `timestamps.color`
+
+(8 per-element accent pickers per Stage 7.21 badge count; the same ~6 keys above sometimes paired with sentinel uses inside nested objects.)
+
+**Theme-specific hex keys (hardcoded; do NOT follow master accent):**
+- `card.backgroundTop`, `card.backgroundBottom`, `card.backgroundAngle`
+- `border.colors` (array of 5 hex colors)
+- `glow.color1`, `glow.color2`, optional `glow.intensity`, `glow.pulseDuration`
+- `progressBar.fillColors` (array of 3 hex colors)
+- Per-element decorative glow: `title.glowEnabled/glowColor/glowSize`, `artist.glowEnabled/glowColor/glowSize`
+
+## 3.5 Pattern analysis
+
+**Common shape per theme** (all 21 non-default themes share this shape; only the values differ):
+
+- `font` -- one of ~8 google-font families
+- `masters.accentColor` -- one of 21 unique hex values
+- `card` -- 3 keys (top, bottom, angle gradient)
+- `border.colors` -- 5-hex palette
+- `glow` -- 2-4 keys (color1, color2, optional intensity, optional pulseDuration)
+- `nowPlaying`, `bars`, `title`, `artist`, `spectrum`, `timestamps` -- all accent-following via sentinel
+- `progressBar.fillColors` -- 3-hex palette
+
+**Refactor candidate (v14.1.0 not Stage 7.26):** Since all 21 themes share the same shape with only value variations, the THEMES const could be refactored:
+- Theme-base + variants pattern (DRY)
+- Or external `themes.json` loaded at init
+- Either approach is out of scope for the rebuild scaffold
+
+## 3.6 The `applyTheme(name)` function (L2615)
+
+Deep-merges `THEMES[name]` over `DEFAULTS`, then re-applies bindings + setProperty + per-element style refresh. The sentinel string flows through as a literal CSS value that, at render time, resolves against the active `--accent-master`. This is Stage 7.20.6 sentinel substitution behavior.
+
+`buildThemeGrid()` at L2598 renders one button per theme. `THEME_SWATCH_COLORS` at L2570 derives the swatch preview (first 4 border colors per theme).
+
+## 3.7 Implications for rebuild
+
+- **The 22 theme names + per-theme accentColor + per-theme hex keys are config-level data, NOT structural.** Rebuild scaffold (Stage 7.26) can extract them to a data constant or external file without changing user-visible behavior.
+- **The sentinel `'var(--accent-master)'` string is essential and MUST be preserved.** Removing it would break the "accent follows master" UX from Stage 7.20.5/7.20.6.
+- **`applyTheme` + `buildThemeGrid` + `deepMerge` are the minimum required theme JS.** Other current theme-related code (e.g. `THEME_SWATCH_COLORS` derivation) is display optimization.
+
+== END OF SECTION 3 ==
