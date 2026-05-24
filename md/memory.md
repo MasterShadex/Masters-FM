@@ -4556,3 +4556,141 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S10.2 warm rebuild: `1
 ### Next operator action
 
 Ship the latest build to friends with both tweaks live. Gather feedback. Plan v14.1.0 from real signal (which now includes the Stage 7.22 backlog adds: rebuild-script hardening + tray menu reuse audit).
+
+---
+
+## 2026-05-24 02:43 UTC -- Stage 7.23: WPF tray menu polish ROUND 2 (contrast + readability)
+
+**Brief:** Stage 7.22 PASSed visually but operator feedback after using it: "The colors are too grey and white grey looking close to each other and hard to read. It generally needs a very well polish more user friendly". Edges flagged as "weird" (acrylic haze). Operator chose "use suggestion yes, that sounds more like it" for the aggressive Round 2 pass. 12 STEPs (0-11), 1 operator gate.
+
+**Commits (on `2605c75` Stage 7.22 closure):**
+
+- `5b78f2a` STEP 0 -- checkpoint + categorization + design tokens locked + acrylic removal plan
+- `3592551` STEP 1 -- design tokens (high-contrast colors + larger sizes + bigger shadow)
+- `47b3db7` STEP 2 -- remove acrylic, use solid dark background (crisp edges)
+- `978d65d` STEP 3 -- bigger MenuItem style + inline description support
+- `9bcdda2` STEP 4 -- inline descriptions on 6 non-obvious menu items
+- `075289d` STEP 5 -- section sub-headers (ACTIONS / TOGGLES / ABOUT)
+- `4e5420b` STEP 6 -- separators thinner + more breathing room
+- `2a888c9` STEP 7 -- bigger header (52px art + 17px app name + 13px track + 18,14 padding)
+- `b3420bb` STEP 8 -- container polish (crisper border + bigger shadow + larger radius)
+- (this entry) STEP 11 -- memory APPEND + tray polish round 2 closure
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles.
+
+### What this stage did
+
+Bigger swing than Stage 7.22 on the tray context menu. No menu item text changed, no item order changed, no items added/removed. Visual character only.
+
+- **High-contrast palette:** pure white #FFFFFF labels on solid near-black #1A1A1A. Secondary descriptions + track marquee #B0B0B0 (brighter than 7.7B's #9999A1). Sub-headers #808080 muted grey.
+- **Bigger items:** 16px font (was 13), 14,10 padding (was 12,0 with fixed 36px height). Auto-height row so two-line items grow naturally.
+- **Solid background, NO acrylic:** Stage 7.22's Wpf.Ui `WindowBackdrop.ApplyBackdrop(Acrylic)` gate in `MainWindow.xaml.cs` OnLoaded() deleted (21-line block). `using System.Windows.Interop` and `using Wpf.Ui.Controls` removed. `Wpf.Ui` NuGet package STAYS (Setup Wizard dependency). Operator's "weird edges" complaint was the acrylic haze.
+- **Crisper container:** 1px `TrayMenuBorderBrush` (#33FFFFFF, ~20% white) border defines the edge against busy desktop bg (was opaque `BorderSubtle` that disappeared). CornerRadius 8 -> 10. Drop shadow `CardHoverShadow` -> `TrayMenuDropShadow` (Blur 20, Depth 4, Opacity 0.5; more pronounced).
+- **Section sub-headers ACTIONS / TOGGLES / ABOUT** added between item groups. Non-interactive MenuItem wrapper with `IsHitTestVisible=False, Focusable=False` whose ControlTemplate is a single 11px SemiBold uppercase TextBlock in `TrayMenuTextTertiaryBrush` (#808080). Hover and keyboard navigation skip cleanly.
+- **Thinner separators with more margin:** `12,4` -> `14,6`; added `Opacity 0.6`. Brush unchanged. With sub-headers carrying the primary visual grouping signal, separators can be quieter.
+- **Bigger header:** album art 44 -> 52 (CornerRadius 6 -> 8), app name 15 -> 17 SemiBold via `TrayMenuAccentBrush` (semantic alias for #7C3AED `BrandPurpleDeep`), track marquee 12 -> 13, header padding `16,12` -> `18,14`, marquee viewport height 17 -> 19.
+- **Inline descriptions on 6 non-obvious items via MenuItem.Tag:**
+  - Platform detection -- "Pick where to read now playing from"
+  - Audio source -- "Pick which audio device to visualize"
+  - Customize overlay -- "Change colors, fonts, layout"
+  - Patch notes -- "See what's new in this version"
+  - View log -- "Open the diagnostic log"
+  - Check for updates -- "Look for a newer version"
+
+  Implemented via `StackPanel`-in-label-column with two `ContentPresenter`/`TextBlock` stacked. Description binding: `{TemplateBinding Tag}`. `ControlTemplate.Triggers` Tag={x:Null} collapses the description for items without Tag. No new C# converter needed; pure XAML. 5 items stay single-line (Discord, Start on login, OBS overlay, Restart, Quit). OBS keeps its existing `ObsLabel` parenthetical.
+
+- **Hover/pressed switched from accent purple to neutral white** (S0.7 lock). `TrayMenuHoverBrush` #1A7C3AED -> #22FFFFFF; `TrayMenuPressedBrush` #337C3AED -> #33FFFFFF. Accent reserved for app name + check-marks.
+
+- **18px icons (was 16):** all 11 menu item icon Paths Width/Height bumped 16 -> 18 in MainWindow.xaml. Matches new `TrayMenuIconSize` token.
+
+### Constraints honored
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`) SHA256 UNCHANGED end-to-end (S0.2 + S10.1 + S11.1)
+- `src/customize.html` UNTOUCHED (`git diff 2605c75..HEAD --` 0 lines)
+- `src/overlay.html` UNTOUCHED
+- `build_tools/build_msi.py` UNTOUCHED
+- `_full_rebuild.ps1` UNTOUCHED (silent WARN behavior STILL parked for v14.1.0; the brief from Stage 7.22 carries forward)
+- Setup Wizard XAML UNTOUCHED (absolute rule)
+- Stage 7.22 autostart force-ON UNCHANGED (App.xaml.cs lines 287-292 untouched; force-ON line confirmed at 02:42:57.885 post-final-rebuild)
+- Menu item TEXT preserved (no relabel, ObsLabel/UpdateLabel bindings still drive their text)
+- Menu item ORDER + STRUCTURE preserved (sub-headers add visual grouping ABOVE existing items, never reorder)
+- No new NuGet dependencies (StackPanel + TextBlock + ControlTemplate.Triggers Tag={x:Null} pattern is all stock WPF)
+- No em-dash characters in source edits; XAML XML comments use ` : ` or single hyphens (Stage 7.22 SE5 lesson held end-to-end; 0 MC3000 errors)
+- UTF-8 no-BOM throughout
+- No git push/tag/GitHub interaction
+- No `version.json` bump (14.0.0 stays; fix-forward via SHA suffix)
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification (`dotnet build` after every source-touching STEP): PASS each (0 errors, 0 warnings; ~2 sec)
+- **SE2** mandatory log inspection after STEP 9 rebuild + STEP 11 final warm rebuild: PASS (0 new ERROR/WARN; autostart force-ON line PRESENT in both runs; tray DLL ProductVersion MATCH HEAD)
+- **SE3** mandatory `git diff --stat HEAD~1 HEAD` after every commit: yes (10 commits)
+- **SE4** literal PASS/FAIL at gate, no "continue" shortcut: HONORED. Halt sustained across multiple Stop-hook firings while waiting for operator reply. Eventually got `PASS` via AskUserQuestion gate-result selection (operator chose PASS literal). No autonomous progression past the gate.
+- **SE5** mistake handling: 0 cycles
+- **SE6** three-strike escalation: NOT TRIGGERED
+- **SE7** no autonomous scope expansion: HONORED. Several v14.1.0 candidates parked (see backlog below); did NOT touch `_full_rebuild.ps1` even though its silent WARN behavior was the Stage 7.22 SE5 lesson and would have been an easy win; respected the "no infrastructure changes" absolute rule.
+- **SE8** protected files SHA256 verified at S0.2 + S10.1 + S11.1: all UNCHANGED end-to-end
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.23 lands as fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain:
+- Stage 7.17 `718e3e1` (v14.0.0 cut)
+- Stage 7.18 -> Stage 7.21 `9b27a82` (customize redesign cycle CLOSED)
+- Stage 7.22 `2605c75` (tray polish round 1 + autostart force-ON)
+- Stage 7.23 (closure SHA assigned by this commit)
+
+Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S11.2 warm rebuild: `14.0.0+b3420bb8eb41df5cd93fa7d9b8062b9b506bcfc3` (bit-identical to S9.2 cold-rebuild output because no source touched between them; the closure commit only touches log/report/memory files).
+
+### Files touched in this stage
+
+- `src/tray_csharp/Theme/Colors.xaml` (+84 / -11; new high-contrast palette + size + effect tokens; updated 7.22 hover/pressed brushes to neutral white)
+- `src/tray_csharp/Theme/ContextMenu.xaml` (+149 / -65 cumulative; AppMenuItemStyle refresh, new AppMenuSubHeaderStyle, Separator polish, container polish)
+- `src/tray_csharp/MainWindow.xaml` (+89 / -42 cumulative; 6 Tag descriptions, 3 sub-headers + 1 separator, header refresh, 11 icon size bumps)
+- `src/tray_csharp/MainWindow.xaml.cs` (+14 / -32 net; acrylic gate block deleted; 2 unused usings removed)
+- `V14_S7_23_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_23_REPORT.md` (NEW; tracked; 13-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-24_S7_23_PRE/` (disk-only snapshot of 5 tray_csharp files)
+
+### Files NOT touched
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`)
+- `src/customize.html`, `src/overlay.html`
+- `build_tools/build_msi.py`
+- `src/tray_csharp/App.xaml.cs` (Stage 7.22 autostart force-ON intact)
+- All Setup Wizard XAML + ViewModels + Services
+- `version.json`
+- `_full_rebuild.ps1`
+
+### Lessons learned (Stage 7.23)
+
+- **`Tag={x:Null}` ControlTemplate trigger is cleaner than a Null-to-Collapsed converter** for the "show extra UI only when a binding is set" pattern. Pure XAML, no `IValueConverter`, no resource registration, no code-behind. Default Visibility="Visible" on the conditional element + trigger that flips to Collapsed when Tag is null gives the expected behavior with zero ceremony.
+- **`x:Shared="False"` on `Effect` is non-negotiable** for any reused drop shadow. Stage 7.7B precedent (CardHoverShadow); Stage 7.22 art shadow; Stage 7.23 `TrayMenuDropShadow`. All marked `x:Shared="False"` because WPF effects are element-owned in the rendering pipeline.
+- **WPF MenuItem wrapper > bare TextBlock** for non-interactive sub-headers inside `ContextMenu`. WPF complains about non-MenuItem children of `ContextMenu.ItemsPanel`. `IsHitTestVisible=False + Focusable=False + Cursor=Arrow + zero-Padding wrapper with a TextBlock-only ControlTemplate` is the clean shape. Hover and keyboard nav skip cleanly.
+- **Acrylic backdrop on small popups reads as "weird edges"**, especially on busy desktop backgrounds. Mica makes more sense for the main window; Acrylic makes more sense for transient bottom-of-screen content. ContextMenus that anchor near the system tray fall into a visual zone where the haze competes with whatever the user has open. Solid background + crisp 1px border + pronounced drop shadow is the higher-readability choice.
+- **`sys:Double` resources need `xmlns:sys="clr-namespace:System;assembly=mscorlib"`**. Numeric tokens (FontSize, Width, Height) declared as `sys:Double` so XAML can resolve them via `{DynamicResource}` in `FontSize` setters and Width/Height bindings.
+- **The `_full_rebuild.ps1` silent-fail risk that bit Stage 7.22 SE5 didn't bite this stage** because Stage 7.23's XML comments deliberately avoided `--` from the start (em-dash exception in `<!-- -->` blocks was observed end-to-end). Zero MC3000 errors. The script's `WARN: ... continuing` branch never triggered.
+
+### v14.1.0 candidate backlog (cumulative from full v14 cycle + Stage 7.23 additions)
+
+- Server log rotation policy (parked since Stage 7.15)
+- Overlay.html Stage 7.20.5 SE5 substitution removal (no-op for post-7.20.6 configs)
+- WPF parked items (Stage 7.19.5 WizardDeviceItemStyle dedup; DeviceRowTemplate consolidation; SystemColors guard cleanup)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- `_full_rebuild.ps1` `WARN: WPF tray dotnet publish failed (exit 1) -- continuing` -> HARD ERROR + abort (Stage 7.22 SE5 lesson; STILL parked after Stage 7.23 carried the risk)
+- Version-string consolidation
+- Theme glow color follow-master
+- Real user feedback from shipping to friends
+- Stage 7.22 parks: tray menu reuse audit; em-dash audit
+- **Stage 7.23 NEW parks:**
+  - Audit other context menus / popups in the app for the same high-contrast solid-bg refresh (currently only the tray ContextMenu was touched; Setup Wizard menus / dialog popovers might benefit from consistency)
+  - Mica vs Acrylic infrastructure review: `Wpf.Ui`'s `WindowBackdrop` no longer used at any call site after Stage 7.23 (was the only consumer); whether to keep the package depends on whether Setup Wizard XAML still pulls Wpf.Ui controls (it does, so the package stays for now)
+  - `Colors.xaml` tray-specific token namespace consolidation: ~25 `TrayMenu*` tokens now span hover/pressed/separator/art (7.22) + bg/border/text/sizes/effects (7.23). Worth a future cleanup pass for naming consistency
+
+### Status: HALT. Stage 7.23 closed. v14 still at 14.0.0 (fix-forward via SHA). Tray menu polish round 2 deliverable shipped to install at 02:42:57.
+
+### Next operator action
+
+Ship the updated build (Stage 7.23 ROUND 2 high-contrast pass) to friends. MSI at `Master's FM Install\MastersFM_Setup.msi`; friends bundle at `C:\Users\Master\Desktop\MastersFM_Installer\`. Gather real-user feedback. Plan v14.1.0 from the cumulative backlog.
