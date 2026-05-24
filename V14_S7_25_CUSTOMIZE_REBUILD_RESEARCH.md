@@ -482,3 +482,130 @@ Other module-scope variables (not exhaustively listed):
 - **Introduce a `Prefs` wrapper** around the 3 localStorage keys (and any future ones). 5-line API: `Prefs.get(key, default)`, `Prefs.set(key, value)`, `Prefs.remove(key)`.
 
 == END OF SECTION 4 ==
+
+---
+
+# Section 5: Features per stage
+
+This section maps each stage's contribution to the current `customize.html` to understand "what does this stage have to deliver in the rebuild" -- and which features are essential vs nice-to-have.
+
+## 5.1 Stage 7.19 -- customize redesign foundation (2026-05-22)
+
+**Contributions to customize.html:**
+- ~110 friendly-voice label rewrites across sections (jargon-to-human renames)
+- ~50 inline help paragraphs added (`.sec-help` and `.control-help` classes)
+- 6 v2 animation tokens added (`--dur-fast-v2`, `--dur-standard-v2`, `--dur-slow-v2`, `--ease-windows`, `--ease-macos`, `--ease-emphasized`)
+- 13 sub-headers across 7 sections via `.sec-subheader` class (mid-section visual grouping)
+- Section expand/collapse animations refined with the new v2 duration tokens
+- Section help text styling (`.sec-help-emphasized`, `.sec-help-tip`, `.inline-hint` polish helpers added in 7.21 STEP 5)
+
+**Essential?** YES (the labels and help text are the user-facing "voice" of customize). The rebuild MUST preserve all 110+ labels and the 50 help paragraphs verbatim or with operator-approved revisions.
+
+**Nice-to-have?** The 13 sub-headers (`.sec-subheader`) -- they helped break up dense sections, but the rebuild's section organization might restructure such that sub-headers are unneeded.
+
+## 5.2 Stage 7.19.5 -- WPF Setup Wizard binding fix (out of customize scope)
+
+NOT in customize.html. WPF-only. **Skip in rebuild.**
+
+## 5.3 Stage 7.20 -- master controls + search + advanced (2026-05-23)
+
+**Contributions to customize.html:**
+- **Quick Settings section** added as the FIRST section in the sidebar (HTML structure)
+- **5 master controls** (Master Accent Color, Master Overall Size, Master Text Size, Master Glow, Master Animations) -- Section 1.4
+- **"Use accent" links** (~8 instances) next to per-element accent color pickers; clicking sets the per-element value to the sentinel `var(--accent-master)`
+- **Search bar** (HTML + CSS + `buildSearchIndex` + `runSearchFilter` + `initSearchBar` + JARGON_MAP synonyms)
+- **Ctrl+F keyboard binding** for focusing the search bar
+- **Advanced toggle** (`#sidebar-advanced-toggle` checkbox + `body.show-advanced` class + `markAdvancedElements()` JS + `customize_show_advanced` localStorage)
+- **Discovery links** ("Want more control?") inside sections that contain advanced-only content (rendered by `addDiscoveryLinks()`)
+- **Per-control `data-search` attributes** (~141 controls each get one) feeding the search index
+
+**Essential?** ALL ESSENTIAL. The masters are the primary UX entry point, search is critical for a 141-control panel, advanced mode is a stated design principle.
+
+## 5.4 Stage 7.20.5 -- overlay master wiring (out of customize scope)
+
+NOT in customize.html. Stage 7.20.5 modified overlay.html to consume the master CSS variables that customize.html sets. **Skip in customize rebuild** but note the contract: customize must continue to set `--accent-master`, `--overall-scale`, `--text-scale`, `--glow-master-enabled`, `--animations-master-enabled` on its own :root from the user's master inputs.
+
+## 5.5 Stage 7.20.6 -- theme accent propagation (2026-05-23)
+
+**Contributions to customize.html:**
+- Themes converted to use `var(--accent-master)` sentinel string for accent-following keys (`nowPlaying.color`, `bars.color`, `title.color`, `artist.color`, `spectrum.color`, `timestamps.color`)
+- `applyTheme` flow handles the sentinel correctly (deep-merge preserves the literal string; sentinel resolves at CSS render against the live `--accent-master`)
+
+**Essential?** YES. The 21 non-default themes are this stage's deliverable shape; sentinel substitution is the live "accent follows master" UX.
+
+## 5.6 Stage 7.21 -- super-categories + welcome banner + final polish (2026-05-24)
+
+**Contributions to customize.html:**
+- **6 supercats** (`{ id, label, sections[] }` array in `restructureSidebar()` L4912-4926): Start here, Look, Text, Effects, Audio, Layout (advanced)
+- Supercat mapping (which sections under each supercat):
+  - **Start here:** quick-settings, general
+  - **Look:** themes, card, font, art, np, platform
+  - **Text:** text, progress
+  - **Effects:** glow, textglow, border, dyncolors
+  - **Audio:** spectrum
+  - **Layout (advanced):** layout, anim
+- **Welcome banner** (HTML + CSS + `customize_welcome_seen` localStorage gate + footer reshow link)
+- **Following-master badges** (8 instances; reactive visibility when per-element accent picker is the sentinel)
+- **Stage 7.21 STEP 5 polish helpers:** `.sec-help-emphasized`, `.sec-help-tip`, `.inline-hint` classes replacing prior inline-style attributes
+
+**Essential?** YES. Supercats are critical sidebar organization for a 17-section panel. Welcome banner is first-time-user onboarding. Following-master badges are the visual feedback for "this picker is following the master accent."
+
+## 5.7 Stage 7.22 + 7.23 -- WPF tray menu (out of customize scope)
+
+NOT in customize.html. These stages touched the tray menu only. **Skip in customize rebuild.**
+
+## 5.8 Stage 7.24 -- customize.html targeted polish (2026-05-24)
+
+**Contributions to customize.html:**
+- `.supercat-header` color: `var(--text-tertiary)` #5C5C66 -> #c0c0c0 (readable contrast)
+- `.supercat-header:hover` color: `var(--text-secondary)` #9999A1 -> #e0e0e0
+- NEW `:has()` active-state rule: `.supercat:has(.sec-header.open) > .supercat-header { color: var(--accent) }`
+- `.sec-help` color: `var(--text-muted)` -> `#c0c0c0`
+- `.control-help` color: `var(--text-secondary)` -> `#c0c0c0`
+- `.btn-danger` palette shift red-400 family -> red-600 (`#dc2626` + `rgba(220,38,38,*)`)
+- `restructureSidebar()` refactored: `readCollapsed()` -> `readStoredCollapseState()` returning raw string; explicit `else if (stored === null && sc.id === 'start')` branch for first-load expand documentation
+- STEP 5 SKIPPED (top bar accent line already 3px)
+
+**Essential?** The color brightening MUST carry over (operator-PASSed visual choice). The :has() active-state rule should carry over (operator-PASSed). The `readStoredCollapseState` rename is documentation-as-code; the rebuild can name this whatever.
+
+## 5.9 Essential vs nice-to-have rollup
+
+### MUST-HAVE in rebuild (cannot ship without):
+
+1. All 141 c-* setting IDs preserved as config keys (Section 1)
+2. The 5 master CSS variables preserved (Section 2)
+3. All 22 themes preserved with sentinel pattern (Section 3)
+4. The 11 layout templates preserved (Section 4, L3138-3327)
+5. Quick Settings + masters UX (Stage 7.20)
+6. Search bar + Ctrl+F + JARGON_MAP + per-control data-search (Stage 7.20)
+7. Advanced toggle + advanced-only marking (Stage 7.20)
+8. "Use accent" links (Stage 7.20)
+9. Discovery links inside sections with advanced content (Stage 7.20)
+10. 22 themes with sentinel substitution behavior (Stage 7.20.6)
+11. 6 supercats + collapse persistence (Stage 7.21)
+12. Welcome banner + reshow link (Stage 7.21)
+13. Following-master badges on 8 accent pickers (Stage 7.21)
+14. Stage 7.24 high-contrast palette (supercat headers, help text, Reset button)
+15. Stage 7.24 :has() active-state for supercats
+16. Stage 7.24 explicit START HERE first-load expand
+17. All ~110 friendly labels + ~50 help paragraphs (Stage 7.19) -- verbatim or with operator-approved revisions
+18. All animation token usages (Stage 7.19 v2 set; consolidation in rebuild is OK)
+19. Layout editor (Stage 7.13) with the 9 layout nodes + drag handles + 11 templates
+20. Apply to OBS button + status indicator (original)
+21. Preset Manager (original)
+22. Reset to Defaults (original; Stage 7.24 palette-shifted)
+
+### NICE-TO-HAVE (rebuild could revise or replace):
+
+1. Stage 7.19 sub-headers (`.sec-subheader`) -- if rebuild's section organization restructures densely, these may be redundant
+2. Stage 7.19 inline help paragraphs -- operator's last-conversation decision was "replace help text with tooltips on info icons" so this becomes a redesign, not a port
+3. THEME_SWATCH_COLORS as a separate const -- derive at runtime instead
+4. Stage 7.21 STEP 5 polish helpers (`.sec-help-emphasized`, etc.) -- if help text becomes tooltips, these classes go away
+5. `--dur-fast` / `--dur-fast-v2` dual token sets -- consolidate to one canonical set in rebuild
+
+### COULD-CUT (rebuild could deprecate):
+
+1. Layout editor canvas drag-and-drop visual mode (Stage 7.13) -- this is heavy code (~250 lines L2734-2989). If usage tracking shows few users use the visual editor and prefer text-based template selection, this could be retired. But default position: KEEP (existing feature, operator-approved).
+2. THEMES font property -- if all themes ended up using the same default font, the font key could be removed. (Not actually the case; ~8 distinct fonts; KEEP.)
+
+== END OF SECTION 5 ==
