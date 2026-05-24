@@ -20,7 +20,10 @@
          On Win11 22H2+ the code-behind overrides Background to Transparent
          and applies Acrylic; the CornerRadius stays in effect regardless. -->
     <Style x:Key="AppContextMenuStyle" TargetType="ContextMenu">
-        <Setter Property="Background"      Value="{DynamicResource Surface1}"/>
+        <!-- Stage 7.23: solid TrayMenuBackgroundBrush (#1A1A1A) unconditionally.
+             Acrylic backdrop removed from MainWindow.xaml.cs OnLoaded so the
+             menu background is no longer overridden at runtime. -->
+        <Setter Property="Background"      Value="{DynamicResource TrayMenuBackgroundBrush}"/>
         <Setter Property="BorderBrush"     Value="{DynamicResource BorderSubtle}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="6"/>

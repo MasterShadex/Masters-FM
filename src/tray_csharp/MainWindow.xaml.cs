@@ -1,11 +1,14 @@
-// Stage 7.6 STEP 11: MainWindow code-behind. Adds Mica backdrop gate (Win11 22H2+)
-// via ContextMenuExtensions.ApplyMica and WindowBackdrop.IsSupported.
+// Stage 7.6 origin / Stage 7.23 REVISED: MainWindow code-behind. Tray context
+// menu uses the solid TrayMenuBackgroundBrush (#1A1A1A) from Theme/Colors.xaml
+// unconditionally. Stage 7.22's acrylic-on-Win11 gate was removed in Stage 7.23
+// after operator feedback flagged "weird edges" caused by acrylic haze. The
+// Wpf.Ui WindowBackdrop API stays available via the NuGet package but is no
+// longer applied to the tray menu locally.
 //
 // Responsibilities:
 //   - Bind tray IconSource via pack URI (XAML).
 //   - Set ContextMenu.DataContext = TrayMenuViewModel (popup not in visual tree).
-//   - Branch A (Win11 22H2+): apply Mica backdrop; set Background=Transparent.
-//   - Branch B (Win10 / older): keep TrayMenuBackgroundBrush from XAML.
+//   - Wire ShowMenu and ShowToast delegates.
 //   - Block accidental window-close.
 
 using System.ComponentModel;
@@ -13,12 +16,10 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using MastersFM.Tray.Services;
 using MastersFM.Tray.ViewModels;
-using Wpf.Ui.Controls;
 
 namespace MastersFM.Tray;
 
@@ -82,37 +83,16 @@ public partial class MainWindow : Window
         _trayMenuViewModel.ShowToast = (title, message) =>
             NotifyIcon.ShowNotification(title, message, H.NotifyIcon.Core.NotificationIcon.Info);
 
-        // Stage 7.6 STEP 11: Q3=C backdrop gate.
-        // ContextMenuExtensions.ApplyMica is internal in WPF-UI 4.3.0 and cannot be
-        // called directly. Equivalent via the public API: WindowBackdrop.ApplyBackdrop
-        // (IntPtr hwnd, WindowBackdropType) + PresentationSource.FromVisual to get the
-        // popup's hwnd. WindowBackdropType.Acrylic = DWMSBT_TRANSIENTWINDOW (correct for
-        // popups; Mica = DWMSBT_MAINWINDOW and is semantically wrong for a ContextMenu).
-        //
-        // Branch A (Win11 22H2+, build ≥ 22621): apply Acrylic via public DWM API;
-        //   override Background to Transparent so the system backdrop shows through.
-        // Branch B (Win10 / older Win11): TrayMenuBackgroundBrush from App.xaml stays.
-        var acrylicSupported = WindowBackdrop.IsSupported(WindowBackdropType.Acrylic);
-        _logger.Log($"Acrylic supported={acrylicSupported}", "Tray");
-        if (acrylicSupported && NotifyIcon.ContextMenu != null)
-        {
-            var cm = NotifyIcon.ContextMenu;
-            cm.Opened += (_, _) =>
-            {
-                try
-                {
-                    if (PresentationSource.FromVisual(cm) is HwndSource src)
-                    {
-                        WindowBackdrop.ApplyBackdrop(src.Handle, WindowBackdropType.Acrylic);
-                        cm.Background = Brushes.Transparent;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogErr("ContextMenu ApplyBackdrop(Acrylic)", ex, "Tray");
-                }
-            };
-        }
+        // Stage 7.23 REMOVED: previously this method applied an Acrylic backdrop
+        // to the tray ContextMenu on Win11 22H2+ via Wpf.Ui's WindowBackdrop API.
+        // Operator feedback after Stage 7.22 flagged the acrylic haze as "weird
+        // edges" against busy desktop backgrounds; Stage 7.23 switches to a solid
+        // TrayMenuBackgroundBrush (#1A1A1A) from Theme/Colors.xaml unconditionally.
+        // The ContextMenu now reads the solid brush from AppContextMenuStyle and
+        // no runtime override is performed. If a future stage wants acrylic back
+        // the original wiring is in commit a7d53dd (Stage 7.22 SE5 FIX HEAD) and
+        // earlier; restore the Acrylic gate here + revert ContextMenu.xaml's
+        // AppContextMenuStyle Background to a Transparent/Surface1 fallback.
 
         _logger.Log("MainWindow.Loaded: TaskbarIcon initialized; tray visible; ContextMenu DataContext wired", "Tray");
     }
