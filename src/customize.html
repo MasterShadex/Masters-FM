@@ -4944,9 +4944,17 @@ function restructureSidebar() {
     { id: 'layout',  label: 'Layout (advanced)',  sections: ['layout', 'anim'] },
   ];
 
-  function readCollapsed(id) {
-    try { return localStorage.getItem('supercat_' + id + '_collapsed') === '1'; }
-    catch (e) { return false; }
+  // Stage 7.24 : explicit per-supercat collapse-state resolution. Reads
+  // localStorage directly (was previously wrapped in a readCollapsed
+  // helper that returned a boolean). The expanded shape lets us add an
+  // explicit "first-load default-expand for START HERE" branch so the
+  // design intent is documented in code -- new users see Quick Settings
+  // + General immediately without having to click the START HERE
+  // supercat header. Other supercats also default to expanded but
+  // implicitly (only the explicit '1' value triggers .collapsed).
+  function readStoredCollapseState(id) {
+    try { return localStorage.getItem('supercat_' + id + '_collapsed'); }
+    catch (e) { return null; }
   }
 
   // Build supercat wrappers, move sections into them.
@@ -4955,7 +4963,18 @@ function restructureSidebar() {
     const wrap = document.createElement('div');
     wrap.className = 'supercat';
     wrap.id = 'supercat-' + sc.id;
-    if (readCollapsed(sc.id)) wrap.classList.add('collapsed');
+    const stored = readStoredCollapseState(sc.id);
+    if (stored === '1') {
+      wrap.classList.add('collapsed');
+    } else if (stored === null && sc.id === 'start') {
+      // Stage 7.24 : first-load (no localStorage entry) START HERE
+      // stays expanded so first-time users see Quick Settings + General
+      // immediately. Saved preferences (stored === '1' or '0') still win.
+      // No action needed here -- documents the intent.
+    }
+    // else (stored === '0' or any unexpected value): default expanded
+    // (no .collapsed class). Mirrors prior behavior for non-START HERE
+    // supercats on first load.
     const header = document.createElement('button');
     header.className = 'supercat-header';
     header.type = 'button';
