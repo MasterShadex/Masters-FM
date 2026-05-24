@@ -795,3 +795,444 @@ A few:
 7. Cache DOM refs in `els` table (saves dozens of repeated lookups; minor perf + readability)
 
 == END OF SECTION 6 ==
+
+---
+
+# Section 7: Rebuild skeleton proposal
+
+This section converts the inventory and code-quality findings (Sections 1-6) into a concrete rebuild proposal. Operator reviews + approves / modifies at the STEP 8 gate.
+
+## 7.1 Proposed file layout
+
+Single-file HTML+CSS+JS (matching current pattern; no new build pipeline required). One `<style>` block at top, one `<script>` block at bottom, HTML in between. Internal organization by FUNCTIONAL CONCERN (not by HTML element type as in current file).
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Customize Overlay -- Master's FM</title>
+
+  <style>
+    /* ============================================================
+       1. APPLY-TO-OBS CONTRACT (do not rename)
+       ============================================================ */
+    :root {
+      --accent-master: #c060ff;
+      --overall-scale: 1.0;
+      --text-scale: 1.0;
+      --glow-master-enabled: 1;
+      --animations-master-enabled: 1;
+    }
+
+    /* ============================================================
+       2. CUSTOMIZE-ONLY DESIGN TOKENS
+       ============================================================ */
+    :root {
+      /* surfaces, text, brand, borders */
+      /* typography */
+      /* radius scale, spacing rhythm */
+      /* shadows */
+      /* animations (single canonical token set, no v1/v2 split) */
+      /* layout constants */
+      /* high-contrast UI tokens carried from Stage 7.24
+         (--supercat-text, --help-text, --reset-red, etc.) */
+    }
+
+    /* ============================================================
+       3. BASE STYLES
+       ============================================================ */
+    /* reset, body, html, scrollbars, prefers-reduced-motion */
+
+    /* ============================================================
+       4. TOP BAR
+       ============================================================ */
+    /* .topbar, .accent-bar, .logo, .topbar-status */
+
+    /* ============================================================
+       5. BUTTONS (unified base + variants)
+       ============================================================ */
+    /* .btn (base) */
+    /* .btn-primary (Apply to OBS), .btn-ghost (Preset Manager),
+       .btn-danger (Reset, Stage 7.24 red-600 palette),
+       .btn-preset-del, .btn-anim-preview */
+
+    /* ============================================================
+       6. SIDEBAR LAYOUT
+       ============================================================ */
+    /* .sidebar, .sidebar-header (sticky), .layout */
+
+    /* ============================================================
+       7. SEARCH BAR + ADVANCED TOGGLE
+       ============================================================ */
+    /* .sidebar-header search input, Ctrl+F focus state, advanced switch */
+
+    /* ============================================================
+       8. SUPERCATS
+       ============================================================ */
+    /* .supercat, .supercat-header (#c0c0c0/#e0e0e0/var(--accent)),
+       .supercat-chevron, .supercat-body */
+
+    /* ============================================================
+       9. SECTIONS (accordion)
+       ============================================================ */
+    /* .section, .sec-header, .sec-header.open, .sec-body, .sec-chevron */
+
+    /* ============================================================
+       10. CONTROL ROWS
+       ============================================================ */
+    /* .row, .row-label, .row-ctrl, variant modifiers (.row-stretch, .row-spaced, .row-label-subtle) */
+
+    /* ============================================================
+       11. INPUTS (toggles, ranges, color pairs, selects, text)
+       ============================================================ */
+    /* .toggle, .track, .toggle-thumb */
+    /* range slider styling */
+    /* .hex-in, color picker */
+    /* select */
+    /* text input */
+
+    /* ============================================================
+       12. WELCOME BANNER (Stage 7.21)
+       ============================================================ */
+
+    /* ============================================================
+       13. FOLLOWING-MASTER BADGES (Stage 7.21)
+       ============================================================ */
+
+    /* ============================================================
+       14. THEME GRID
+       ============================================================ */
+
+    /* ============================================================
+       15. PREVIEW PANE
+       ============================================================ */
+    /* .iframe-wrap, layout editor overlay, le-node, le-handle */
+
+    /* ============================================================
+       16. MODALS (Preset Manager, Layout Templates)
+       ============================================================ */
+
+    /* ============================================================
+       17. UTILITIES
+       ============================================================ */
+    /* .hidden, .advanced-only, .section-hidden-by-search */
+  </style>
+</head>
+<body>
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="accent-bar"></div>
+    <div class="logo">...</div>
+    <span class="topbar-status"></span>
+    <button class="btn btn-ghost" id="btn-preset-manager">Preset Manager</button>
+    <button class="btn btn-danger" id="btn-reset">Reset to Defaults</button>
+    <button class="btn btn-primary" id="btn-apply">Apply to OBS</button>
+  </header>
+
+  <main class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <!-- search bar + advanced toggle -->
+        <div class="welcome-banner" id="welcome-banner">...</div>
+      </div>
+
+      <!-- Supercats built at runtime; sections move into them via restructureSidebar -->
+    </aside>
+
+    <!-- Preview pane -->
+    <section class="preview">
+      <div class="iframe-wrap" id="iframe-wrap">
+        <iframe id="preview-frame" src="/?preview=1"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <!-- Layout templates modal -->
+  <div id="layout-templates-modal" class="modal">...</div>
+
+  <!-- Preset Manager modal -->
+  <div id="preset-manager-modal" class="modal">...</div>
+
+  <script>
+    /* ============================================================
+       1. CONSTANTS + DATA
+       ============================================================ */
+    const DEFAULTS = { ... };
+    const SETTINGS_CONFIG = [ ... ];  // data-driven 141-entry table replacing initBindings
+    const THEMES = { ... };
+    const LAYOUT_TEMPLATES = [ ... ];
+    const JARGON_MAP = { ... };
+
+    /* ============================================================
+       2. STATE
+       ============================================================ */
+    let S = clampLayoutCanvas(deepMerge(DEFAULTS, {}));
+
+    /* ============================================================
+       3. PREFS (localStorage wrapper)
+       ============================================================ */
+    const Prefs = {
+      get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+      set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+      remove(key) { try { localStorage.removeItem(key); } catch {} },
+    };
+
+    /* ============================================================
+       4. DOM REFS (cached at init)
+       ============================================================ */
+    let els = {};  // populated by cacheElements() at DOMContentLoaded
+
+    /* ============================================================
+       5. APPLY-TO-OBS LOGIC (config save + master CSS var apply)
+       ============================================================ */
+    function applyMastersToCss(masters) { ... }  // unified call site
+    function markDirty() { ... }
+    function saveConfigToServer() { ... }
+
+    /* ============================================================
+       6. THEME APPLY
+       ============================================================ */
+    function applyTheme(name) { ... }
+    function buildThemeGrid() { ... }
+    function deepMerge(tgt, src) { ... }
+
+    /* ============================================================
+       7. SEARCH
+       ============================================================ */
+    function buildSearchIndex() { ... }
+    function runSearchFilter(q) { ... }
+    function initSearchBar() { ... }
+
+    /* ============================================================
+       8. ADVANCED MODE
+       ============================================================ */
+    function markAdvancedElements() { ... }
+    function addDiscoveryLinks() { ... }
+    function initAdvancedToggle() { ... }
+
+    /* ============================================================
+       9. SUPERCATS (Stage 7.21 + 7.24)
+       ============================================================ */
+    const SUPERCATS = [ ... ];
+    function restructureSidebar() { ... }
+    function initSupercatHandlers() { ... }
+
+    /* ============================================================
+       10. MASTER CONTROLS + FOLLOWING-MASTER BADGES
+       ============================================================ */
+    function refreshFollowingMasterBadges() { ... }
+
+    /* ============================================================
+       11. WELCOME BANNER (Stage 7.21)
+       ============================================================ */
+    function initWelcomeBanner() { ... }
+
+    /* ============================================================
+       12. PRESET MANAGER
+       ============================================================ */
+    function wirePresetManager() { ... }
+
+    /* ============================================================
+       13. LAYOUT EDITOR (Stage 7.13)
+       ============================================================ */
+    function rebuildLayoutEditor() { ... }
+    function applyLayoutTemplate(t) { ... }
+    /* mouse-drag handlers etc. */
+
+    /* ============================================================
+       14. BIND CONTROLS (data-driven, replaces ~370-line initBindings)
+       ============================================================ */
+    function bindControl(cfg) { ... }  // unified dispatcher
+    function bindAllControls() {
+      for (const cfg of SETTINGS_CONFIG) bindControl(cfg);
+    }
+
+    /* ============================================================
+       15. INIT (DOMContentLoaded bootstrap)
+       ============================================================ */
+    document.addEventListener('DOMContentLoaded', () => {
+      cacheElements();
+      buildThemeGrid();
+      restructureSidebar();
+      markAdvancedElements();
+      addDiscoveryLinks();
+      bindAllControls();
+      initSearchBar();
+      initAdvancedToggle();
+      initWelcomeBanner();
+      wirePresetManager();
+      applyMastersToCss(S.masters);
+      refreshFollowingMasterBadges();
+    });
+  </script>
+</body>
+</html>
+```
+
+## 7.2 Section organization
+
+Two options for sidebar section organization. **Operator approves one at the STEP 8 gate.**
+
+### Option A (recommended) -- "Item 2 = A" advanced consolidation
+
+Keep Stage 7.21 supercats, but consolidate ALL advanced-only controls into a single Advanced supercat (in addition to the basic supercats). Replaces the runtime `.advanced-only` row-marking pattern with a dedicated section/supercat.
+
+```
+Sidebar layout:
+  [Search bar]  [Basic | Advanced] mode toggle (was: Advanced switch)
+  
+  START HERE       (Quick Settings + General + Themes)  -- always expanded on first load
+  LOOK             (Card + Font + Album art + "Now Playing" + Platform badge)
+  TEXT             (Track and artist + Progress and time)
+  EFFECTS          (Outer glow + Text glow + Spinning border + Auto-color)
+  AUDIO            (Spectrum bars)
+  ADVANCED         (Slide-in animation + Layout editor + advanced-only sub-controls
+                    extracted from other sections)
+```
+
+Pros:
+- Cleaner separation; "Advanced" is a real destination instead of a global hide/show toggle
+- Reduces cognitive overhead in non-Advanced sections
+- Easier to add new advanced controls later (one home for them)
+
+Cons:
+- Migration: existing user mental model "I toggle Advanced and these rows appear in their parent section" changes
+- Some currently-advanced controls naturally live alongside their basic siblings (e.g. spectrum response/smooth/fps are advanced versions of basic spectrum sensitivity)
+
+### Option B -- preserve current Stage 7.21 + Stage 7.20 advanced pattern
+
+Keep supercats as-is; keep `.advanced-only` row-marking; just rebuild cleaner. Less disruption.
+
+Pros: zero UX change from Stage 7.24 PASSed state.
+Cons: keeps the duplicated UI scaffolding for advanced markers across sections.
+
+### Recommendation
+
+**Option A** -- operator's earlier brief mentioned "Item 2 = A" (advanced consolidation), so the rebuild is the natural moment for the structural change.
+
+## 7.3 Design language for the rebuild
+
+Carry tray menu PRINCIPLES (Stage 7.23), NOT literal tray styling (which would balloon a 154-control panel).
+
+### Carried from Stage 7.23 tray menu
+
+| Principle | Application in customize.html rebuild |
+|---|---|
+| **High contrast** | Pure white (#FFFFFF) labels, near-black background. Help text and inline descriptions at #c0c0c0 -> #ffffff if hierarchy permits (per Stage 7.24 v14.1.0 backlog item). |
+| **Solid backgrounds** | No acrylic anywhere. Sidebar bg solid #14141B / preview pane solid. |
+| **Accent reserved** | Brand purple (#7C3AED / `--accent-master`) only at: top-bar accent-bar gradient, "Apply to OBS" button (the primary action), active supercat header, theme selection indicator. NOT on every hover or row decoration. |
+| **Crisp edges** | 1px borders on cards/sections. Modal drop shadows pronounced (depth + opacity). |
+| **Active state via :has()** | Already proven in Stage 7.24; carry forward |
+
+### NOT carried from tray menu
+
+| Principle | Why NOT in customize |
+|---|---|
+| 16px item font | Would balloon a 141-control panel. Keep `--fs-body: 14px` for sidebar density. |
+| 14,10 item padding | Same density argument; keep `--sp-1` / `--sp-2` rhythm. |
+| Bigger 52px header art | The customize TOP BAR has the logo + buttons; no album art display here. |
+| Sub-headers in items | Customize uses sections + supercats for grouping; sub-headers redundant. |
+| Inline descriptions under main labels | **Operator-locked: REPLACE inline help with tooltips on info icons.** Stage 7.19 inline `.sec-help` and `.control-help` paragraphs become `<span class="help-icon" data-tooltip="...">ⓘ</span>` next to relevant labels. Saves significant vertical space; reduces visual noise; preserves the help content. |
+
+### NEW for the rebuild
+
+| Feature | Description |
+|---|---|
+| Section icons | Each section gets a small icon next to its name (visual identifier; helps scanning). 17 icons total. Stage 7.26 chooses icon set (lucide / heroicons / inline SVG). |
+| Tooltip layer | A single `[data-tooltip]` attribute + JS-driven tooltip component replaces the Stage 7.19 inline `.sec-help` paragraphs. Same content; different visual delivery. |
+| Pure-white labels (or near-pure) | Per the v14.1.0 backlog from Stage 7.24, lift control labels from current `var(--text)` (#F5F5F7) to #FFFFFF if hierarchy holds. (Optional; depends on whether help text moves to tooltips.) |
+| Consolidated Advanced section | Per 7.2 Option A. |
+
+## 7.4 Migration plan -- 5 stages
+
+The rebuild is too big for a single stage. Break into 5 stages with operator gates at each. **Each stage produces a working build (customize_v2.html alongside the current customize.html) so operator can preview progress at any time.**
+
+### Stage 7.26 -- Rebuild scaffold (~3-4h Ruflo)
+
+**Goal:** Empty `src/customize_v2.html` with the new file structure (Section 7.1) + new design tokens (Section 7.3) but NO settings yet. Verify it loads in the customize.exe window via a temporary `?v2=1` URL param (server.js routing change OR a one-off launcher hack -- to be decided in Stage 7.26 STEP 0).
+
+**Deliverable:** A new file that loads, has the top bar, the sidebar shell, the preview pane shell. No setting controls; no themes; no save/load yet. Just shape.
+
+**Operator gate:** Confirm the new visual character (high contrast, solid bg, crisp edges, section organization via Option A) matches expectations.
+
+### Stage 7.27 -- Apply-to-OBS infrastructure port (~3-4h Ruflo)
+
+**Goal:** Port the config save/load logic, the master CSS variable application, the theme apply flow, and 3-4 representative controls (Master Accent Color + one slider + one toggle) to verify end-to-end Apply-to-OBS works from `customize_v2.html`.
+
+**Deliverable:** `customize_v2.html` can change a master accent and see the overlay update; can pick a theme and see all elements update; can save/load presets. With a tiny subset of controls only.
+
+**Operator gate:** Confirm Apply-to-OBS still works through the new file. Confirm themes apply correctly (sentinel substitution intact).
+
+### Stage 7.28 -- Port all sections + controls (~5-6h Ruflo)
+
+**Goal:** Port all 141 c-* setting IDs across the 17 sections (potentially restructured to Option A's consolidated Advanced section). Each section verified individually.
+
+**Deliverable:** `customize_v2.html` has all 141 controls wired through the new data-driven `SETTINGS_CONFIG` array + `bindControl()` dispatcher. Each section visually matches the new design language. All friendly labels carried over from Stage 7.19. Help text converted to tooltips per the design decision.
+
+**Operator gate:** Confirm all sections present, all controls functional, all labels readable, tooltip help accessible on hover.
+
+### Stage 7.29 -- Port supercats + search + advanced + welcome banner + master badges + polish (~3-4h Ruflo)
+
+**Goal:** Port Stage 7.20 search + advanced toggle (or "Advanced supercat" per Option A), Stage 7.21 supercats + welcome banner + following-master badges, Stage 7.24 high-contrast palette + :has() active state, Stage 7.24 START HERE default-expand.
+
+**Deliverable:** `customize_v2.html` has feature parity with the current `customize.html` for all UX features beyond the basic per-section controls.
+
+**Operator gate:** Confirm feature parity (search works, Ctrl+F works, advanced toggle / supercat works, welcome banner shows on first load, following-master badges light up correctly, START HERE expanded on first load, supercat headers show active accent state).
+
+### Stage 7.30 -- Swap (~1-2h Ruflo)
+
+**Goal:** Rename `customize.html` -> `customize_legacy.html` (preserve in repo for instant revert), rename `customize_v2.html` -> `customize.html`, full rebuild, comprehensive operator gate.
+
+**Deliverable:** New customize.html shipped as the active file. Old preserved as fallback. version.json stays 14.0.0 (or operator can decide on a bump if the rebuild is felt to be substantial enough).
+
+**Operator gate:** Comprehensive parity check + visual sign-off across all 22 themes, all 141 controls, search, advanced mode, welcome banner, supercat navigation, master controls, Apply to OBS, Preset Manager, Reset to Defaults.
+
+### Estimated total: 15-20h Ruflo + 5 operator gates over ~5 calendar days (or compressed into 2-3 days if operator wants tight cadence).
+
+## 7.5 Risk register
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---:|---|---|---|---|
+| R1 | A setting ID dropped during port | Medium | High (breaks user presets that reference the ID) | Stage 7.28 maintains an explicit checklist of all 141 IDs; verify count + diff against the inventory in this research doc Section 1.6 |
+| R2 | A CSS variable consumed by overlay.html renamed accidentally | Low | High (breaks overlay rendering) | The 5 master CSS variables are documented in Section 2.4 as IMMUTABLE; rebuild file-init review verifies their exact spellings |
+| R3 | Theme apply behavior subtly regresses (sentinel substitution edge case) | Medium | Medium-High (theme changes don't propagate to accent-following elements) | Stage 7.27 explicitly tests theme application against current behavior; SE5 cycle if regression detected |
+| R4 | Search index misses some controls (data-search attribute missed during port) | Medium | Medium (some controls unfindable via search) | Stage 7.28 verifies search by exercising 8-10 representative queries spanning all sections |
+| R5 | Welcome banner localStorage flow regression | Low | Low (banner shows again when it shouldn't, or vice versa) | Stage 7.29 explicitly tests cleared-localStorage + show-once + reshow-link flow |
+| R6 | Following-master badge reactivity broken | Low | Medium (UI doesn't update when accent picker is changed to sentinel) | Stage 7.29 explicitly tests each of the 8 badge sites |
+| R7 | Layout editor visual drag-and-drop regression | Medium | Medium (visual layout editor broken for users who use it) | Stage 7.28 verifies layout editor by dragging each of the 9 nodes to a new position; layout templates still apply correctly |
+| R8 | Tooltip layer (new) has accessibility / touch issues | Medium | Low-Medium (some users miss the help text that was previously inline) | Stage 7.28 ensures tooltips appear on both hover AND focus (keyboard accessibility) + have visible affordance (info icon style) |
+| R9 | Preset Manager save/load regression | Low | High (existing user-saved presets stop loading) | Stage 7.27 verifies the config save shape MATCHES the current shape (same JSON keys); load existing presets unchanged |
+| R10 | Estimation off; rebuild takes 30h instead of 20h | High | Low (just calendar time) | Acceptable; operator already informed of estimate. Multi-gate approach means progress is reviewable at each stage |
+| R11 | Operator changes mind mid-rebuild (e.g. decides Option A consolidation is wrong) | Medium | Medium (some rework) | Old customize.html stays as customize_legacy.html in archive after swap; can revert any time before Stage 7.30 swap. Mid-rebuild pivots cost at most one stage's work |
+| R12 | New file passes Ruflo + operator review but fails for an outside friend (real user feedback) | Medium | Medium (post-swap polish stage needed) | Acceptable risk; ship to friends after Stage 7.30, gather feedback, address in Stage 7.31 (which would not yet be planned) |
+| R13 | Stage 7.13 layout editor's complex mouse handlers don't port cleanly | Medium | Medium (visual layout editor degraded) | Layout editor is ~250 lines (L2734-2989); it's the most complex JS area. Stage 7.28 carves out a dedicated step for layout-editor port + verify |
+| R14 | Build script (`_full_rebuild.ps1`) cold-rebuilds for HTML-only changes (~10min tax per stage) | High | Low (just slow) | This is a known carry-over backlog item; affects all 5 stages. Possibly fix _full_rebuild.ps1 BEFORE Stage 7.26 (move it to TOP of v14.1.0 backlog) |
+| R15 | The 22 themes preserve ALL their original character | Low | High (themes that look right in current customize stop looking right after rebuild) | Stage 7.29 cycles each of the 22 themes; visually verifies vs screenshots from before rebuild |
+
+## 7.6 Decision points the operator approves at the STEP 8 gate
+
+1. **Option A vs Option B section organization** (7.2): consolidate Advanced into one supercat, or keep current row-marking pattern?
+2. **Tooltip vs inline help** (7.3): replace Stage 7.19 inline `.sec-help` paragraphs with tooltips on info icons, OR keep inline?
+3. **Pure-white labels** (7.3): lift labels from #F5F5F7 to #FFFFFF?
+4. **Section icons** (7.3): introduce per-section icons, OR keep label-only?
+5. **5-stage breakdown** (7.4): approve 7.26 -> 7.30 sequence, or restructure?
+6. **Risk register** (7.5): mitigations adequate, or strengthen any specific risk?
+7. **Pre-rebuild improvement** (R14): fix `_full_rebuild.ps1` incremental support BEFORE Stage 7.26 to avoid 5 × 10-min cold rebuilds?
+
+== END OF SECTION 7 ==
+
+---
+
+# Conclusion
+
+The research deliverable is complete. **Operator review the document and reply with PASS at the STEP 8 gate to approve the 5-stage migration plan, or FAIL <reason> to revise.**
+
+The research doc itself is a v14.1.0 refactor roadmap regardless of whether the rebuild proceeds. Sections 1-6 catalog the current state with enough specificity to guide ANY future refactor (rebuild, in-place cleanup, or partial fixes).
+
+If operator approves Stage 7.26, the next deliverable is `CLAUDE_CODE_INSTRUCTIONS.md` rewritten for Stage 7.26 (rebuild scaffold).
+
+If operator pauses, this doc remains the authoritative reference for customize.html's current state.
+
+== END OF DOCUMENT ==
