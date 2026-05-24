@@ -1009,19 +1009,26 @@ body.show-advanced .discovery-link { display: none; }
 .preview-footer strong { color: var(--brand-glow); font-weight: var(--fw-semibold); }
 
 /* ─── Section help text ─────────────────────────────────────────────────────── */
+/* Stage 7.24 contrast bump : both .sec-help and .control-help lifted to
+   #c0c0c0 (was var(--text-muted) #5C5C66 and var(--text-secondary) #9999A1
+   respectively). Control labels stay at var(--text) #F5F5F7 near-white so
+   hierarchy is preserved: labels primary, help text clearly secondary but
+   still readable. */
 .sec-help {
-  font-size: var(--fs-tiny); color: var(--text-muted);
+  font-size: var(--fs-tiny); color: #c0c0c0;
   line-height: var(--lh-body); padding: 0 var(--sp-1) var(--sp-2);
   border-bottom: 1px solid var(--border-light);
   margin-bottom: var(--sp-1);
 }
 
 /* Stage 7.19: per-control help text == sits between rows, smaller / muted.
-   Distinct from .sec-help (section intro) and .sub-label (sub-section header). */
+   Distinct from .sec-help (section intro) and .sub-label (sub-section header).
+   Stage 7.24: color lifted from var(--text-secondary) #9999A1 to #c0c0c0
+   to match .sec-help readability. */
 .control-help {
   font-size: var(--fs-caption);
   line-height: 1.5;
-  color: var(--text-secondary);
+  color: #c0c0c0;
   margin: var(--sp-1) var(--sp-1) var(--sp-2);
   padding: 0;
 }
