@@ -4694,3 +4694,131 @@ Installed `MastersFM_Tray_v14.dll` `ProductVersion` after S11.2 warm rebuild: `1
 ### Next operator action
 
 Ship the updated build (Stage 7.23 ROUND 2 high-contrast pass) to friends. MSI at `Master's FM Install\MastersFM_Setup.msi`; friends bundle at `C:\Users\Master\Desktop\MastersFM_Installer\`. Gather real-user feedback. Plan v14.1.0 from the cumulative backlog.
+
+---
+
+## 2026-05-24 03:28 UTC -- Stage 7.24: customize.html targeted polish
+
+**Brief:** After Stage 7.23 tray menu Round 2 PASSed, operator opened customize.html for fresh eyes and identified specific dim/imbalance issues. Wanted "same concept" (Stage 7.23 high-contrast principles) applied to customize, but NOT a heavy overhaul -- customize is structurally good post-Stage 7.21. 9 STEPs (0-8), 1 operator gate at STEP 7.
+
+**Commits (on `82d4aa8` Stage 7.23 closure):**
+
+- `34e74c1` STEP 0 -- checkpoint + customize.html polish inventory + targets locked
+- `da424b7` STEP 1 -- brighten supercat headers (readable contrast + active-state accent)
+- `4e85276` STEP 2 -- brighten inline help text (better readability, subordinate to labels)
+- `09db09b` STEP 3 -- Reset to Defaults button red-400 -> red-600 palette shift
+- `e7d367e` STEP 4 -- START HERE explicit first-load default-expand
+- `6e1654b` STEP 5 -- top bar accent reinforcement SKIPPED (already 3px)
+- (this entry) STEP 8 -- memory APPEND + customize.html polish closure
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles.
+
+### What this stage did
+
+Surgical polish on `src/customize.html` (1 file touched; +57 / -12 net), applying Stage 7.23's design PRINCIPLES (contrast where dim, accent restraint, reserved accent for key elements) without overhauling the structurally-good customize panel.
+
+- **Supercat headers brightened end-to-end:**
+  - Inactive: `var(--text-tertiary)` (#5C5C66, effectively unreadable) -> `#c0c0c0`
+  - Hover: `var(--text-secondary)` (#9999A1) -> `#e0e0e0`
+  - **NEW active state via `:has()`**: `.supercat:has(.sec-header.open) > .supercat-header { color: var(--accent) }` -- the supercat containing any expanded section lights up in accent purple. Reserved-accent principle ported from Stage 7.23 tray menu's app-name+checkmark accent treatment.
+  - `:has()` already used elsewhere in customize.html (3 prior usages on `#layout-edit-overlay:has(.le-node:hover)`); no JS fallback needed in this WebView2 environment.
+- **Inline help text brightened:** `.sec-help` (`var(--text-muted)` #5C5C66) and `.control-help` (`var(--text-secondary)` #9999A1) both -> `#c0c0c0`. Hierarchy preserved: control labels stay at `var(--text)` #F5F5F7 (near-white, primary); help #c0c0c0 (secondary but readable). Labels did NOT need brightening.
+- **Reset to Defaults button palette shifted red-400 -> red-600:** `.btn-danger` color `var(--error)` (#f87171 family) -> `#dc2626`; border `rgba(248,113,113,0.40)` -> `rgba(220,38,38,0.5)`; hover bg `rgba(248,113,113,0.10)` -> `rgba(220,38,38,0.1)`; hover color stabilized at `#dc2626` (was flipping pale `#ffd2cc`). Button was ALREADY ghost-outlined since an earlier stage; brief's "current solid red" assumption was incorrect. Stage 7.24 only shifted palette to a calmer deeper red.
+- **START HERE explicit first-load expand:** `restructureSidebar()` refactored. Renamed helper `readCollapsed` -> `readStoredCollapseState` returning raw string (or null) instead of boolean. For-loop body adds explicit `else if (stored === null && sc.id === 'start')` branch documenting design intent. Behavior identical to current code (all supercats default expanded when localStorage key missing); the explicit branch is documentation-as-code for future maintainers. START HERE actual id is `'start'` (brief used `'start-here'` placeholder; corrected against actual SUPERCATS array).
+- **Top bar accent line SKIPPED:** brief target 2px -> 3px, but `.accent-bar height: 3px` ALREADY in place since Stage 7.17. Comment on line 164 explicitly documents "signature v14 3-px gradient at the very top". The brief's mental model was outdated. STEP 5 = no-op log commit (`6e1654b`).
+
+### Constraints honored
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`) SHA256 UNCHANGED end-to-end (S0.2 + S7.1 + S8.1)
+- `src/overlay.html`: 0-line `git diff 82d4aa8..HEAD --` (Stage 7.20.5 closed; OBS overlay preserved)
+- `src/tray_csharp/**`: 0-line diff (Stage 7.23 tray menu surface preserved end-to-end)
+- `src/tray_csharp/App.xaml.cs`: 0-line diff (Stage 7.22 autostart force-ON intact; line confirmed at 03:27:39.502 post-final-install)
+- `build_tools/build_msi.py`: 0-line diff
+- `_full_rebuild.ps1`: 0-line diff (silent-WARN risk STILL parked for v14.1.0; new "no incremental support for HTML-only changes" backlog item added this stage)
+- `version.json`: 14.0.0 (no bump; fix-forward via SHA suffix)
+- Setup Wizard UNTOUCHED
+- 141 unique `id="c-*"` attributes preserved (count baseline from S0.9; brief mentioned 154 -- actual file count is 141, the invariant)
+- 84 CSS `--*` variable definitions preserved (count baseline from S0.9; brief mentioned ~38 -- actual file count is 84, the invariant)
+- 6 supercats in `SUPERCATS` array preserved
+- Welcome banner HTML preserved (20 references)
+- Following-master badges preserved (2 references)
+- Stage 7.15 clock fix preserved (`tabular-nums` in overlay.html; overlay out of scope so trivially intact)
+- All themes intact (Stage 7.20.6 sentinel preserved)
+- All Stage 7.19 / 7.20 / 7.20.5 / 7.20.6 / 7.21 surfaces preserved
+- `var(--error)` token UNCHANGED globally (only `.btn-danger`'s literal values shifted; other consumers untouched)
+- No em-dash characters in source edits (HTML/CSS/JS `--` per project rule; no XAML this stage so the Stage 7.22 SE5 XML comment exception didn't apply)
+- UTF-8 no-BOM throughout
+- No git push / tag / GitHub interaction
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification (grep + structural check after each source edit): yes
+- **SE2** mandatory log inspection after STEP 6 rebuild + STEP 8 final warm rebuild: PASS (0 `[ERROR ]`/`[WARN ]`; installed customize.html SHA256 = source SHA256; autostart line present)
+- **SE3** mandatory `git diff --stat HEAD~1 HEAD` after every commit: yes (7 commits)
+- **SE4** literal PASS/FAIL at gate: HONORED. Halt sustained across multiple Stop-hook firings; PASS received via AskUserQuestion gate-result selection.
+- **SE5** mistake handling: 0 cycles
+- **SE6** three-strike escalation: NOT TRIGGERED
+- **SE7** no autonomous scope expansion: HONORED. STEP 5 explicitly SKIPPED rather than gold-plated. Didn't touch `_full_rebuild.ps1` despite the ~10m cold-rebuild tax for HTML-only changes being annoying (parked instead). Didn't refactor `var(--error)` token globally despite local palette shift on the Reset button suggesting it (parked instead).
+- **SE8** protected files SHA256 verified at S0.2 + S7.1 + S8.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.24 lands as fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain:
+- Stage 7.17 `718e3e1` (v14.0.0 cut)
+- Stage 7.18 -> Stage 7.21 `9b27a82` (customize redesign cycle CLOSED)
+- Stage 7.22 `2605c75` (tray polish round 1 + autostart force-ON)
+- Stage 7.23 `82d4aa8` (tray polish round 2 high-contrast)
+- Stage 7.24 (closure SHA assigned by this commit)
+
+Customize redesign cycle remains closed (Stage 7.21 closure intact). Stage 7.24 is a polish-on-top, not a reopening.
+
+Installed `customize.html` SHA256 after S8.2 warm rebuild: `AFFD31F97E704...` (matches source). Installed `MastersFM_Tray_v14.dll` ProductVersion: `14.0.0+b3420bb...` (unchanged from Stage 7.23 closure -- no tray source touched).
+
+### Files touched in this stage
+
+- `src/customize.html` (+57 / -12 across STEPs 1-4; ALL polish edits)
+- `V14_S7_24_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_24_REPORT.md` (NEW; tracked; 13-section closure deliverable)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-24_S7_24_PRE/` (disk-only snapshot of customize.html)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/overlay.html`, `src/tray_csharp/**`, `src/tray_csharp/App.xaml.cs`
+- `build_tools/build_msi.py`
+- `_full_rebuild.ps1`
+- `version.json`
+
+### Lessons learned (Stage 7.24)
+
+- **CSS `:has()` is solid in WebView2.** customize.exe runs in WebView2 (Chromium-derived); `:has()` is already used on `#layout-edit-overlay` selectors and works fine. The brief allowed for a JS-fallback to `.active-supercat` class but it wasn't needed. `:has()` makes the active-supercat-accent rule literally one line of CSS instead of a JS observer pattern.
+- **Brief assumptions about current state can be outdated.** Two items in this stage's brief described "current state" that didn't match the actual file: (a) Reset button assumed solid-red but was already ghost-outlined; (b) accent-bar assumed 2px but was already 3px. The S0.5 verify-by-grep step caught both. Lesson reinforced: always confirm current state from source before assuming.
+- **"Documentation-as-code" branch is worth the verbosity.** STEP 4's explicit `else if (stored === null && sc.id === 'start')` branch is functionally a no-op (the prior code's `if (readCollapsed(id))` already left first-load expanded). But naming the intent in code prevents future refactors from silently flipping behavior. Worth the +3 lines.
+- **`var(--error)` palette mismatch is a deferred audit.** Stage 7.24 only shifted `.btn-danger` to red-600 ad-hoc. Other consumers of `var(--error)` (status indicator, preset delete, pm-row delete) still resolve to red-400. Whether that's a one-button issue or a token-level shift is a v14.1.0 question.
+- **`_full_rebuild.ps1` cold-rebuilds even for HTML-only changes** -- the customize.html-only Stage 7.24 paid the full ~10-minute server.exe R2R compile tax in STEP 6. The warm-rebuild in STEP 8 ran in ~40 seconds because nothing changed since STEP 6. Future v14.1.0 backlog: detect "only HTML/CSS/JS touched" and skip `dotnet publish` steps.
+
+### v14.1.0 candidate backlog (cumulative)
+
+Inherited from prior stages + Stage 7.24 additions:
+
+- Server log rotation policy
+- `_full_rebuild.ps1` `WARN: WPF tray dotnet publish failed (exit 1)` -> HARD ERROR + abort (Stage 7.22 SE5 lesson)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- **NEW Stage 7.24 backlog:** `_full_rebuild.ps1` incremental support for HTML/CSS/JS-only changes (would shrink customize-only stages from ~10m to <60s)
+- **NEW Stage 7.24 backlog:** `var(--error)` token audit (Stage 7.24 only shifted `.btn-danger` to red-600 ad-hoc; other consumers still resolve red-400; is this a token-level shift or one-button issue?)
+- **NEW Stage 7.24 backlog:** customize.html label brightening audit (this stage preserved hierarchy at `var(--text)` #F5F5F7; a future "all-text-readable" pass might explicitly lift to pure `#FFFFFF` for consistency with the tray menu's pure-white principle)
+- WPF parked items (Stage 7.19.5 WizardDeviceItemStyle dedup; DeviceRowTemplate consolidation; SystemColors guard cleanup)
+- Mica vs Acrylic infrastructure review (Wpf.Ui WindowBackdrop unused after Stage 7.23)
+- `TrayMenu*` token namespace consolidation (~25 tokens after 7.23)
+- Version-string consolidation
+- Theme glow color follow-master (parked from Stage 7.20.6)
+- Real user feedback from shipping to friends
+
+### Status: HALT. Stage 7.24 closed. v14 still at 14.0.0 (fix-forward via SHA). Customize panel polish-on-top deliverable shipped to install at 03:27:39.
+
+### Next operator action
+
+Ship the latest build with all of Stage 7.22-7.24 changes live (autostart force-ON, tray menu round 1 + round 2 high-contrast, customize panel polish). MSI at `Master's FM Install\MastersFM_Setup.msi`; friends bundle at `C:\Users\Master\Desktop\MastersFM_Installer\`. Gather real user feedback. Plan v14.1.0 from the cumulative backlog (which now includes 3 new Stage 7.24 items + carry-over items from 7.20-7.23).
