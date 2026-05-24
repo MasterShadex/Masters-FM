@@ -3,7 +3,8 @@
      Keys are PascalCase; no conflict with WPF-UI keys (those use "Brush" suffix
      or "SystemAccentColor*" prefix). -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!-- Brand purple -->
     <SolidColorBrush x:Key="BrandPurpleBase" Color="#8B5CF6"/>
@@ -63,21 +64,93 @@
     <SolidColorBrush x:Key="TagRemovedBrush"  Color="#F87171"/>   <!-- red -->
     <SolidColorBrush x:Key="TagNoteBrush"     Color="#5C5C66"/>   <!-- neutral grey -->
 
-    <!-- Stage 7.22: tray context menu polish brushes.
-         Translucent variants for hover/pressed states + low-opacity separator.
-         Win11-style hover uses ~10% accent tint; pressed uses ~20%. The 50%
-         translucent white separator gives a subtle low-contrast divider that
-         reads well over both Surface1 (Win10 branch) and Acrylic (Win11 branch).
-         Accent for active toggleable check-marks uses BrandPurpleDeep (#7C3AED). -->
-    <SolidColorBrush x:Key="TrayMenuHoverBrush"      Color="#1A7C3AED"/>   <!-- 10% accent -->
-    <SolidColorBrush x:Key="TrayMenuPressedBrush"    Color="#337C3AED"/>   <!-- 20% accent -->
-    <SolidColorBrush x:Key="TrayMenuSeparatorBrush"  Color="#33FFFFFF"/>   <!-- 20% white -->
+    <!-- Stage 7.22 origin / Stage 7.23 UPDATED: tray context menu interaction brushes.
+         Operator feedback after Stage 7.22: accent-tinted hover competes with
+         the brand identity already carried by the app name and check-marks.
+         Stage 7.23 retires accent-tinted hover/pressed and switches to neutral
+         white tints so the accent reads ONLY at the app name (header) and
+         the check-marks (toggle ON state).
+         Separator brush UNCHANGED (#33FFFFFF). -->
+    <SolidColorBrush x:Key="TrayMenuHoverBrush"      Color="#22FFFFFF"/>   <!-- ~13% white, neutral (was #1A7C3AED 10% accent) -->
+    <SolidColorBrush x:Key="TrayMenuPressedBrush"    Color="#33FFFFFF"/>   <!-- ~20% white, neutral (was #337C3AED 20% accent) -->
+    <SolidColorBrush x:Key="TrayMenuSeparatorBrush"  Color="#33FFFFFF"/>   <!-- ~20% white separator (unchanged) -->
 
     <!-- Stage 7.22: drop shadow for the tray menu header album art thumbnail.
          Subtler than CardHoverShadow (smaller blur) so it reads as elevation
-         rather than glow. -->
+         rather than glow. UNCHANGED in Stage 7.23. -->
     <DropShadowEffect x:Key="TrayMenuArtShadow" x:Shared="False"
                       BlurRadius="6" ShadowDepth="2" Direction="270"
                       Color="#000000" Opacity="0.45"/>
+
+    <!-- ============================================================
+         Stage 7.23 ROUND 2: high contrast + readability + crisp edges
+         Operator feedback after Stage 7.22: still grey-on-grey, hard to
+         read, weird edges (acrylic haze). This block adds the new
+         high-contrast color tokens + size tokens + bigger drop shadow
+         used by the Stage 7.23 ContextMenu.xaml refresh.
+         XAML XML comment rule : NEVER use double-hyphen inside XML
+         comment blocks; W3C XML 1.0 section 2.5 forbids it (Stage 7.22
+         SE5 lesson).
+         ============================================================ -->
+
+    <!-- Container background : near-black SOLID (no acrylic, no transparency).
+         Lighter than Surface0 (#0A0A0F) by intent so pure white text reads
+         crisply but the menu doesn't disappear into a pitch-black void. -->
+    <SolidColorBrush x:Key="TrayMenuBackgroundBrush" Color="#1A1A1A"/>
+
+    <!-- Container border : crisp 1px ~20% white. Defined edge against busy
+         desktop backgrounds; replaces the soft "acrylic haze" outline. -->
+    <SolidColorBrush x:Key="TrayMenuBorderBrush" Color="#33FFFFFF"/>
+
+    <!-- Text PRIMARY : PURE WHITE. Maximum contrast against #1A1A1A bg.
+         Per operator-locked decision : "Pure white text on near-black bg". -->
+    <SolidColorBrush x:Key="TrayMenuTextPrimaryBrush" Color="#FFFFFF"/>
+
+    <!-- Text SECONDARY : light grey for inline descriptions + track-name marquee.
+         #B0B0B0 is brighter than Stage 7.7B's TextSecondary (#9999A1) so the
+         secondary line stays readable next to the new pure-white primary. -->
+    <SolidColorBrush x:Key="TrayMenuTextSecondaryBrush" Color="#B0B0B0"/>
+
+    <!-- Text TERTIARY : muted grey for section sub-headers (ACTIONS/TOGGLES/ABOUT).
+         #808080 is mid-grey (50%) : visible enough to label a group but quiet
+         enough not to compete with the primary item labels. -->
+    <SolidColorBrush x:Key="TrayMenuTextTertiaryBrush" Color="#808080"/>
+
+    <!-- Accent : exactly BrandPurpleDeep #7C3AED. Local alias so tray menu
+         styles can reference the accent without spilling brand-color decisions
+         into the tray scope. Used by the header "Master's FM" wordmark and
+         the toggle check-mark stroke. -->
+    <SolidColorBrush x:Key="TrayMenuAccentBrush" Color="#7C3AED"/>
+
+    <!-- Item geometry tokens. -->
+    <Thickness x:Key="TrayMenuItemPadding">14,10</Thickness>       <!-- per-row Border padding -->
+    <Thickness x:Key="TrayMenuHeaderPadding">18,14</Thickness>     <!-- header MenuItem padding -->
+    <Thickness x:Key="TrayMenuSubHeaderPadding">16,12,16,4</Thickness>  <!-- sub-header text padding L T R B -->
+    <Thickness x:Key="TrayMenuSeparatorMargin">14,6</Thickness>    <!-- separator margin -->
+
+    <!-- Corner radii. Item radius : per-row hover/pressed bg rounding.
+         Container radius : outer menu shell. 10 reads as "refined Win11" not
+         "early Win11" (Stage 7.22 used 8; bumped 2px for Stage 7.23). -->
+    <CornerRadius x:Key="TrayMenuItemRadius">6</CornerRadius>
+    <CornerRadius x:Key="TrayMenuContainerRadius">10</CornerRadius>
+
+    <!-- Sizes (sys:Double so ControlTemplates can bind these as Width/Height
+         and Style setters can apply them as FontSize). -->
+    <sys:Double x:Key="TrayMenuIconSize">18</sys:Double>           <!-- bumped 16 to 18 -->
+    <sys:Double x:Key="TrayMenuItemFontSize">16</sys:Double>       <!-- bumped 13 to 16 -->
+    <sys:Double x:Key="TrayMenuDescriptionFontSize">12</sys:Double>
+    <sys:Double x:Key="TrayMenuSubHeaderFontSize">11</sys:Double>
+    <sys:Double x:Key="TrayMenuHeaderAppNameFontSize">17</sys:Double>   <!-- bumped 15 to 17 -->
+    <sys:Double x:Key="TrayMenuHeaderTrackFontSize">13</sys:Double>     <!-- bumped 12 to 13 -->
+    <sys:Double x:Key="TrayMenuAlbumArtSize">52</sys:Double>           <!-- bumped 44 to 52 -->
+
+    <!-- Container drop shadow : MORE PRONOUNCED than Stage 7.22's CardHoverShadow.
+         Blur 20 (was 18), Depth 4 (was 4), Opacity 0.5 (was 0.5).
+         Net effect : slightly larger soft edge below the menu so it reads as
+         clearly elevated above busy desktop backgrounds. x:Shared="False"
+         because WPF Effect is element-owned in the rendering pipeline. -->
+    <DropShadowEffect x:Key="TrayMenuDropShadow" x:Shared="False"
+                      BlurRadius="20" ShadowDepth="4" Direction="270"
+                      Color="#000000" Opacity="0.5"/>
 
 </ResourceDictionary>
