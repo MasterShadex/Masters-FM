@@ -4822,3 +4822,166 @@ Inherited from prior stages + Stage 7.24 additions:
 ### Next operator action
 
 Ship the latest build with all of Stage 7.22-7.24 changes live (autostart force-ON, tray menu round 1 + round 2 high-contrast, customize panel polish). MSI at `Master's FM Install\MastersFM_Setup.msi`; friends bundle at `C:\Users\Master\Desktop\MastersFM_Installer\`. Gather real user feedback. Plan v14.1.0 from the cumulative backlog (which now includes 3 new Stage 7.24 items + carry-over items from 7.20-7.23).
+
+---
+
+## 2026-05-24 04:XX UTC -- Stage 7.25: customize.html rebuild RESEARCH ONLY
+
+**Brief:** Operator wants to rebuild customize.html from scratch because the code grew organically across 11 stages (7.17-7.24). Picked research-first approach: catalog everything before any rebuild commits. 10 STEPs (0-9), 1 operator review gate at STEP 8.
+
+**Commits (on `0335724` Stage 7.24 closure):**
+
+- `24c70e3` STEP 0 -- research stage checkpoint + SHA256 baseline
+- `e17e595` STEP 1 -- setting IDs inventory in research doc
+- `be36b58` STEP 2 -- CSS variables inventory + Apply-to-OBS contract isolated
+- `c83bd02` STEP 3 -- themes inventory + pattern analysis
+- `9abc5fa` STEP 4 -- JS inventory (handlers + state + functions + stage additions)
+- `16e5cdf` STEP 5 -- features inventory per stage + essential/nice-to-have categorization
+- `9dfa32a` STEP 6 -- code quality issues + messy patterns identified
+- `b4845db` STEP 7 -- rebuild skeleton + design language + multi-stage plan + risks
+- (this entry) STEP 9 -- memory APPEND + research stage closure
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles. **NO source code changes performed at any point** (by design, per absolute rule 1).
+
+### What this stage did
+
+Produced `V14_S7_25_CUSTOMIZE_REBUILD_RESEARCH.md` (1,238 lines across 7 sections + Executive Summary + Conclusion). The doc catalogs the current `src/customize.html` (5,473 lines, organically grown across 11 stages) and proposes a concrete rebuild plan.
+
+**Key findings from the research:**
+
+- **141 unique c-* setting IDs** (was estimated 149-154 in prior stages; 141 is the actual current count). Distributed across 17 sections; line range L1139-2180.
+- **84 customize-side CSS variable definitions; 14 overlay-side consumers.** The TRUE Apply-to-OBS contract is NOT CSS variable names per se -- it's (A) the 5 master config-key shape (`masters.accentColor`, `masters.overallSize`, `masters.textSize`, `masters.glowEnabled`, `masters.animationsEnabled`) and (B) the 141 c-* setting IDs as config keys. The 5 master CSS var names (`--accent-master`, `--overall-scale`, `--text-scale`, `--glow-master-enabled`, `--animations-master-enabled`) are treated as IMMUTABLE by convention; the other 79 customize-only vars are free to refactor.
+- **22 themes** (Rainbow Default + 21 themed presets) at L2302-2567. Sentinel-vs-hex categorization: 6 accent-following keys hold `'var(--accent-master)'` string; theme-specific hex keys hold literal hex. All 21 non-default themes share THE SAME OBJECT SHAPE -- DRY refactor candidate for v14.1.0.
+- **Single `<script>` block at L2232-5211 (54% of file).** 37+ functions cataloged with line numbers + origin stages. The standout rework target: **`initBindings()` at L3494-3859 (~370 lines of sequential hand-wiring of 141 controls)** -- can be replaced with a config-driven loop + 141-entry data table.
+- **3 localStorage keys:** `customize_show_advanced` (Stage 7.20), `customize_welcome_seen` (Stage 7.21), `supercat_<id>_collapsed` (Stage 7.21).
+- **12 inline-style HTML locations with specific line numbers** + suggested utility class fixes (Stage 7.21 STEP 5 already cleaned the most-egregious cases; ~7 unique patterns remain).
+- **9 `!important` uses** -- all judged legitimate (reduced-motion, hidden, init overrides, no-glow/no-animations semantics).
+- **Two `<style>` blocks** (L10-1075 + L5260-5470) -- the most visible organic growth artifact (Preset Manager CSS appended late).
+- **~145 stage-tagged comments** (~75 CSS + ~70 JS) -- organic-growth breadcrumbs that the rebuild can drop except for architectural anchors.
+- **Duplicated animation token sets:** `--dur-fast` (150ms) AND `--dur-fast-v2` (200ms) coexist because Stage 7.19 added the v2 set without retiring the v1 set.
+- **5 button variants** (`.btn-ghost`, `.btn-primary`, `.btn-danger`, `.btn-preset-del`, `.btn-anim-preview`) without unified base.
+
+### 5-stage migration plan proposed
+
+| Stage | Goal | Estimated Ruflo | Operator gate |
+|---|---|---:|---|
+| **7.26** | Rebuild scaffold (empty `customize_v2.html` with new file structure + design tokens) | 3-4h | Visual character confirmation |
+| **7.27** | Apply-to-OBS infrastructure port (config save/load, master CSS vars, theme apply, 3-4 representative controls) | 3-4h | Apply-to-OBS works through new file; themes work |
+| **7.28** | All sections + controls port (141 c-* IDs across 17 sections; tooltip layer replacing inline help) | 5-6h | All controls functional, labels readable, tooltips work |
+| **7.29** | Supercats + search + advanced + welcome banner + master badges + polish | 3-4h | Full feature parity with current customize.html |
+| **7.30** | Swap: rename `customize.html` -> `customize_legacy.html`, rename `customize_v2.html` -> `customize.html`, full rebuild, comprehensive gate | 1-2h | Comprehensive parity sign-off |
+
+**Total: ~15-20h Ruflo + 5 operator gates over ~5 calendar days (or tighter cadence at operator discretion).**
+
+### 15-item risk register
+
+Documented in research doc Section 7.5. Top risks:
+- R1: setting ID dropped during port (Med/High; mitigation: explicit checklist in Stage 7.28)
+- R2: CSS var consumed by overlay renamed (Low/High; mitigation: 5 master vars documented as IMMUTABLE)
+- R3: theme apply behavior regression (Med/Med-High; mitigation: Stage 7.27 explicit theme test)
+- R13: layout editor port complexity (Med/Med; mitigation: dedicated Stage 7.28 sub-step)
+- R14: cold rebuild tax 10min/stage (High/Low; mitigation: fix `_full_rebuild.ps1` BEFORE Stage 7.26)
+- R15: theme visual character preservation (Low/High; mitigation: Stage 7.29 cycles all 22 themes with visual diff vs screenshots)
+
+### 7 operator decision points for Stage 7.26 brief
+
+1. Option A (recommended: consolidated Advanced supercat per operator's "Item 2 = A") vs Option B (preserve current row-marking)
+2. Tooltip vs inline help (recommendation: tooltip, per operator's earlier conversation)
+3. Pure-white labels (recommendation: yes if hierarchy holds)
+4. Section icons (recommendation: yes -- new for rebuild)
+5. 5-stage breakdown (recommendation: as proposed)
+6. Risk register mitigations (recommendation: as proposed)
+7. Pre-rebuild `_full_rebuild.ps1` HTML-only incremental support fix (recommendation: do BEFORE Stage 7.26 to avoid 5 × 10-min cold rebuilds)
+
+### Constraints honored
+
+- ZERO source code changes (only research doc + log + report + memory APPEND committed)
+- All 4 protected source files SHA256 UNCHANGED end-to-end (trivially, nothing touched)
+- customize.html UNTOUCHED (0-line `git diff 0335724..HEAD --`)
+- overlay.html UNTOUCHED
+- `src/tray_csharp/**` UNTOUCHED (Stage 7.23 surface intact)
+- `build_tools/build_msi.py` UNTOUCHED
+- `_full_rebuild.ps1` UNTOUCHED (not invoked; no rebuild this stage)
+- `version.json` UNCHANGED (14.0.0)
+- Setup Wizard UNCHANGED
+- No git push / tag / GitHub interaction
+- No installer changes
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes
+- **SE2** N/A (no rebuild by design)
+- **SE3** mandatory `git diff --stat HEAD~1 HEAD` after every commit: yes (9 commits)
+- **SE4** literal PASS/FAIL at gate, no "continue" shortcut: HONORED. Halt sustained across Stop hook firings; PASS received via AskUserQuestion gate-result selection.
+- **SE5** mistake handling: 0 cycles
+- **SE6** three-strike escalation: NOT TRIGGERED
+- **SE7** no autonomous scope expansion: HONORED. Research doc proposes the rebuild BUT does not actually start it.
+- **SE8** protected files SHA256 verified at S0.1 + S9.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.25 lands as research-only fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain:
+- Stage 7.17 `718e3e1` (v14.0.0 cut)
+- Stage 7.18 -> Stage 7.21 `9b27a82` (customize redesign cycle CLOSED)
+- Stage 7.22 `2605c75` (tray polish round 1 + autostart force-ON)
+- Stage 7.23 `82d4aa8` (tray polish round 2 high-contrast)
+- Stage 7.24 `0335724` (customize targeted polish)
+- Stage 7.25 (closure SHA assigned by this commit; research only, no source changes)
+
+Installed binaries unchanged from Stage 7.24 closure (no rebuild this stage). Tray DLL ProductVersion still `14.0.0+b3420bb...`.
+
+### Files touched in this stage
+
+- `V14_S7_25_LOG.md` (NEW; force-added past `V*_LOG.md` gitignore)
+- `V14_S7_25_CUSTOMIZE_REBUILD_RESEARCH.md` (NEW; tracked; the deliverable, 1238 lines)
+- `V14_S7_25_REPORT.md` (NEW; tracked; closure report)
+- `md/memory.md` (THIS APPEND)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/customize.html`, `src/overlay.html`, `src/tray_csharp/**`, `src/tray_csharp/App.xaml.cs`
+- `build_tools/build_msi.py`, `_full_rebuild.ps1`
+- `version.json`
+
+### Lessons learned (Stage 7.25)
+
+- **Research stages are valuable even if the proposed work doesn't happen.** This doc (Sections 1-6) is a 6-section inventory of customize.html's current state usable for ANY future refactor strategy -- in-place cleanup, partial fixes, full rebuild later. Section 7 layers on the rebuild proposal but the inventory underneath is generic.
+- **The TRUE Apply-to-OBS contract is narrower than expected.** Only the 5 master config-key shape + 141 c-* setting IDs are immutable. CSS variable NAMES are a convention shared between customize/overlay :root blocks but each defines its own scope. This means the rebuild can rename 79 customize-only CSS variables freely. Significant freedom for the rebuild design.
+- **The 370-line `initBindings()` is the single biggest JS simplification opportunity.** Replace with config-driven loop + 141-entry data table. Saves ~250 lines + eliminates a class of bugs.
+- **Two `<style>` blocks is the clearest organic-growth code smell.** The late-added Preset Manager CSS at L5260-5470 should fold into a single `<style>` in the rebuild.
+- **The 21 non-default themes share the same object shape.** DRY refactor candidate: extract to `themes.json` or theme-base + variants pattern. Out of scope for Stage 7.26 scaffold but documented for v14.1.0.
+
+### v14.1.0 candidate backlog (cumulative)
+
+Inherited + new this stage:
+
+- Server log rotation policy
+- `_full_rebuild.ps1` HARD ERROR on WPF publish failure (Stage 7.22 SE5 lesson)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill end-of-script
+- **NEW Stage 7.24:** `_full_rebuild.ps1` incremental support for HTML-only changes (Stage 7.25 reaffirms this is critical for the rebuild's 5 stages -- 5 × 10-min cold rebuilds = 50 min wasted)
+- **NEW Stage 7.24:** `var(--error)` token audit (Reset palette shifted ad-hoc; consider global)
+- **NEW Stage 7.24:** customize.html label brightening audit (pure-white #FFFFFF if hierarchy holds)
+- WPF parked items (Stage 7.19.5 cleanups)
+- Mica vs Acrylic infrastructure review (Wpf.Ui WindowBackdrop unused after Stage 7.23)
+- `TrayMenu*` token namespace consolidation
+- Version-string consolidation
+- Theme glow color follow-master
+- Real user feedback from shipping to friends
+- **NEW Stage 7.25:** customize.html rebuild (Stage 7.26 -> 7.30 if approved); even if not approved, the research doc is a refactor roadmap
+- **NEW Stage 7.25:** THEMES refactor to themes.json or theme-base + variants (DRY across 21 non-default themes)
+- **NEW Stage 7.25:** Animation token consolidation (`--dur-fast` v1 vs `--dur-fast-v2` v2 split)
+- **NEW Stage 7.25:** initBindings refactor to config-driven loop + data table (~250-line shrink)
+- **NEW Stage 7.25:** Unified `bindControl()` dispatcher (~40-line shrink)
+- **NEW Stage 7.25:** `Prefs` localStorage wrapper (5-line API)
+- **NEW Stage 7.25:** Cache DOM refs at init in `els` table
+
+### Status: HALT. Stage 7.25 closed. v14 still at 14.0.0 (fix-forward via SHA). Research deliverable + 5-stage rebuild plan + 15-item risk register documented for operator next-action decision.
+
+### Next operator action
+
+**Path A:** Approve Stage 7.26 brief writing (rebuild scaffold). Confirm 7 decision points from research doc Section 7.6.
+
+**Path B:** Pause. Keep research doc as v14.1.0 refactor roadmap. The doc is valuable regardless.
