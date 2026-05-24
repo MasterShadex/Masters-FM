@@ -133,6 +133,9 @@
 
                 <Separator Style="{StaticResource AppMenuSeparatorStyle}"/>
 
+                <!-- Stage 7.23 sub-header : ACTIONS group (primary tasks). -->
+                <MenuItem Header="ACTIONS" Style="{StaticResource AppMenuSubHeaderStyle}"/>
+
                 <!-- 2. Platform detection -->
                 <MenuItem Header="Platform detection"
                           Tag="Pick where to read now playing from"
@@ -171,6 +174,11 @@
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
+
+                <Separator Style="{StaticResource AppMenuSeparatorStyle}"/>
+
+                <!-- Stage 7.23 sub-header : TOGGLES group (stateful checkable items). -->
+                <MenuItem Header="TOGGLES" Style="{StaticResource AppMenuSubHeaderStyle}"/>
 
                 <!-- 5. Discord [toggle] -->
                 <MenuItem Header="Discord"
@@ -216,6 +224,9 @@
                 </MenuItem>
 
                 <Separator Style="{StaticResource AppMenuSeparatorStyle}"/>
+
+                <!-- Stage 7.23 sub-header : ABOUT group (info + lifecycle). -->
+                <MenuItem Header="ABOUT" Style="{StaticResource AppMenuSubHeaderStyle}"/>
 
                 <!-- 8. Patch notes -->
                 <MenuItem Header="Patch notes"

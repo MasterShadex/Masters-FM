@@ -174,12 +174,41 @@
         </Setter>
     </Style>
 
+    <!-- === Sub-header MenuItem (Stage 7.23) ===
+         Non-interactive wrapper that renders a small uppercase ACTIONS / TOGGLES /
+         ABOUT label between menu sections. Implemented as a MenuItem wrapper
+         (rather than a bare TextBlock sibling) so it lives cleanly inside the
+         ContextMenu's items panel without WPF complaining about non-MenuItem
+         children. IsHitTestVisible=False + Focusable=False keep it from
+         consuming hover or keyboard focus so the menu navigation still flows
+         smoothly through the actionable items. The ControlTemplate replaces the
+         entire row with a single TextBlock styled per the Stage 7.23 tokens. -->
+    <Style x:Key="AppMenuSubHeaderStyle" TargetType="MenuItem">
+        <Setter Property="IsHitTestVisible" Value="False"/>
+        <Setter Property="Focusable"        Value="False"/>
+        <Setter Property="Padding"          Value="0"/>
+        <Setter Property="Cursor"           Value="Arrow"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <TextBlock Text="{TemplateBinding Header}"
+                               FontFamily="Segoe UI"
+                               FontSize="{DynamicResource TrayMenuSubHeaderFontSize}"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TrayMenuTextTertiaryBrush}"
+                               Padding="{DynamicResource TrayMenuSubHeaderPadding}"
+                               TextOptions.TextRenderingMode="ClearType"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- === Header MenuItem variant ===
          Same look as AppMenuItemStyle (Foreground, FontFamily, hover bg, etc.)
          but the template uses an AUTO-height ContentPresenter instead of the
          fixed 36-px Grid.  Lets the tray header show two lines (Master's FM
          wordmark + now-playing track) without the second line being clipped
-         by the row height.  No icon/check columns — header content spans
+         by the row height.  No icon/check columns; header content spans
          the full width via its own negative margins. -->
     <Style x:Key="AppMenuHeaderStyle" TargetType="MenuItem"
            BasedOn="{StaticResource AppMenuItemStyle}">
