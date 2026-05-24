@@ -229,19 +229,22 @@
         </Setter>
     </Style>
 
-    <!-- === Separator (Stage 7.22 refresh) ===
-         1px low-contrast horizontal rule. Switched from opaque BorderSubtle to
-         the new TrayMenuSeparatorBrush (50% translucent white) for a subtler
-         Win11-style divider that reads well over both Surface1 (Win10 branch)
-         and Acrylic backdrop (Win11 branch). Side inset bumped 8 -> 12 to
-         match the new 12,0 MenuItem padding so separators line up visually
-         with item label edges. -->
+    <!-- === Separator (Stage 7.23 refresh) ===
+         1px low-contrast horizontal rule. Stage 7.22 introduced
+         TrayMenuSeparatorBrush over BorderSubtle for a translucent feel;
+         Stage 7.23 dials the visual weight down further now that sub-headers
+         (ACTIONS / TOGGLES / ABOUT) carry the primary visual grouping.
+         Side inset bumped 12 -> 14 to match the new 14,10 MenuItem padding.
+         Vertical inset bumped 4 -> 6 for more breathing room around grouped
+         items. Added Opacity 0.6 so the line reads as a hint rather than a
+         hard rule. -->
     <Style x:Key="AppMenuSeparatorStyle" TargetType="Separator">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Separator">
-                    <Border Margin="12,4"
+                    <Border Margin="{DynamicResource TrayMenuSeparatorMargin}"
                             Height="1"
+                            Opacity="0.6"
                             Background="{DynamicResource TrayMenuSeparatorBrush}"/>
                 </ControlTemplate>
             </Setter.Value>
