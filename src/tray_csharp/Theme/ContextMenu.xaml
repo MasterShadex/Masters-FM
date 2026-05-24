@@ -12,21 +12,20 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- === ContextMenu shell (Stage 7.22 refresh) ===
-         Surface1 background, 1px BorderSubtle, 8px radius (was 12 - tighter Win11
-         feel), CardHoverShadow. Inner padding 6 (was 4) gives the rounded items
-         a bit more room to breathe inside the container corners.
-         MinWidth 240 (was 220) accommodates the slightly wider 16px icons.
-         On Win11 22H2+ the code-behind overrides Background to Transparent
-         and applies Acrylic; the CornerRadius stays in effect regardless. -->
+    <!-- === ContextMenu shell (Stage 7.23 refresh) ===
+         Solid TrayMenuBackgroundBrush (#1A1A1A) bg, crisp 1px TrayMenuBorderBrush
+         (#33FFFFFF, 20% white) border, 10px radius (was 8 in Stage 7.22 ; bumped
+         per S0.6 token), TrayMenuDropShadow (BlurRadius 20, ShadowDepth 4,
+         Opacity 0.5 ; more pronounced than CardHoverShadow). Inner padding 4
+         (was 6) gives the item-internal rounded backgrounds a tight fit inside
+         the new larger container corner radius without item edges visibly
+         intersecting the container border.
+         MinWidth 240 (unchanged) still accommodates the new 18px icons. -->
     <Style x:Key="AppContextMenuStyle" TargetType="ContextMenu">
-        <!-- Stage 7.23: solid TrayMenuBackgroundBrush (#1A1A1A) unconditionally.
-             Acrylic backdrop removed from MainWindow.xaml.cs OnLoaded so the
-             menu background is no longer overridden at runtime. -->
         <Setter Property="Background"      Value="{DynamicResource TrayMenuBackgroundBrush}"/>
-        <Setter Property="BorderBrush"     Value="{DynamicResource BorderSubtle}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource TrayMenuBorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding"         Value="6"/>
+        <Setter Property="Padding"         Value="4"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
         <Setter Property="FontSize"        Value="13"/>
         <Setter Property="MinWidth"        Value="240"/>
@@ -37,9 +36,9 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8"
+                            CornerRadius="{DynamicResource TrayMenuContainerRadius}"
                             Padding="{TemplateBinding Padding}"
-                            Effect="{DynamicResource CardHoverShadow}">
+                            Effect="{DynamicResource TrayMenuDropShadow}">
                         <ItemsPresenter/>
                     </Border>
                 </ControlTemplate>
