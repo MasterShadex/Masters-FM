@@ -262,12 +262,17 @@ html, body {
 }
 .btn-primary:hover     { background: var(--brand-deep); box-shadow: var(--shadow-button-hover); }
 .btn-primary:disabled  { opacity: 0.40; cursor: not-allowed; pointer-events: none; box-shadow: none; }
+/* Stage 7.24 palette shift : red-400 family (#f87171 / var(--error) range)
+   -> red-600 family (#dc2626). Calmer, deeper red reads as "destructive
+   action available" rather than "alert demanding attention". Hover color
+   stays at #dc2626 (was flipping to #ffd2cc which competed with the
+   primary Apply to OBS button's brightness). */
 .btn-danger {
   background: transparent;
-  color: var(--error);
-  border: 1px solid rgba(248, 113, 113, 0.40);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.5);
 }
-.btn-danger:hover      { background: rgba(248, 113, 113, 0.10); border-color: var(--error); color: #ffd2cc; }
+.btn-danger:hover      { background: rgba(220, 38, 38, 0.1); border-color: #dc2626; color: #dc2626; }
 
 /* ─── Main layout ──────────────────────────────────────────────────────────── */
 .layout {
