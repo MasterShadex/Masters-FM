@@ -47,68 +47,93 @@
         </Setter>
     </Style>
 
-    <!-- === MenuItem row (Stage 7.22 refresh) ===
-         Win11-style modern feel:
-           * 36px tall; 3-column layout: 16px icon | 8px gap | * label | 8px gap | 16px check
-           * Padding 12,8 for breathing room on left/right edges
-           * IsHighlighted : translucent accent tint (TrayMenuHoverBrush ~10%)
-           * IsPressed    : slightly stronger tint (TrayMenuPressedBrush ~20%)
-           * IsChecked    : Win11-style checkmark Path (M 0 7 L 5 12 L 14 0)
-                             filled with BrandPurpleDeep (#7C3AED accent)
-           * IsEnabled=False : 45% opacity, arrow cursor
-         Icon column: renders MenuItem.Icon content (set per-item in XAML).
-         Check column: inline Path with the Win11 checkmark stroke geometry;
-         hidden by default, shown when IsChecked=True (Discord, AutoStart, OBS). -->
+    <!-- === MenuItem row (Stage 7.23 ROUND 2 refresh) ===
+         High-contrast + readability pass:
+           * Auto-height (Border Padding 14,10 drives vertical space; Grid no
+             longer has a fixed 36px Height because two-line items need to grow)
+           * 5-column layout : 18px icon : 10px gap : * label-stack : 8px gap : 18px check
+           * Pure white label foreground (TrayMenuTextPrimaryBrush #FFFFFF)
+           * 16px FontSize (was 13) for primary label
+           * Inline description support via MenuItem.Tag property : if Tag is set,
+             a 12px secondary TextBlock renders below the primary label using
+             TrayMenuTextSecondaryBrush (#B0B0B0). Items without Tag have null
+             Tag by default; the Tag={x:Null} trigger collapses the description
+             TextBlock so single-line items render exactly as before.
+           * IsHighlighted : NEUTRAL white tint (TrayMenuHoverBrush #22FFFFFF;
+             was 10% accent in Stage 7.22)
+           * IsPressed    : stronger neutral tint (TrayMenuPressedBrush #33FFFFFF)
+           * IsChecked    : Win11-style accent checkmark Path (unchanged from 7.22)
+             stroked with TrayMenuAccentBrush (#7C3AED) for toggle-ON state
+           * IsEnabled=False : 45% opacity, arrow cursor (unchanged) -->
     <Style x:Key="AppMenuItemStyle" TargetType="MenuItem">
-        <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource TrayMenuTextPrimaryBrush}"/>
         <Setter Property="FontFamily"  Value="Segoe UI"/>
-        <Setter Property="FontSize"    Value="13"/>
-        <Setter Property="Padding"     Value="12,0"/>
+        <Setter Property="FontSize"    Value="{DynamicResource TrayMenuItemFontSize}"/>
+        <Setter Property="Padding"     Value="{DynamicResource TrayMenuItemPadding}"/>
         <Setter Property="Cursor"      Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
                     <Border x:Name="Root"
                             Background="Transparent"
-                            CornerRadius="6"
+                            CornerRadius="{DynamicResource TrayMenuItemRadius}"
                             Padding="{TemplateBinding Padding}">
-                        <Grid Height="36">
+                        <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="18"/>
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="18"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- Icon column: displays MenuItem.Icon content.
+                            <!-- Icon column : displays MenuItem.Icon content (Path
+                                 Width/Height 18 set per-item in MainWindow.xaml).
                                  Items without an icon leave this slot empty (the
-                                 16px column stays reserved so labels still align). -->
+                                 18px column stays reserved so labels still align). -->
                             <ContentPresenter Grid.Column="0"
                                               Content="{TemplateBinding Icon}"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Center"/>
 
-                            <!-- Label column: the Header string or custom Header object. -->
-                            <ContentPresenter x:Name="HeaderContent"
-                                              Grid.Column="2"
-                                              Content="{TemplateBinding Header}"
-                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
-                                              RecognizesAccessKey="True"
-                                              VerticalAlignment="Center"
-                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                            <!-- Label column : StackPanel of primary Header line
+                                 plus optional secondary description TextBlock.
+                                 The description binds to MenuItem.Tag; when Tag
+                                 is null (default for items without Tag set), the
+                                 ControlTemplate.Triggers Tag={x:Null} rule
+                                 collapses the description so single-line items
+                                 occupy only the height needed for the primary line. -->
+                            <StackPanel Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Orientation="Vertical">
+                                <ContentPresenter x:Name="HeaderContent"
+                                                  Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  TextBlock.FontSize="{TemplateBinding FontSize}"/>
+                                <TextBlock x:Name="DescriptionLine"
+                                           Text="{TemplateBinding Tag}"
+                                           FontSize="{DynamicResource TrayMenuDescriptionFontSize}"
+                                           Foreground="{DynamicResource TrayMenuTextSecondaryBrush}"
+                                           Margin="0,2,0,0"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
 
-                            <!-- Check column (Stage 7.22): Win11-style accent checkmark.
-                                 Path "M 0 7 L 5 12 L 14 0" draws the canonical Win11
-                                 check stroke (short leg, long leg). Fill is BrandPurpleDeep
-                                 (operator's locked accent hex #7C3AED). Collapsed by
-                                 default; Visible when IsChecked=True. StrokeThickness
-                                 not needed since the Fill is solid; the geometry is
-                                 closed by Stretch=Uniform stretching to the 12x12 cell. -->
+                            <!-- Check column (Stage 7.22 carry-over) : Win11-style
+                                 accent checkmark. Path "M 0 7 L 5 12 L 14 0" draws
+                                 the canonical Win11 check stroke (short leg, long
+                                 leg). Stroke is TrayMenuAccentBrush (#7C3AED;
+                                 local alias for BrandPurpleDeep). Collapsed by
+                                 default; Visible when IsChecked=True. Width/Height
+                                 14x12 inside the 18px column gives 2px of breathing
+                                 room on each side. -->
                             <Path x:Name="CheckMark"
                                   Grid.Column="4"
                                   Data="M 0 7 L 5 12 L 14 0"
-                                  Stroke="{DynamicResource BrandPurpleDeep}"
+                                  Stroke="{DynamicResource TrayMenuAccentBrush}"
                                   StrokeThickness="2"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
@@ -121,6 +146,12 @@
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Tag=null hides the description line. Default state
+                             for items without Tag set in MainWindow.xaml. -->
+                        <Trigger Property="Tag" Value="{x:Null}">
+                            <Setter TargetName="DescriptionLine" Property="Visibility"
+                                    Value="Collapsed"/>
+                        </Trigger>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Root" Property="Background"
                                     Value="{DynamicResource TrayMenuHoverBrush}"/>
