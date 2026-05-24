@@ -461,7 +461,10 @@ html, body {
   font-size: var(--fs-tiny);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-tertiary);
+  /* Stage 7.24: lifted from var(--text-tertiary) #5C5C66 to #c0c0c0 so
+     the supercat label is clearly readable at rest. Was effectively
+     unreadable at #5C5C66 against the dark sidebar. */
+  color: #c0c0c0;
   font-weight: var(--fw-semibold);
   cursor: pointer;
   user-select: none;
@@ -469,9 +472,20 @@ html, body {
   border: none;
   width: 100%;
   text-align: left;
+  transition: color var(--dur-fast-v2) var(--ease-windows);
 }
 .supercat-header:hover {
-  color: var(--text-secondary);
+  /* Stage 7.24: from var(--text-secondary) #9999A1 to #e0e0e0; brighter
+     to give a clear hover signal off the already-brighter rest state. */
+  color: #e0e0e0;
+}
+/* Stage 7.24: active state for any supercat containing an expanded section.
+   Reserves the accent purple for "this is where you are working" -- mirroring
+   the Stage 7.23 tray menu principle of "accent for key elements only".
+   :has() is supported here (used elsewhere on #layout-edit-overlay; WebView2
+   chromium engine has had :has() since 105 and customize.exe ships latest). */
+.supercat:has(.sec-header.open) > .supercat-header {
+  color: var(--accent);
 }
 .supercat-chevron {
   transition: transform var(--dur-fast-v2) var(--ease-windows);
