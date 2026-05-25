@@ -1464,14 +1464,16 @@
         }
 
         /* ==========================================================================
-           7. APPLY (CSS variable writing helpers + applyConfig)
+           7. APPLY (CSS variable writing helpers + applyConfig + refreshControlValues)
            setMasterVar: writes to both customize_v2 :root AND the iframe
              contentDocument :root (graceful try/catch for cross-origin).
            setOverlayVar: writes only to the iframe :root (per-element vars
              dont need to live in customize_v2's own :root).
-           applyConfig: iterates the known Stage 7.27 paths in State.config
-             and invokes the right setter for each. Stage 7.28 will extend
-             this for the other 137 paths.
+           applyConfig (Stage 7.28): data-driven. Iterates SETTINGS_CONFIG,
+             reads State.config[id] (fallback to cfg.default), and calls
+             applyControlValue defined in section 8.
+           refreshControlValues (Stage 7.28): syncs DOM input values to
+             State.config[id] without re-binding. Used by onResetDefaults.
            ========================================================================== */
         function setMasterVar(name, value) {
             document.documentElement.style.setProperty(name, String(value));
@@ -1490,33 +1492,66 @@
             }
         }
 
+        // Stage 7.28: data-driven applyConfig. Iterates SETTINGS_CONFIG, reads
+        // State.config[id] (falling back to config.default), and calls the
+        // shared applyControlValue helper. That helper handles transform +
+        // cssVar/cssTarget routing + applySpecialCases (body.no-glow, etc).
         function applyConfig() {
-            const c = State.config;
-
-            // 1. masters.overallSize -> --overall-scale (number 50-150 -> 0.5-1.5)
-            if (c.masters && typeof c.masters.overallSize === 'number') {
-                setMasterVar('--overall-scale', (c.masters.overallSize / 100).toFixed(2));
+            for (const cfg of SETTINGS_CONFIG) {
+                const stored = State.config[cfg.id];
+                const value = (stored !== undefined && stored !== null) ? stored : cfg.default;
+                if (value === undefined) continue;
+                applyControlValue(cfg, value);
             }
+        }
 
-            // 2. title.color -> --title-color (hex or sentinel string)
-            if (c.title && typeof c.title.color === 'string') {
-                setOverlayVar('--title-color', c.title.color);
-            }
+        // Stage 7.28: sync DOM input values to current State.config[id] without
+        // re-binding. Used by onResetDefaults after State.config is repopulated
+        // from defaults. Each control type updates its input element + display
+        // span if applicable; checkboxes toggle .checked; selects set .value.
+        function refreshControlValues() {
+            for (const cfg of SETTINGS_CONFIG) {
+                const stored = State.config[cfg.id];
+                const value = (stored !== undefined && stored !== null) ? stored : cfg.default;
+                if (value === undefined) continue;
 
-            // 3. masters.glowEnabled -> --glow-master-enabled + body.no-glow
-            if (c.masters && typeof c.masters.glowEnabled === 'boolean') {
-                const on = c.masters.glowEnabled;
-                setMasterVar('--glow-master-enabled', on ? '1' : '0');
-                const f = document.getElementById('preview-iframe');
-                if (f && f.contentDocument && f.contentDocument.body) {
-                    try { f.contentDocument.body.classList.toggle('no-glow', !on); }
-                    catch (e) { /* cross-origin; SSE handles */ }
+                switch (cfg.type) {
+                    case 'slider':
+                    case 'number': {
+                        const $i = document.getElementById(cfg.id);
+                        if ($i) $i.value = value;
+                        const $d = document.getElementById(cfg.id + '-display');
+                        if ($d) $d.textContent = value + (cfg.unit || '');
+                        break;
+                    }
+                    case 'colorPair': {
+                        const $picker = document.getElementById(cfg.pickerId);
+                        const $hex = document.getElementById(cfg.id);
+                        if ($hex) $hex.value = value;
+                        if ($picker && isHex6(value)) $picker.value = value;
+                        break;
+                    }
+                    case 'color': {
+                        const $p = document.getElementById(cfg.id);
+                        if ($p && isHex6(value)) $p.value = value;
+                        break;
+                    }
+                    case 'toggle': {
+                        const $t = document.getElementById(cfg.id);
+                        if ($t) $t.checked = Boolean(value);
+                        break;
+                    }
+                    case 'select':
+                    case 'text':
+                    case 'colorList': {
+                        const $i = document.getElementById(cfg.id);
+                        if ($i) $i.value = value;
+                        break;
+                    }
+                    case 'button':
+                        /* no input value to refresh */
+                        break;
                 }
-            }
-
-            // 4. theme -> Stage 7.29 wires visual apply; this stage just logs
-            if (typeof c.theme === 'string') {
-                console.log('[Stage 7.27] theme would apply:', c.theme, '(visual apply deferred to Stage 7.29)');
             }
         }
 
@@ -2013,22 +2048,33 @@
         async function onResetDefaults() {
             if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
 
-            // Match current customize.html behavior (line 4530-4537): client-side
-            // reset only -- clear State.config so all controls fall back to their
-            // HTML default attribute values (e.g. range value=100, color #ffffff).
-            // No server reset endpoint; user must click Apply to OBS after to
-            // persist the reset.
+            // Stage 7.28: data-driven reset. Populate State.config with every
+            // entry's config.default value (skipping undefined defaults), then
+            // sync the DOM via refreshControlValues + re-apply the CSS layer
+            // via applyConfig. Client-side only -- matches current customize.html
+            // behavior (no /reset-overlay-config endpoint exists). User must
+            // click Apply to OBS to persist the reset.
             State.config = {};
+            for (const cfg of SETTINGS_CONFIG) {
+                if (cfg.default !== undefined) {
+                    State.config[cfg.id] = cfg.default;
+                }
+            }
             State.isDirty = true;
 
-            // Re-init bindings to read the freshly-empty State.config (so every
-            // control resets its input value + display + CSS var to defaults).
-            initBindings();
+            refreshControlValues();
+            applyConfig();
+            previewConfig();
 
-            // Reload iframe to flush any per-element CSS vars set during the
-            // previous session.
+            // Reload iframe to flush any per-element CSS vars from the previous
+            // session (only the entries currently in SETTINGS_CONFIG were
+            // restored by refreshControlValues -- iframe reload is the safety
+            // net for any stale vars set by code paths outside SETTINGS_CONFIG).
             const $iframe = document.getElementById('preview-iframe');
-            if ($iframe) $iframe.contentWindow.location.reload();
+            if ($iframe && isProductionContext()) {
+                try { $iframe.contentWindow.location.reload(); }
+                catch (e) { /* cross-origin or no src */ }
+            }
         }
 
         function onPresetManager() {
