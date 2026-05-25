@@ -508,7 +508,67 @@
 
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
+           Vertical flex layout: status bar at top + preview content fluid in
+           the middle + hint at bottom. This stage just shows a placeholder;
+           Stage 7.27 will replace the placeholder with the actual iframe or
+           render target.
            ========================================================================== */
+        .preview-status {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+            padding: var(--s-3) var(--s-5);
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--c-border);
+            flex-shrink: 0;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: var(--r-pill);
+            background: var(--c-success);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.50);
+            flex-shrink: 0;
+        }
+
+        .status-label {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .preview-frame {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: var(--s-5);
+        }
+
+        .preview-placeholder {
+            color: var(--c-text-tertiary);
+            font-size: var(--f-size-md);
+            text-align: center;
+            font-style: italic;
+        }
+
+        .preview-hint {
+            padding: var(--s-3) var(--s-5);
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+            text-align: center;
+            border-top: 1px solid var(--c-border);
+            flex-shrink: 0;
+        }
+
+        .preview-hint strong {
+            color: var(--c-text-secondary);
+            font-weight: var(--f-weight-semibold);
+        }
 
         /* ==========================================================================
            10. UTILITIES
