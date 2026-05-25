@@ -506,14 +506,20 @@
             flex-shrink: 0;
         }
 
-        /* Future state (Stage 7.29): when .supercat.collapsed, the chevron
-           rotates 180deg and the supercat-body collapses to height 0. This
-           stage renders headers statically with no collapse behavior. */
+        /* Stage 7.29: collapsed supercats hide their body and the chevron
+           rotates -90deg (points right). Click toggles state; localStorage
+           remembers per-supercat collapse with key supercat_<id>_collapsed.
+           Start here is open by default on first load (no localStorage). */
+        .supercat.collapsed .supercat-body {
+            display: none;
+        }
+        .supercat.collapsed .supercat-chevron {
+            transform: rotate(-90deg);
+        }
 
         .supercat-body {
             padding: var(--s-2) 0;
-            /* Empty this stage; Stage 7.28 fills with .section blocks containing
-               the 141 c-* controls. */
+            /* Stage 7.28 fills with .control-row blocks rendered from SETTINGS_CONFIG. */
         }
 
         /* ==========================================================================
@@ -2621,6 +2627,47 @@
             });
         }
 
+        /* ==========================================================================
+           8e. SUPERCAT COLLAPSE (Stage 7.29 -- ported from current customize.html
+           Stage 7.21). Each .supercat-header click toggles .collapsed on the
+           parent .supercat container; CSS handles the visual transition.
+
+           localStorage key per supercat: supercat_<id>_collapsed ('0' / '1').
+           Defaults:
+             - 'start' -> EXPANDED on first load (no localStorage entry yet)
+             - all others -> EXPANDED on first load too
+           Stored values override defaults. Only '1' triggers .collapsed; '0'
+           or null leaves the supercat expanded.
+           ========================================================================== */
+        function initSupercatCollapse() {
+            document.querySelectorAll('.supercat-header').forEach(header => {
+                const key = header.dataset.supercat;
+                if (!key) return;
+                const supercat = header.closest('.supercat');
+                if (!supercat) return;
+                const lsKey = 'supercat_' + key + '_collapsed';
+
+                let stored = null;
+                try { stored = localStorage.getItem(lsKey); }
+                catch (e) { /* localStorage unavailable */ }
+
+                if (stored === '1') {
+                    supercat.classList.add('collapsed');
+                }
+                // First-load (stored === null): START HERE stays expanded
+                // explicitly so first-time users see Quick Settings + General
+                // immediately. Other supercats also default expanded (no class
+                // added). Saved '1' or '0' values still take effect above.
+
+                header.addEventListener('click', () => {
+                    supercat.classList.toggle('collapsed');
+                    const collapsed = supercat.classList.contains('collapsed');
+                    try { localStorage.setItem(lsKey, collapsed ? '1' : '0'); }
+                    catch (e) { /* localStorage unavailable */ }
+                });
+            });
+        }
+
         let _searchDebounceTimer = null;
 
         function initSearchFilter() {
@@ -2766,6 +2813,10 @@
             // on the rendered .control-row elements, so this must come AFTER
             // renderAllControls (but doesn't depend on bindings/state).
             initSearchFilter();
+
+            // Stage 7.29: wire supercat collapse + restore localStorage state.
+            // Click any .supercat-header to toggle; Start here defaults open.
+            initSupercatCollapse();
 
             // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
