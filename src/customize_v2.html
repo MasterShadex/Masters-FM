@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customize Overlay -- Master's FM</title>
+    <style>
+        /* ==========================================================================
+           1. DESIGN TOKENS
+           Stage 7.26 token system: --c-* colors, --s-* spacing, --f-* typography,
+           --r-* radii, --m-* motion. Apply-to-OBS contract tokens (5 masters)
+           DEFERRED to Stage 7.27.
+           ========================================================================== */
+
+        /* ==========================================================================
+           2. BASE / RESET / TYPOGRAPHY
+           ========================================================================== */
+
+        /* ==========================================================================
+           3. LAYOUT (top bar + sidebar + preview pane)
+           ========================================================================== */
+
+        /* ==========================================================================
+           4. TOP BAR + BUTTONS
+           ========================================================================== */
+
+        /* ==========================================================================
+           5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
+           ========================================================================== */
+
+        /* ==========================================================================
+           6. SEARCH BAR (Stage 7.20 carry; shell only this stage)
+           ========================================================================== */
+
+        /* ==========================================================================
+           7. SUPERCATS (Stage 7.21 carry; static render this stage,
+           collapse/expand JS in Stage 7.29)
+           ========================================================================== */
+
+        /* ==========================================================================
+           8. SECTIONS (empty shells this stage; Stage 7.28 fills with controls)
+           ========================================================================== */
+
+        /* ==========================================================================
+           9. PREVIEW PANE (Stage 7.27 wires the live render)
+           ========================================================================== */
+
+        /* ==========================================================================
+           10. UTILITIES
+           ========================================================================== */
+    </style>
+</head>
+<body>
+    <!-- ========================================================================
+         TOP BAR
+         ======================================================================== -->
+    <header class="top-bar">
+        <div class="brand">
+            <div class="brand-icon">FM</div>
+            <div class="brand-text">
+                <div class="brand-name">Master's FM</div>
+                <div class="brand-sub">Overlay Customizer</div>
+            </div>
+        </div>
+        <div class="top-bar-actions">
+            <button class="btn btn-ghost" id="btn-preset-manager" type="button">Preset Manager</button>
+            <button class="btn btn-danger-ghost" id="btn-reset-defaults" type="button">Reset to Defaults</button>
+            <button class="btn btn-primary" id="btn-apply-obs" type="button">Apply to OBS</button>
+        </div>
+    </header>
+
+    <!-- ========================================================================
+         MAIN LAYOUT (sidebar + preview pane)
+         ======================================================================== -->
+    <main class="layout">
+        <!-- ====================================================================
+             SIDEBAR
+             ==================================================================== -->
+        <aside class="sidebar">
+            <div class="sidebar-scroll">
+                <!-- Welcome banner: Stage 7.21 carry, dismiss + reshow functional this stage -->
+                <div class="welcome-banner" id="welcome-banner" hidden>
+                    <div class="welcome-icon" aria-hidden="true">👋</div>
+                    <div class="welcome-body">
+                        <h3>New to Master's FM customize?</h3>
+                        <p>Pick a theme below, or use Quick Settings to change the main color, size, and text size.</p>
+                    </div>
+                    <button class="welcome-dismiss" id="welcome-dismiss" type="button">Got it, hide this</button>
+                </div>
+
+                <!-- Search bar: Stage 7.20 carry, shell only (filter logic in Stage 7.29) -->
+                <div class="search-bar">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" class="search-input" id="settings-search" placeholder="Find a setting..." />
+                    <button class="search-clear" id="settings-search-clear" type="button" hidden aria-label="Clear search">×</button>
+                </div>
+
+                <!-- 7 supercats (Option A consolidated): Start here / Look / Text / Effects / Audio / Layout / Advanced -->
+                <!-- Static render this stage; collapse/expand JS in Stage 7.29 -->
+
+                <div class="supercat" id="supercat-start">
+                    <button class="supercat-header" data-supercat="start" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        <span class="supercat-label">Start here</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-look">
+                    <button class="supercat-header" data-supercat="look" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2 12 C 5 7 9 5 12 5 C 15 5 19 7 22 12 C 19 17 15 19 12 19 C 9 19 5 17 2 12 Z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <span class="supercat-label">Look</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-text">
+                    <button class="supercat-header" data-supercat="text" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                            <line x1="9" y1="20" x2="15" y2="20"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
+                        </svg>
+                        <span class="supercat-label">Text</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-effects">
+                    <button class="supercat-header" data-supercat="effects" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3 L 13.5 8.5 L 19 10 L 13.5 11.5 L 12 17 L 10.5 11.5 L 5 10 L 10.5 8.5 Z"></path>
+                            <path d="M19 16 L 19.7 18 L 21.5 18.7 L 19.7 19.3 L 19 21 L 18.3 19.3 L 16.5 18.7 L 18.3 18 Z"></path>
+                            <path d="M5 4 L 5.6 5.5 L 7 6 L 5.6 6.4 L 5 8 L 4.4 6.4 L 3 6 L 4.4 5.5 Z"></path>
+                        </svg>
+                        <span class="supercat-label">Effects</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-audio">
+                    <button class="supercat-header" data-supercat="audio" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M16 9 C 18 10 18 14 16 15"></path>
+                            <path d="M19 6 C 23 8 23 16 19 18"></path>
+                        </svg>
+                        <span class="supercat-label">Audio</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-layout">
+                    <button class="supercat-header" data-supercat="layout" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <span class="supercat-label">Layout</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-advanced">
+                    <button class="supercat-header" data-supercat="advanced" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="4" y1="6" x2="20" y2="6"></line>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                            <line x1="4" y1="18" x2="20" y2="18"></line>
+                            <circle cx="8" cy="6" r="2" fill="currentColor"></circle>
+                            <circle cx="16" cy="12" r="2" fill="currentColor"></circle>
+                            <circle cx="8" cy="18" r="2" fill="currentColor"></circle>
+                        </svg>
+                        <span class="supercat-label">Advanced</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body"></div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <a href="#" id="show-welcome-again" class="footer-link">Show welcome message</a>
+            </div>
+        </aside>
+
+        <!-- ====================================================================
+             PREVIEW PANE
+             ==================================================================== -->
+        <section class="preview-pane">
+            <div class="preview-status">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span class="status-label">Live preview -- updates within 0.5s of any change</span>
+            </div>
+            <div class="preview-frame" id="preview-frame">
+                <div class="preview-placeholder">Preview pane (Stage 7.27 wires this)</div>
+            </div>
+            <div class="preview-hint">
+                Adjust controls on the left -- preview updates live. Click <strong>Apply to OBS</strong> to save permanently.
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /* ==========================================================================
+           1. CONSTANTS
+           ========================================================================== */
+
+        /* ==========================================================================
+           2. DOM REFS (cached at init)
+           ========================================================================== */
+
+        /* ==========================================================================
+           3. WELCOME BANNER (Stage 7.26 -- only feature this stage)
+           ========================================================================== */
+
+        /* ==========================================================================
+           4. INIT
+           ========================================================================== */
+    </script>
+</body>
+</html>
