@@ -2537,6 +2537,131 @@
         }
 
         /* ==========================================================================
+           8d. SEARCH FILTER (Stage 7.29 -- ported from current customize.html Stage 7.20)
+           JARGON_MAP entries kept verbatim. filterControls walks every
+           .control-row, matches lowercased query against label / id / jargon
+           synonyms, and hides non-matches. Empty supercats are hidden too.
+           Ctrl+F keyboard shortcut focuses the search input.
+           ========================================================================== */
+        const JARGON_MAP = {
+            // Card appearance
+            'corner roundness': 'border radius rounded curve corners',
+            'border thickness': 'border width thick',
+            'background gradient angle': 'bg angle gradient direction degree',
+            'top background color': 'bg top gradient color colour',
+            'bottom background color': 'bg bottom gradient color colour',
+            'blur behind the card': 'background blur backdrop frosted',
+            'card transparency': 'background opacity see through alpha',
+            // Audio bars (Spectrum)
+            'keep bars at a consistent height': 'auto volume match autogain compression normalize',
+            'make quiet sounds louder': 'loudness boost autogain compression normalize',
+            'what color the bars are': 'color mode bar color colour rainbow gradient solid',
+            'mirror the bars': 'mirror symmetric reflection',
+            'how round the bar tops are': 'bar roundness corner radius',
+            'minimum bar height': 'lowest bar height min floor',
+            'maximum bar height': 'tallest bar height max ceiling',
+            'how quickly bars react to music': 'reaction speed reactivity response ms milliseconds smoothing',
+            'animation frame rate (advanced)': 'frame rate fps refresh',
+            // Track and artist
+            'title size': 'font size title px',
+            'title boldness': 'font weight bold heavy title',
+            'title color': 'color colour title hex',
+            'how fast title scrolls': 'marquee speed scroll title',
+            'title scroll pause': 'marquee pause title delay',
+            'title letter spacing': 'letter spacing kerning title tracking',
+            'artist size': 'font size artist px',
+            'artist boldness': 'font weight bold heavy artist',
+            'artist color': 'color colour artist hex',
+            'how fast artist scrolls': 'marquee speed scroll artist',
+            'artist scroll pause': 'marquee pause artist delay',
+            'artist letter spacing': 'letter spacing kerning artist tracking',
+            // Glow + Text glow
+            'how strong the glow is': 'glow size intensity blur strength px',
+            'glow color': 'glow color colour hex',
+            // Slide-in animation
+            'how long the slide-in takes': 'slide in animation duration ms milliseconds time',
+            'how far the card slides in': 'slide distance offset px',
+            // Now Playing
+            'what the label says': 'now playing label text custom',
+            'label color': 'now playing color colour hex',
+            'space between letters': 'letter spacing kerning tracking now playing',
+            // General
+            'overall transparency': 'opacity see through alpha global',
+            // Misc
+            'how thick the spinning border ring is': 'border thickness spinning ring px',
+            'how fast it spins': 'spin duration speed border seconds',
+            'how strong the pulse is': 'glow intensity strength pulse',
+            'how fast it pulses': 'pulse duration speed glow seconds'
+        };
+
+        function filterControls(query) {
+            const q = (query || '').trim().toLowerCase();
+            const rows = document.querySelectorAll('.control-row');
+            const supercats = document.querySelectorAll('.supercat');
+
+            if (!q) {
+                rows.forEach(r => { r.hidden = false; });
+                supercats.forEach(sc => { sc.hidden = false; });
+                return;
+            }
+
+            rows.forEach(row => {
+                const id = (row.dataset.controlId || '').toLowerCase();
+                const labelEl = row.querySelector('.control-label');
+                const label = (labelEl ? labelEl.textContent : '').toLowerCase();
+                const jargon = (JARGON_MAP[label] || '').toLowerCase();
+                const match = label.includes(q) || id.includes(q) || (jargon && jargon.includes(q));
+                row.hidden = !match;
+            });
+
+            // Hide a supercat entirely when none of its rows survived the filter.
+            supercats.forEach(sc => {
+                const visible = sc.querySelectorAll('.control-row:not([hidden])').length;
+                sc.hidden = visible === 0;
+            });
+        }
+
+        let _searchDebounceTimer = null;
+
+        function initSearchFilter() {
+            const $input = document.getElementById('settings-search');
+            const $clear = document.getElementById('settings-search-clear');
+            if (!$input) return;
+
+            $input.addEventListener('input', () => {
+                clearTimeout(_searchDebounceTimer);
+                _searchDebounceTimer = setTimeout(() => filterControls($input.value), 80);
+                if ($clear) $clear.hidden = !$input.value;
+            });
+
+            if ($clear) {
+                $clear.addEventListener('click', () => {
+                    $input.value = '';
+                    filterControls('');
+                    $clear.hidden = true;
+                    $input.focus();
+                });
+            }
+
+            // Ctrl+F focuses the search input (and Esc clears + blurs).
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
+                    e.preventDefault();
+                    $input.focus();
+                    $input.select();
+                } else if (e.key === 'Escape' && document.activeElement === $input) {
+                    if ($input.value) {
+                        $input.value = '';
+                        filterControls('');
+                        if ($clear) $clear.hidden = true;
+                    } else {
+                        $input.blur();
+                    }
+                }
+            });
+        }
+
+        /* ==========================================================================
            9. TOP BAR ACTIONS (Apply to OBS / Reset to Defaults / Preset Manager)
            ========================================================================== */
 
@@ -2636,6 +2761,11 @@
             // the iframe-load bootstrap binds them. Rendering is synchronous +
             // independent of the iframe; it can happen as soon as init() runs.
             renderAllControls();
+
+            // Stage 7.29: wire search filter + Ctrl+F shortcut. Filter operates
+            // on the rendered .control-row elements, so this must come AFTER
+            // renderAllControls (but doesn't depend on bindings/state).
+            initSearchFilter();
 
             // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
