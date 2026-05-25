@@ -51,6 +51,56 @@ function Test-IsHtmlOnlyChange {
     return $true
 }
 
+# ============================================================================
+# Stage 7.25.5: HTML-only fast-path execution (R14 prep).
+# ----------------------------------------------------------------------------
+# Copies the changed HTML files from the source tree into the installed
+# application directory. NO MSI rebuild, NO dotnet publish, NO certificate
+# signing, NO process restart. Takes ~5 seconds vs the ~10-minute cold
+# rebuild path.
+#
+# Install layout is FLAT (no `src/` subdirectory), so the file's leaf name
+# is used at the destination side. Source paths from `git diff` include the
+# `src/` prefix.
+#
+# Process management : customize.exe (PyWebView/WebView2 host) re-reads
+# customize.html each time the user opens the Customize Overlay window from
+# the tray menu. overlay.html is read by OBS browser source; OBS does not
+# auto-refresh, so the user must refresh the browser source in OBS to see
+# changes. Neither requires us to stop/restart any process here.
+# ============================================================================
+function Invoke-HtmlOnlyFastPath {
+    L "=== HTML-ONLY FAST PATH ==="
+
+    $installRoot = "$env:LOCALAPPDATA\MastersFM"
+    if (-not (Test-Path $installRoot)) {
+        L "  FAIL: install root not found at $installRoot"
+        L "  Falling back is NOT done automatically -- run with -FullRebuild to perform a cold install."
+        return $false
+    }
+
+    $changed = git diff --name-only HEAD 2>$null
+    $changedLines = $changed -split "`n" | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() }
+    foreach ($file in $changedLines) {
+        $src = Join-Path $root $file
+        # Install layout is FLAT; strip src/ prefix.
+        $leafName = Split-Path $file -Leaf
+        $dst = Join-Path $installRoot $leafName
+        if (-not (Test-Path $src)) {
+            L "  WARN: source missing: $src"
+            continue
+        }
+        Copy-Item $src $dst -Force
+        L "  copied: $file -> $dst"
+    }
+
+    L ""
+    L "  Reopen Customize Overlay (tray menu) OR refresh OBS browser source to see changes."
+    L ""
+    L "=== HTML-ONLY FAST PATH DONE ==="
+    return $true
+}
+
 L "=== REBUILD START ==="
 
 # Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
