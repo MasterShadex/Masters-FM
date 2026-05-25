@@ -438,7 +438,69 @@
         /* ==========================================================================
            7. SUPERCATS (Stage 7.21 carry; static render this stage,
            collapse/expand JS in Stage 7.29)
+           Option A consolidated: 7 supercats (Start here / Look / Text / Effects
+           / Audio / Layout / Advanced). Each supercat header is a full-width
+           clickable button with inline SVG icon + uppercase label + chevron.
            ========================================================================== */
+        .supercat {
+            margin-bottom: var(--s-2);
+        }
+
+        .supercat-header {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+            padding: var(--s-2) var(--s-3);
+            background: transparent;
+            border: none;
+            color: var(--c-text-secondary);
+            font-family: inherit;
+            font-size: var(--f-size-sm);
+            font-weight: var(--f-weight-semibold);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            text-align: left;
+            border-radius: var(--r-md);
+            transition: color var(--m-dur-fast) var(--m-ease-out),
+                        background var(--m-dur-fast) var(--m-ease-out);
+        }
+
+        .supercat-header:hover {
+            color: var(--c-text-primary);
+            background: var(--c-surface-elevated);
+        }
+
+        .supercat-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            color: currentColor;
+        }
+
+        .supercat-label {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .supercat-chevron {
+            width: 14px;
+            height: 14px;
+            color: var(--c-text-tertiary);
+            transition: transform var(--m-dur-base) var(--m-ease-out);
+            flex-shrink: 0;
+        }
+
+        /* Future state (Stage 7.29): when .supercat.collapsed, the chevron
+           rotates 180deg and the supercat-body collapses to height 0. This
+           stage renders headers statically with no collapse behavior. */
+
+        .supercat-body {
+            padding: var(--s-2) 0;
+            /* Empty this stage; Stage 7.28 fills with .section blocks containing
+               the 141 c-* controls. */
+        }
 
         /* ==========================================================================
            8. SECTIONS (empty shells this stage; Stage 7.28 fills with controls)
