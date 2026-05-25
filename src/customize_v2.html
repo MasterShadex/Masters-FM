@@ -150,11 +150,167 @@
 
         /* ==========================================================================
            3. LAYOUT (top bar + sidebar + preview pane)
+           Grid layout: top bar 60px high; below it, 320px sidebar + fluid preview.
            ========================================================================== */
+        .layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            height: calc(100vh - 60px);   /* minus top bar */
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: var(--c-surface);
+            border-right: 1px solid var(--c-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--s-3);
+        }
+
+        .sidebar-footer {
+            border-top: 1px solid var(--c-border);
+            padding: var(--s-3);
+            font-size: var(--f-size-sm);
+        }
+
+        .preview-pane {
+            background: var(--c-bg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
 
         /* ==========================================================================
            4. TOP BAR + BUTTONS
+           Top bar 60px tall, fixed at top, signature accent line at very top.
            ========================================================================== */
+        .top-bar {
+            height: 60px;
+            background: var(--c-surface);
+            border-bottom: 1px solid var(--c-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--s-5);
+            /* Signature 3px accent line at the very top (Stage 7.17 / 7.21 / 7.24 carry) */
+            border-top: 3px solid var(--c-accent);
+            position: relative;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+        }
+
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--c-accent);
+            border-radius: var(--r-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: var(--f-weight-bold);
+            font-size: var(--f-size-md);
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            line-height: var(--f-leading-tight);
+        }
+
+        .brand-name {
+            font-size: var(--f-size-lg);
+            font-weight: var(--f-weight-semibold);
+            color: var(--c-text-primary);
+        }
+
+        .brand-sub {
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+        }
+
+        .top-bar-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+        }
+
+        /* Button base */
+        .btn {
+            padding: var(--s-2) var(--s-4);
+            border-radius: var(--r-md);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-medium);
+            cursor: pointer;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--c-text-primary);
+            transition: background var(--m-dur-fast) var(--m-ease-out),
+                        border-color var(--m-dur-fast) var(--m-ease-out),
+                        color var(--m-dur-fast) var(--m-ease-out),
+                        box-shadow var(--m-dur-fast) var(--m-ease-out),
+                        transform var(--m-dur-fast) var(--m-ease-out);
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Primary: brand accent, the LOUDEST top-bar action */
+        .btn-primary {
+            background: var(--c-accent);
+            color: #ffffff;
+            box-shadow: 0 2px 12px rgba(124, 58, 237, 0.30);
+        }
+        .btn-primary:hover {
+            background: var(--c-accent-hover);
+            box-shadow: 0 4px 18px rgba(124, 58, 237, 0.40);
+        }
+
+        /* Ghost: neutral outlined for non-destructive secondary action */
+        .btn-ghost {
+            background: transparent;
+            color: var(--c-text-secondary);
+            border-color: var(--c-border);
+        }
+        .btn-ghost:hover {
+            background: var(--c-surface-elevated);
+            color: var(--c-text-primary);
+            border-color: var(--c-border-strong);
+        }
+
+        /* Danger-ghost: outlined red, destructive but visually quiet at rest
+           (Stage 7.24 palette: red-600 #dc2626 + rgba(220,38,38,0.5) border;
+           hover stays at #dc2626 instead of flipping pale) */
+        .btn-danger-ghost {
+            background: transparent;
+            color: var(--c-danger);
+            border-color: rgba(220, 38, 38, 0.5);
+        }
+        .btn-danger-ghost:hover {
+            background: var(--c-danger-hover);
+            border-color: var(--c-danger);
+            color: var(--c-danger);
+        }
 
         /* ==========================================================================
            5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
