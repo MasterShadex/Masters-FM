@@ -517,8 +517,76 @@
         }
 
         /* ==========================================================================
-           8. SECTIONS (empty shells this stage; Stage 7.28 fills with controls)
+           8. CONTROL ROWS (Stage 7.27 minimal; Stage 7.28 expands to all 141)
+           Shared row template: vertical layout with .control-label on top
+           and .control-input-group below. Hover lifts background.
            ========================================================================== */
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: var(--s-2);
+            padding: var(--s-3);
+            border-radius: var(--r-md);
+            margin-bottom: var(--s-1);
+        }
+
+        .control-row:hover {
+            background: var(--c-surface-elevated);
+        }
+
+        .control-label {
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-medium);
+            color: var(--c-text-primary);
+        }
+
+        .control-input-group {
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+        }
+
+        /* Range slider (Stage 7.27: Overall size) */
+        .control-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+            outline: none;
+            cursor: pointer;
+        }
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--c-accent);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        .control-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--c-accent);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .control-value {
+            font-size: var(--f-size-sm);
+            font-weight: var(--f-weight-medium);
+            color: var(--c-accent);
+            min-width: 48px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
 
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
@@ -692,7 +760,17 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-start-body">
+                        <!-- Stage 7.27: Overall size slider (representative range control) -->
+                        <div class="control-row">
+                            <label class="control-label" for="c-master-overall-size">Overall size</label>
+                            <div class="control-input-group">
+                                <input type="range" id="c-master-overall-size" class="control-slider"
+                                       min="50" max="150" step="5" value="100">
+                                <span class="control-value" id="c-master-overall-size-display">100%</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="supercat" id="supercat-look">
@@ -998,6 +1076,57 @@
             if (typeof c.theme === 'string') {
                 console.log('[Stage 7.27] theme would apply:', c.theme, '(visual apply deferred to Stage 7.29)');
             }
+        }
+
+        /* ==========================================================================
+           8. BINDINGS (control event handlers; Stage 7.27 has 4 representative
+           bindings as proof-of-pattern; Stage 7.28 will replicate this 137 more
+           times -- likely as a data-driven SETTINGS_CONFIG array + bindControl
+           dispatcher.
+
+           Binding pattern template:
+             1. DOM ref via getElementById
+             2. Restore from State.config (initial value, if valid type)
+             3. Apply (write CSS var) to match current input value
+             4. Attach event listener:
+                a. Read new value, normalize
+                b. Write to State.config (nested path)
+                c. Set State.isDirty = true
+                d. Apply (CSS var or class toggle)
+                e. previewConfig() for SSE live-broadcast
+           ========================================================================== */
+
+        // Stage 7.27 binding 1 of 4: Overall size (range slider, Start here)
+        function bindOverallSize() {
+            const $input = document.getElementById('c-master-overall-size');
+            const $display = document.getElementById('c-master-overall-size-display');
+            if (!$input) return;
+
+            // 1+2: Restore from State.config.masters.overallSize (if present)
+            const stored = State.config.masters && State.config.masters.overallSize;
+            if (typeof stored === 'number') {
+                $input.value = stored;
+            }
+            $display.textContent = $input.value + '%';
+
+            // 3: Apply CSS var to match current value
+            setMasterVar('--overall-scale', (Number($input.value) / 100).toFixed(2));
+
+            // 4: Listen for changes
+            $input.addEventListener('input', () => {
+                const pct = Number($input.value);
+                $display.textContent = pct + '%';
+                if (!State.config.masters) State.config.masters = {};
+                State.config.masters.overallSize = pct;
+                State.isDirty = true;
+                setMasterVar('--overall-scale', (pct / 100).toFixed(2));
+                previewConfig();
+            });
+        }
+
+        function initBindings() {
+            bindOverallSize();
+            // Stages 7.27 STEPs 6-8 will add: bindTitleColor, bindGlow, bindTheme
         }
 
         /* ==========================================================================
