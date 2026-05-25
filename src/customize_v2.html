@@ -1378,11 +1378,102 @@
         }
 
         /* ==========================================================================
+           9. TOP BAR ACTIONS (Apply to OBS / Reset to Defaults / Preset Manager)
+           ========================================================================== */
+
+        async function onApplyToOBS() {
+            const $btn = document.getElementById('btn-apply-obs');
+            if (!$btn) return;
+
+            $btn.disabled = true;
+            const originalText = $btn.textContent;
+            $btn.textContent = 'Saving...';
+
+            const ok = await saveConfig();
+
+            $btn.textContent = ok ? 'Applied' : 'Failed';
+            setTimeout(() => {
+                $btn.textContent = originalText;
+                $btn.disabled = false;
+            }, 1500);
+        }
+
+        async function onResetDefaults() {
+            if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+
+            // Match current customize.html behavior (line 4530-4537): client-side
+            // reset only -- clear State.config so all controls fall back to their
+            // HTML default attribute values (e.g. range value=100, color #ffffff).
+            // No server reset endpoint; user must click Apply to OBS after to
+            // persist the reset.
+            State.config = {};
+            State.isDirty = true;
+
+            // Re-init bindings to read the freshly-empty State.config (so every
+            // control resets its input value + display + CSS var to defaults).
+            initBindings();
+
+            // Reload iframe to flush any per-element CSS vars set during the
+            // previous session.
+            const $iframe = document.getElementById('preview-iframe');
+            if ($iframe) $iframe.contentWindow.location.reload();
+        }
+
+        function onPresetManager() {
+            // Stage 7.29 will implement the full Preset Manager modal
+            // (save / load / delete / list presets). Stage 7.27 placeholder:
+            alert('Preset Manager: coming in Stage 7.29');
+        }
+
+        /* ==========================================================================
            10. INIT
+           Cache elements, wire top bar buttons, wait for iframe to load, then
+           load config from server, apply CSS variables, and attach control
+           bindings. Order matters: bindings restore their initial state from
+           State.config which is only populated after loadConfig().
            ========================================================================== */
         function init() {
             cacheElements();
             initWelcome();
+
+            // Wire top bar buttons (independent of iframe / config)
+            const $btnApply = document.getElementById('btn-apply-obs');
+            const $btnReset = document.getElementById('btn-reset-defaults');
+            const $btnPreset = document.getElementById('btn-preset-manager');
+            if ($btnApply) $btnApply.addEventListener('click', onApplyToOBS);
+            if ($btnReset) $btnReset.addEventListener('click', onResetDefaults);
+            if ($btnPreset) $btnPreset.addEventListener('click', onPresetManager);
+
+            // Wait for iframe to finish loading the overlay before
+            // attempting any cross-document CSS variable writes. The
+            // iframe's 'load' event fires after its DOM is ready.
+            const $iframe = document.getElementById('preview-iframe');
+            const bootstrap = async () => {
+                await loadConfig();
+                applyConfig();
+                initBindings();
+            };
+            if ($iframe) {
+                // If iframe already loaded (cached), fire bootstrap immediately;
+                // otherwise wait for load event.
+                if ($iframe.contentDocument && $iframe.contentDocument.readyState === 'complete') {
+                    bootstrap();
+                } else {
+                    $iframe.addEventListener('load', bootstrap);
+                    // Fallback for environments where iframe never loads
+                    // (e.g. file:// open with no server): bind without preview.
+                    setTimeout(() => {
+                        if (!State.isDirty && Object.keys(State.config).length === 0) {
+                            // Still empty after 1500ms -> iframe load probably failed.
+                            // Run bindings anyway so the UI is interactive.
+                            bootstrap();
+                        }
+                    }, 1500);
+                }
+            } else {
+                // No iframe element (defensive)
+                bootstrap();
+            }
         }
 
         if (document.readyState === 'loading') {
