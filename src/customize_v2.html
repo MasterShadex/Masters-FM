@@ -11,10 +11,142 @@
            --r-* radii, --m-* motion. Apply-to-OBS contract tokens (5 masters)
            DEFERRED to Stage 7.27.
            ========================================================================== */
+        :root {
+            /* Brand */
+            --c-accent: #7c3aed;
+            --c-accent-hover: #8b4eff;
+            --c-accent-subtle: rgba(124, 58, 237, 0.10);
+
+            /* Surfaces */
+            --c-bg: #1a1a1a;
+            --c-surface: #242424;
+            --c-surface-elevated: #2e2e2e;
+            --c-border: rgba(255, 255, 255, 0.20);
+            --c-border-strong: rgba(255, 255, 255, 0.30);
+
+            /* Text */
+            --c-text-primary: #ffffff;     /* pure white -- labels, important headings */
+            --c-text-secondary: #c0c0c0;   /* readable secondary -- body, supercat names */
+            --c-text-tertiary: #808080;    /* muted -- sub-labels, helper context */
+            --c-text-disabled: #5c5c66;
+
+            /* Semantic */
+            --c-success: #10b981;
+            --c-warning: #f59e0b;
+            --c-danger: #dc2626;           /* red-600 (Stage 7.24 lock) */
+            --c-danger-hover: rgba(220, 38, 38, 0.10);
+
+            /* Spacing scale (4px grid) */
+            --s-0: 0;
+            --s-1: 4px;
+            --s-2: 8px;
+            --s-3: 12px;
+            --s-4: 16px;
+            --s-5: 20px;
+            --s-6: 24px;
+            --s-8: 32px;
+            --s-10: 40px;
+
+            /* Typography */
+            --f-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --f-family-mono: 'Cascadia Mono', 'Consolas', 'Courier New', monospace;
+            --f-size-xs: 11px;
+            --f-size-sm: 12px;
+            --f-size-md: 13px;
+            --f-size-lg: 15px;
+            --f-size-xl: 17px;
+            --f-size-2xl: 20px;
+            --f-weight-regular: 400;
+            --f-weight-medium: 500;
+            --f-weight-semibold: 600;
+            --f-weight-bold: 700;
+            --f-leading-tight: 1.25;
+            --f-leading-normal: 1.5;
+
+            /* Radii */
+            --r-sm: 4px;
+            --r-md: 6px;
+            --r-lg: 8px;
+            --r-xl: 12px;
+            --r-pill: 9999px;
+
+            /* Motion */
+            --m-dur-fast: 150ms;
+            --m-dur-base: 250ms;
+            --m-dur-slow: 400ms;
+            --m-ease-out: cubic-bezier(0.16, 1, 0.3, 1);        /* Win11 ease */
+            --m-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);    /* macOS ease */
+            --m-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
 
         /* ==========================================================================
            2. BASE / RESET / TYPOGRAPHY
            ========================================================================== */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+
+        body {
+            font-family: var(--f-family);
+            font-size: var(--f-size-md);
+            line-height: var(--f-leading-normal);
+            color: var(--c-text-primary);
+            background: var(--c-bg);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow: hidden;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            margin: 0;
+            font-weight: var(--f-weight-semibold);
+            line-height: var(--f-leading-tight);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            color: inherit;
+        }
+
+        input {
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            color: inherit;
+        }
+
+        /* Scrollbar (slim, theme-aware) */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--c-text-tertiary); }
+
+        /* Respect reduced-motion preferences */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
 
         /* ==========================================================================
            3. LAYOUT (top bar + sidebar + preview pane)
