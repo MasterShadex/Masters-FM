@@ -588,6 +588,39 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* Color picker pair (Stage 7.27: Title color) */
+        .control-color {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            background: transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .control-color::-webkit-color-swatch-wrapper { padding: 2px; }
+        .control-color::-webkit-color-swatch {
+            border-radius: var(--r-sm);
+            border: none;
+        }
+
+        .control-hex {
+            flex: 1;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: var(--f-family-mono);
+            font-size: var(--f-size-md);
+            transition: border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-hex:focus {
+            outline: none;
+            border-color: var(--c-accent);
+        }
+
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
            Vertical flex layout: status bar at top + preview content fluid in
@@ -799,7 +832,16 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-text-body">
+                        <!-- Stage 7.27: Title color picker (representative color control) -->
+                        <div class="control-row">
+                            <label class="control-label" for="c-title-color">Title color</label>
+                            <div class="control-input-group">
+                                <input type="color" id="c-title-color-p" class="control-color" value="#ffffff" aria-label="Title color picker">
+                                <input type="text" id="c-title-color" class="control-hex" value="#ffffff" maxlength="7" spellcheck="false" aria-label="Title color hex value">
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="supercat" id="supercat-effects">
@@ -1124,9 +1166,61 @@
             });
         }
 
+        // Stage 7.27 binding 2 of 4: Title color (color picker + hex text, Text)
+        function bindTitleColor() {
+            const $picker = document.getElementById('c-title-color-p');
+            const $hex = document.getElementById('c-title-color');
+            if (!$picker || !$hex) return;
+
+            // 1+2: Restore from State.config.title.color (if valid hex)
+            const stored = State.config.title && State.config.title.color;
+            const isHex = typeof stored === 'string' && /^#[0-9a-f]{6}$/i.test(stored);
+            if (isHex) {
+                $picker.value = stored;
+                $hex.value = stored;
+            }
+            // Sentinel 'var(--accent-master)' values are valid too but the
+            // native color picker can't render them; leave $picker at its
+            // current value and let $hex show whatever the stored string is.
+            else if (typeof stored === 'string' && stored.startsWith('var(')) {
+                $hex.value = stored;
+            }
+
+            // 3: Apply CSS var to match current value
+            setOverlayVar('--title-color', $picker.value);
+
+            // 4a: native color picker -> sync hex + apply + previewConfig
+            $picker.addEventListener('input', () => {
+                const v = $picker.value;
+                $hex.value = v;
+                if (!State.config.title) State.config.title = {};
+                State.config.title.color = v;
+                State.isDirty = true;
+                setOverlayVar('--title-color', v);
+                previewConfig();
+            });
+
+            // 4b: hex text -> validate, sync picker, apply, previewConfig
+            $hex.addEventListener('change', () => {
+                const v = $hex.value.trim();
+                if (/^#[0-9a-f]{6}$/i.test(v)) {
+                    $picker.value = v;
+                    if (!State.config.title) State.config.title = {};
+                    State.config.title.color = v;
+                    State.isDirty = true;
+                    setOverlayVar('--title-color', v);
+                    previewConfig();
+                } else {
+                    // Invalid hex: revert to picker value
+                    $hex.value = $picker.value;
+                }
+            });
+        }
+
         function initBindings() {
             bindOverallSize();
-            // Stages 7.27 STEPs 6-8 will add: bindTitleColor, bindGlow, bindTheme
+            bindTitleColor();
+            // Stages 7.27 STEPs 7-8 will add: bindGlow, bindTheme
         }
 
         /* ==========================================================================
