@@ -621,6 +621,49 @@
             border-color: var(--c-accent);
         }
 
+        /* Toggle switch (Stage 7.27: Glow) */
+        .control-toggle {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .control-toggle input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .control-toggle-track {
+            position: absolute;
+            inset: 0;
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+            transition: background var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-toggle-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: #ffffff;
+            border-radius: 50%;
+            transition: transform var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-toggle input:checked + .control-toggle-track {
+            background: var(--c-accent);
+        }
+        .control-toggle input:checked + .control-toggle-track::after {
+            transform: translateX(16px);
+        }
+        .control-toggle input:focus-visible + .control-toggle-track {
+            box-shadow: 0 0 0 3px var(--c-accent-subtle);
+        }
+
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
            Vertical flex layout: status bar at top + preview content fluid in
@@ -801,6 +844,17 @@
                                 <input type="range" id="c-master-overall-size" class="control-slider"
                                        min="50" max="150" step="5" value="100">
                                 <span class="control-value" id="c-master-overall-size-display">100%</span>
+                            </div>
+                        </div>
+
+                        <!-- Stage 7.27: Glow toggle (representative checkbox/toggle control) -->
+                        <div class="control-row">
+                            <label class="control-label" for="c-master-glow">Glow</label>
+                            <div class="control-input-group">
+                                <label class="control-toggle">
+                                    <input type="checkbox" id="c-master-glow" checked>
+                                    <span class="control-toggle-track"></span>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -1217,10 +1271,48 @@
             });
         }
 
+        // Stage 7.27 binding 3 of 4: Glow (toggle, Start here)
+        function bindGlow() {
+            const $toggle = document.getElementById('c-master-glow');
+            if (!$toggle) return;
+
+            // 1+2: Restore from State.config.masters.glowEnabled (if boolean)
+            const stored = State.config.masters && State.config.masters.glowEnabled;
+            if (typeof stored === 'boolean') {
+                $toggle.checked = stored;
+            }
+
+            // Helper: apply both the master CSS var AND the body.no-glow class
+            // (Stage 7.20.5 mechanism -- the class disables glow effects in
+            // overlay.html via filter:none + text-shadow:none rules)
+            function apply() {
+                const on = $toggle.checked;
+                setMasterVar('--glow-master-enabled', on ? '1' : '0');
+                const f = document.getElementById('preview-iframe');
+                if (f && f.contentDocument && f.contentDocument.body) {
+                    try { f.contentDocument.body.classList.toggle('no-glow', !on); }
+                    catch (e) { /* cross-origin; SSE pipe handles */ }
+                }
+            }
+
+            // 3: Initial apply
+            apply();
+
+            // 4: Listen for changes
+            $toggle.addEventListener('change', () => {
+                if (!State.config.masters) State.config.masters = {};
+                State.config.masters.glowEnabled = $toggle.checked;
+                State.isDirty = true;
+                apply();
+                previewConfig();
+            });
+        }
+
         function initBindings() {
             bindOverallSize();
             bindTitleColor();
-            // Stages 7.27 STEPs 7-8 will add: bindGlow, bindTheme
+            bindGlow();
+            // Stage 7.27 STEP 8 will add: bindTheme
         }
 
         /* ==========================================================================
