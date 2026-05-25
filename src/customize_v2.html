@@ -77,6 +77,20 @@
             --m-ease-out: cubic-bezier(0.16, 1, 0.3, 1);        /* Win11 ease */
             --m-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);    /* macOS ease */
             --m-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+            /* ----------------------------------------------------------------
+               Apply-to-OBS contract variables (Stage 7.27).
+               IMMUTABLE names -- overlay.html consumes these. The Stage 7.25
+               research doc Section 2.4 documented these as the only true
+               cross-file contract. Do NOT rename to the --c-* convention
+               from Stage 7.26; the names are part of the shared shape between
+               customize and overlay.
+               ---------------------------------------------------------------- */
+            --accent-master: #7c3aed;
+            --overall-scale: 1.0;
+            --text-scale: 1.0;
+            --glow-master-enabled: 1;
+            --animations-master-enabled: 1;
         }
 
         /* ==========================================================================
