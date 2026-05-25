@@ -21,6 +21,36 @@ $log = "$logDir\rebuild_ps_$ts.log"
 
 function L($msg) { $t = Get-Date -Format 'HH:mm:ss'; "$t  $msg" | Tee-Object -FilePath $log -Append | Write-Host }
 
+# ============================================================================
+# Stage 7.25.5: HTML-only fast-path detection (R14 prep).
+# ----------------------------------------------------------------------------
+# Returns $true when `git diff --name-only HEAD` shows ONLY changes to
+# `src/customize.html` and/or `src/overlay.html`. In that case the entry-point
+# branch (added below in STEP 3) skips the ~10-minute cold rebuild and just
+# copies the changed HTML files into the install location.
+#
+# Empty diff -> returns $false so the safer default (full rebuild) runs. This
+# preserves existing behavior when the script is invoked against a clean
+# working tree (e.g. after a successful rebuild; the rebuild script always
+# runs unconditionally even with no changes).
+#
+# ANY non-HTML change in the diff (a .cs file, .xaml, .ps1, build script, etc.)
+# also returns $false -- full rebuild handles those correctly.
+# ============================================================================
+function Test-IsHtmlOnlyChange {
+    $changed = git diff --name-only HEAD 2>$null
+    if (-not $changed) { return $false }
+
+    $changedLines = $changed -split "`n" | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() }
+    if ($changedLines.Count -eq 0) { return $false }
+
+    $htmlOnlyFiles = @('src/customize.html', 'src/overlay.html')
+    foreach ($file in $changedLines) {
+        if ($file -notin $htmlOnlyFiles) { return $false }
+    }
+    return $true
+}
+
 L "=== REBUILD START ==="
 
 # Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
