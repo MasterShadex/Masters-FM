@@ -572,7 +572,38 @@
 
         /* ==========================================================================
            10. UTILITIES
+           Sidebar footer link + small a11y helpers.
            ========================================================================== */
+        .footer-link {
+            color: var(--c-text-tertiary);
+            text-decoration: none;
+            font-size: var(--f-size-sm);
+            transition: color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .footer-link:hover {
+            color: var(--c-text-secondary);
+            text-decoration: underline;
+        }
+
+        /* Screen-reader only (Bootstrap convention; for future accessibility
+           labels on icon-only buttons etc.) */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* Focus-visible outline (keyboard accessibility) */
+        :focus-visible {
+            outline: 2px solid var(--c-accent);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
