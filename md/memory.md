@@ -5587,3 +5587,131 @@ apply + Preset Manager + search filter + supercat collapse + master following
 badges + "Use accent" links + dynamic layout-editor wiring + colorList
 multi-swatch + sensitivity reset action. Or operator can pause here -- the
 141-control port is already a useful artifact (cycle 3 of 5).
+
+---
+
+## 2026-05-26 00:35 — Stage 7.29 closed (PASS): 5 features ported, tooltips + Preset Manager deferred to v14.1.0
+
+Stage 7.29 (customize.html rebuild FEATURES PORT, cycle 4 of 5) PASSED operator
+gate. 1 SE5 cycle consumed (strike 1/3) -- badge first-paint diagnostic + fix.
+8 commits between `e023425` (Stage 7.28 closure) and `3d81e9d` (Stage 7.29
+closure).
+
+### What shipped
+
+- **THEMES const (22 themes)** ported verbatim from current customize.html
+  L2302-2567 with nested element-group shape preserved. Theme keys serve as
+  both dropdown option value AND label.
+- **`c-theme` SETTINGS_CONFIG entry** in supercat 'look'; options computed
+  via `Object.keys(THEMES).map(...)` so it always matches.
+- **`applyTheme(themeKey)` + `THEME_KEY_MAP` + `getNestedValue`** -- walks
+  20 mapped nested paths and writes to flat `State.config[c-*-id]`. Unmapped
+  theme leaves (intensity, pulseDuration, glowEnabled, colorMode, barCount,
+  heightMult, barRadius, fillColors, borderThickness, border.enabled,
+  spinDuration) intentionally skipped -- Stage 7.30 will evaluate which need v2 controls.
+- **`bindThemeControl` special-case** in dispatcher -- runs applyTheme on
+  init (if non-default stored) and on change instead of the generic
+  bindSelect flow.
+- **8 master-following badges** (`MASTER_FOLLOWING_IDS` const = c-np-color,
+  c-bars-color, c-platform-color, c-platform-dot, c-title-color,
+  c-artist-color, c-spec-color, c-ts-color). `.master-badge` pill CSS with
+  background bound to `var(--accent-master)` for live colour tracking.
+  updateMasterBadge / unfollowMaster / refreshAllMasterBadges reactive on
+  applyTheme, picker change, reset, and init bootstrap.
+- **`JARGON_MAP` (39 entries)** ported verbatim from current customize.html
+  L3860-3909.
+- **`filterControls` + `initSearchFilter`** -- 80ms debounced substring
+  match on label/id/JARGON_MAP[label]; hides non-matching rows + empty
+  supercats. Ctrl+F focus; Esc clear.
+- **Supercat collapse** -- CSS class + chevron rotate + localStorage
+  `supercat_<id>_collapsed` persistence; first-load defaults all expanded
+  (Start here explicit lock per Stage 7.24).
+- **Polish pass**: Preset Manager alert text 'Stage 7.29' -> 'v14.1.0';
+  4 stale "Stage 7.29 will..." comments refreshed; bindButton comment
+  updated; audit confirms labels white, Reset deep red, supercat headers
+  correct, 150ms animation tokens, no dead code.
+
+### SE5 cycle (strike 1/3): badge first-paint
+
+In standalone mode, `loadConfig` short-circuits via Stage 7.27 origin gate
+so `State.config` stays empty `{}`. `updateMasterBadge` checked
+`State.config[id] === 'var(--accent-master)'` with `undefined !== sentinel`,
+so badges never mounted. Fix: fall back to
+`SETTINGS_CONFIG.find(c => c.id === id).default` when `State.config[id]` is
+`undefined`. Sentinel detection then matches the factory default.
+
+### Smoke test (preview MCP at port 8765)
+
+- URL: http://localhost:8765/customize_v2.html (standing rule)
+- 22 theme dropdown options
+- 120 control rows total (119 from Stage 7.28 + c-theme)
+- 8 master-following badges present on correct IDs (after SE5 fix)
+- Search "color" -> 23 rows across 5 supercats; clear restores 120
+- Supercat collapse toggle + localStorage '1'/'0'
+- Theme Neon Blue: `--accent-master` -> `#00c8ff`; c-card-top/c-font apply;
+  badges preserved (sentinel unchanged)
+- Reset: returns to factory defaults; all 8 badges re-appear
+- Preset Manager alert: "Preset Manager: coming in v14.1.0"
+- Console: 0 errors, 0 warnings
+
+### Closure SHA256
+
+- All 4 protected source files: MATCH Stage 7.28 baseline
+- `src/customize.html`: `7E98377DC97F...` UNCHANGED (Stage 7.24 closure carried)
+- `src/customize_v2.html`: `FFAB016B59A5CF8DA032A155117BDAB06C9DFDAAFAFD9AD1FFC2F669E7249AB6` (2873 lines, +713 net from Stage 7.28)
+- `version.json`: 14.0.0 (no bump)
+
+### Constraints honored (SE1-SE8)
+
+- SE1 per-STEP internal verification: yes (browser MCP eval after each step)
+- SE2 mandatory log inspection: N/A (HTML-only stage; no `_full_rebuild.ps1`)
+- SE3 mandatory diff review after every commit: yes (8 commits, all scope-matched)
+- SE4 no "continue" shortcut at gate: yes (operator gave explicit `PASS`)
+- SE5 mistake handling: 1 diagnosis-fix pair (badge first-paint; strike 1/3)
+- SE6 three-strike escalation: not triggered (1 / 3 strikes used)
+- SE7 no autonomous scope expansion: tooltips + Preset Manager kept OOS per operator decision
+- SE8 protected files SHA256 verified at STEP 0 + STEP 7 + STEP 8: all UNCHANGED
+
+### v14.1.0 backlog (added this stage)
+
+- **Tooltip system**: replace inline help paragraphs (already absent from v2)
+  with hover info icons for jargon-heavy controls. JARGON_MAP entries can
+  drive the tooltip text.
+- **Preset Manager UI**: full modal with save / load / delete / list. Server
+  endpoints already exist in customize.html Stage 7.18 (`/save-preset`,
+  `/list-presets`, etc.) -- only the UI port is needed.
+- **Sensitivity reset action**: wire `c-spec-sensitivity-reset` button to
+  actually reset the corresponding sensitivity slider to default
+  (currently a logging no-op).
+
+### Stage 7.30 evaluate (the SWAP)
+
+- Decide which unmapped theme leaves need v2 SETTINGS_CONFIG controls before
+  swap (13 paths identified in V14_S7_29_REPORT.md).
+- 8 layout vis/lock dynamic rows generated by `rebuildLayoutEditor()` --
+  port if Stage 7.30 swap keeps that behaviour.
+- Update `src/server.js` canonical `/customize` route if it references
+  customize.html by name explicitly.
+
+### Files touched
+
+- `src/customize_v2.html` (+713 net; 2160 -> 2873)
+- `V14_S7_29_LOG.md` (NEW; STEPs 0-6 entries incl. SE5 cycle)
+- `V14_S7_29_REPORT.md` (NEW; closure report)
+- `md/memory.md` (THIS APPEND)
+
+### Rebuild cycle progress
+
+- Stage 7.26 (SCAFFOLD 1/5): DONE
+- Stage 7.27 (APPLY-TO-OBS PORT 2/5): DONE
+- Stage 7.28 (SECTIONS + 141 CONTROLS PORT 3/5): DONE
+- Stage 7.29 (FEATURES PORT 4/5): **DONE THIS STAGE**
+- Stage 7.30 (SWAP 5/5): pending operator approval (the final cycle)
+
+### Next operator action
+
+Operator approves Stage 7.30 (THE SWAP) brief. Likely scope: replace
+`src/customize.html` with the v2 file; archive the old; verify any
+references in build scripts / `_full_rebuild.ps1` / server.js still
+resolve; final post-swap smoke (the real `/customize` route now serves
+the v2 UI).
