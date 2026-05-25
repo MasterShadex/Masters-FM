@@ -1012,13 +1012,14 @@
                 <span class="status-label">Live preview -- updates within 0.5s of any change</span>
             </div>
             <div class="preview-frame" id="preview-frame">
-                <!-- Stage 7.27: iframe pointing at server route `/?preview=1` per current customize.html convention.
-                     PyWebView context: server.js serves the overlay in preview mode.
-                     Browser-direct-open (file://): iframe will fail to load (no server) -- acceptable for
-                     verifying the rest of the UI; full Apply-to-OBS path requires PyWebView. -->
+                <!-- Stage 7.27 + SE5 FIX: iframe src is set LAZILY by JS init() so the
+                     directory-listing trap doesnt fire when standalone-HTTP-served
+                     (e.g. Python http.server on port 8765 returns the directory
+                     listing for /?preview=1 regardless of query string). On the
+                     real server.js (port 4242 -- the canonical host) the JS sets
+                     src='/?preview=1' which renders the live overlay preview. -->
                 <iframe id="preview-iframe"
                         class="preview-frame-iframe"
-                        src="/?preview=1"
                         title="Live overlay preview"
                         scrolling="no"></iframe>
             </div>
@@ -1095,11 +1096,23 @@
            matches src/customize.html DEFAULTS const (nested by section: masters,
            title, glow, art, spectrum, etc.). Stage 7.27 only writes to 4 paths
            via the 4 representative bindings.
+
+           SE5 FIX: EXPECTED_SERVER_ORIGIN + isProductionContext() gate the
+           server-side fetches so standalone HTTP testing (Python static
+           server on port 8765, file://, any other origin) silently skips
+           the fetches that would 404/501 anyway. On the real server.js
+           (port 4242, route /customize after Stage 7.30 swap) all fetches
+           fire normally.
            ========================================================================== */
         const State = {
             config: {},        // nested DEFAULTS-shape; loadConfig populates, bindings mutate
             isDirty: false     // true if any control changed since last Apply to OBS
         };
+
+        const EXPECTED_SERVER_ORIGIN = 'http://127.0.0.1:4242';
+        function isProductionContext() {
+            return location.origin === EXPECTED_SERVER_ORIGIN;
+        }
 
         /* ==========================================================================
            6. CONFIG API (Stage 7.27)
@@ -1110,6 +1123,11 @@
                 doesnt expose this; we try and fall back to empty if missing)
            ========================================================================== */
         async function loadConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 404 noise.
+            // Current customize.html doesnt have a GET endpoint either; on the
+            // real server.js this would also typically 404 (no /get-overlay-config
+            // route exists; we try defensively in case server.js adds one later).
+            if (!isProductionContext()) return {};
             try {
                 const r = await fetch('/get-overlay-config');
                 if (!r.ok) return {};
@@ -1117,13 +1135,16 @@
                 State.config = data || {};
                 return State.config;
             } catch (e) {
-                // Endpoint may not exist; current customize.html doesn't use one.
-                // Empty fallback means controls fall back to DEFAULTS-shape defaults.
                 return {};
             }
         }
 
         async function saveConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
+            if (!isProductionContext()) {
+                console.log('[Stage 7.27] saveConfig skipped (not on real server.js origin; standalone test mode)');
+                return false;
+            }
             try {
                 const r = await fetch('/save-overlay-config', {
                     method: 'POST',
@@ -1134,7 +1155,8 @@
                 State.isDirty = false;
                 return true;
             } catch (e) {
-                console.error('[Stage 7.27] saveConfig failed:', e);
+                // SE5 FIX: demoted from console.error to console.log (non-fatal)
+                console.log('[Stage 7.27] saveConfig failed:', e);
                 return false;
             }
         }
@@ -1142,6 +1164,8 @@
         // Live preview broadcast via SSE (server-side fan-out to the preview
         // iframe). Non-fatal if it fails (e.g. file:// open with no server).
         async function previewConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
+            if (!isProductionContext()) return;
             try {
                 await fetch('/preview-config', {
                     method: 'POST',
@@ -1444,10 +1468,21 @@
             if ($btnReset) $btnReset.addEventListener('click', onResetDefaults);
             if ($btnPreset) $btnPreset.addEventListener('click', onPresetManager);
 
-            // Wait for iframe to finish loading the overlay before
-            // attempting any cross-document CSS variable writes. The
-            // iframe's 'load' event fires after its DOM is ready.
+            // SE5 FIX: iframe src is set lazily here to avoid the directory-
+            // listing trap when standalone-HTTP-served (e.g. Python static
+            // server returns directory listings for `/`). On real server.js
+            // origin: src = '/?preview=1' (canonical preview route). On any
+            // other origin: srcdoc placeholder explains the limitation.
             const $iframe = document.getElementById('preview-iframe');
+            if ($iframe) {
+                if (isProductionContext()) {
+                    $iframe.src = '/?preview=1';
+                } else {
+                    $iframe.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><title>Standalone</title></head><body style="background:#1a1a1a;color:#808080;font-family:system-ui,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;line-height:1.5;"><div><strong style="color:#c0c0c0;display:block;margin-bottom:8px;">Preview unavailable in standalone testing</strong>The live overlay preview needs Master&rsquo;s FM server.js (port 4242) at the canonical /customize route. Stage 7.30 swap will put this file there; the preview will then load automatically.</div></body></html>';
+                }
+            }
+
+            // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
                 await loadConfig();
                 applyConfig();
