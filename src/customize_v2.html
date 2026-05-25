@@ -2496,7 +2496,15 @@
             if (!row) return;
             const grp = row.querySelector('.control-input-group');
             if (!grp) return;
-            const val = State.config[id];
+            // State.config[id] may be undefined on first paint (loadConfig
+            // hasn't populated it yet in standalone mode). Fall back to the
+            // SETTINGS_CONFIG default for that ID so the badge surfaces when
+            // the default itself is the sentinel.
+            let val = State.config[id];
+            if (val === undefined) {
+                const cfg = SETTINGS_CONFIG.find(c => c.id === id);
+                if (cfg) val = cfg.default;
+            }
             const isFollowing = (val === 'var(--accent-master)');
             let badge = grp.querySelector('.master-badge');
             if (isFollowing) {
