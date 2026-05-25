@@ -5132,3 +5132,154 @@ Stage 7.25.5 did NOT clear any v14.1.0 backlog items beyond R14 itself (and even
 Approve Stage 7.26 brief writing (rebuild scaffold). The fast path is now ready to support the iterative customize.html development that Stages 7.26-7.30 will involve.
 
 Stage 7.26 will create `src/customize_v2.html` with the new file structure + design tokens, but NO controls yet -- just shape verification. Per the research doc's 5-stage plan (~15-20h Ruflo + 5 gates), the cycle then layers Apply-to-OBS infrastructure (7.27), all sections + controls (7.28), supercats + search + advanced + welcome banner + master badges + polish (7.29), and finally the swap (7.30).
+
+---
+
+## 2026-05-25 18:30 UTC -- Stage 7.26: customize.html rebuild SCAFFOLD (1 of 5)
+
+**Brief:** First of 5 stages rebuilding customize.html per Stage 7.25 research doc. Creates `src/customize_v2.html` as a NEW file alongside the untouched existing `src/customize.html`. Empty scaffold only: structural skeleton + design tokens + welcome banner JS. 11 STEPs (0-10), 1 operator gate at STEP 9.
+
+**Commits (on `ee227ec` Stage 7.25.5 closure):**
+
+- `ba4323d` STEP 0 -- scaffold design + token system + skeleton plan locked
+- `d3ec7e2` STEP 1 -- customize_v2.html skeleton HTML structure created
+- `4a48cdf` STEP 2 -- design tokens + base / reset / typography
+- `5ae409f` STEP 3 -- layout + top bar + button styles
+- `bcba05a` STEP 4 -- welcome banner + search bar shells (welcome banner JS functional)
+- `08eb0fd` STEP 5 -- 7 supercats with section icons
+- `c1abaf7` STEP 6 -- preview pane shell
+- `a72c49b` STEP 7 -- utilities + visual verification PASS
+- `f442c49` STEP 8 -- rebuild note (skip rebuild per brief Option B)
+- (this entry) STEP 10 -- memory APPEND + scaffold closure (rebuild cycle 1/5)
+
+**Outcome:** PASS at attempt 1. Strikes consumed: **0 / 3**. No SE5 cycles.
+
+### What this stage did
+
+Created `src/customize_v2.html` (864 lines) as the empty scaffold of the rebuild target file. Design language carries tray menu PRINCIPLES (high contrast, accent restraint) NOT literal styling (no 16px font, no big padding). All structural shells in place; ZERO controls / Apply-to-OBS / themes / masters / tooltips / search filter / supercat collapse interactivity. The single functional feature is the welcome banner (dismiss + reshow with localStorage flag).
+
+**Design token system:**
+- `--c-*` colors (16 tokens): pure white #ffffff primary text, near-black #1a1a1a bg, #7c3aed accent, red-600 #dc2626 danger (Stage 7.24 lock)
+- `--s-*` spacing (9-step 0-40px on 4px grid)
+- `--f-*` typography (Segoe UI Variable + 6-step size + 4 weight + 2 leading)
+- `--r-*` radii (5-step sm/md/lg/xl/pill)
+- `--m-*` motion (3 dur + 3 ease: Win11 / macOS / spring)
+- Apply-to-OBS contract tokens (5 masters) DEFERRED to Stage 7.27
+
+**Structural skeleton:**
+- Top bar (60px, 3px purple accent line at very top): FM brand block + 3 buttons (Preset Manager ghost / Reset to Defaults red-ghost #dc2626 with hover staying solid red per Stage 7.24 lock / Apply to OBS primary purple with accent glow)
+- Sidebar (320px wide): welcome banner card with accent border, search bar shell with magnifying glass SVG, 7 supercat headers each with inline SVG icon + uppercase label + chevron-down (start=lightning, look=eye, text=T, effects=sparkles, audio=speaker, layout=grid, advanced=sliders), footer "Show welcome message" link
+- Preview pane (fluid): status bar with green glowing dot + "LIVE PREVIEW..." label + italic placeholder text in middle + hint at bottom
+
+**JS:** WELCOME_SEEN_KEY constant + cacheElements + showWelcome/hideWelcome/initWelcome trio with defensive localStorage try/catch + DOMContentLoaded init.
+
+**CSS architecture:** 10 functional sections (tokens / base / layout / top bar+buttons / welcome / search / supercats / sections empty / preview / utilities).
+
+**JS architecture:** 4 sections (constants / DOM refs / welcome banner / init); future stages will grow this to add Apply-to-OBS, themes, search, supercat interactivity, tooltips, masters etc.
+
+### Constraints honored
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`) SHA256 UNCHANGED end-to-end (S0.2 + S10.1)
+- **`src/customize.html` UNTOUCHED** (CRITICAL; 0-line `git diff ee227ec..HEAD --`); the production customize panel still works exactly as it did at Stage 7.24 closure
+- `src/overlay.html` UNTOUCHED
+- `src/tray_csharp/**` UNTOUCHED (Stage 7.23 tray menu surface preserved)
+- `build_tools/build_msi.py` UNTOUCHED
+- `_full_rebuild.ps1` UNTOUCHED (Stage 7.25.5 fast path preserved; whitelist NOT updated to add customize_v2.html -- intentional, staying scoped)
+- `version.json` UNCHANGED at 14.0.0
+- No new external dependencies (vanilla HTML+CSS+JS only)
+- No em-dash characters in source edits
+- UTF-8 no-BOM throughout
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes (visual verify in browser after each CSS-adding STEP; no JS console errors at each milestone)
+- **SE2** N/A this stage (no rebuild triggered per brief S8 Option B; visual verify via file:// browser open is the verification path)
+- **SE3** mandatory `git diff --stat HEAD~1 HEAD` after every commit: yes (10 commits)
+- **SE4** literal PASS/FAIL at gate: HONORED. Halt sustained across Stop hook firings; PASS received via AskUserQuestion gate-result selection.
+- **SE5** mistake handling: 0 cycles
+- **SE6** three-strike escalation: NOT TRIGGERED
+- **SE7** no autonomous scope expansion: HONORED. Did NOT touch `_full_rebuild.ps1` to add customize_v2.html to the fast-path whitelist (would have been an easy win helping Stages 7.27-7.29 iteration; stayed scoped).
+- **SE8** protected files SHA256 verified at S0.2 + S10.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.26 lands as fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain:
+- Stage 7.17 `718e3e1` (v14.0.0 cut)
+- Stage 7.18 -> Stage 7.21 `9b27a82` (customize redesign cycle CLOSED)
+- Stage 7.22 `2605c75` (tray polish round 1 + autostart force-ON)
+- Stage 7.23 `82d4aa8` (tray polish round 2 high-contrast)
+- Stage 7.24 `0335724` (customize targeted polish)
+- Stage 7.25 `4b645da` (rebuild research)
+- Stage 7.25.5 `ee227ec` (R14 fast-path prep)
+- Stage 7.26 (closure SHA assigned by this commit; scaffold cycle 1/5)
+
+Installed binaries unchanged from prior. Installed `customize.html` is still the Stage 7.24 polish state -- the new `customize_v2.html` is source-tree only.
+
+### Rebuild cycle progress
+
+| Stage | Status |
+|---|---|
+| **7.26 scaffold** | **DONE** |
+| 7.27 Apply-to-OBS port | PENDING (operator approval needed) |
+| 7.28 sections + 141 controls port | PENDING |
+| 7.29 features port | PENDING |
+| 7.30 swap | PENDING |
+
+### Files touched in this stage
+
+- `src/customize_v2.html` (NEW; 864 lines: ~700 CSS + ~140 HTML + ~70 JS)
+- `V14_S7_26_LOG.md` (NEW; force-added past V*_LOG.md gitignore)
+- `V14_S7_26_REPORT.md` (NEW; tracked; 11-section closure report)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-25_S7_26_PRE/` (disk-only safety snapshot of `src/customize.html`; not edited but copied per standard backup practice)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/customize.html` (CRITICAL invariant; verified 0-line diff)
+- `src/overlay.html`, `src/tray_csharp/**`
+- `build_tools/build_msi.py`, `_full_rebuild.ps1`
+- `version.json`
+
+### Lessons learned (Stage 7.26)
+
+- **Visual verification via `file:///...` browser open is the right path for NEW HTML files.** Stage 7.25.5's fast path is scoped to existing customize.html/overlay.html and the build pipeline doesn't bundle new HTML files. So for scaffold-stage iteration on customize_v2.html, opening the file directly in a browser is faster than any rebuild. ~5 sec to drag-drop vs ~10 min for a full rebuild that wouldn't even include the file in the install.
+- **Inline SVG icons require careful path construction.** All 7 supercat icons (lightning, eye, T, sparkles, speaker, grid, sliders) are inline `<svg>` elements with explicit viewBox, fill="none", stroke="currentColor", stroke-width="1.5". Using `color: currentColor` on the icon makes them tint with the supercat-header's hover/active state without needing per-state SVG overrides.
+- **CSS architecture by FUNCTIONAL concern (not HTML element type) reads better.** The 10-section layout (tokens / base / layout / top bar / welcome / search / supercats / sections / preview / utilities) makes a future maintainer's mental model match the file structure. Compare to the current customize.html (24 chapters organized by HTML element class).
+- **The 4-section JS layout (constants / DOM refs / welcome banner / init) leaves clear hooks for Stages 7.27-7.29 to extend.** Each future stage adds a new numbered section without disturbing existing code.
+- **`document.readyState` check in init prevents race condition.** Wrapping `init()` in `if (document.readyState === 'loading') { addEventListener('DOMContentLoaded', init); } else { init(); }` handles both fresh-load and post-load injection cases. Stage 7.21 used `DOMContentLoaded` unconditionally; the new pattern is slightly safer for any future direct-injection scenarios.
+- **`hidden` attribute > `display:none` for boolean-state UI.** The welcome banner uses `[hidden]` attribute set/removed via JS. CSS rule `.welcome-banner[hidden] { display: none; }` makes the attribute the source of truth. Less JS-CSS coupling than toggling a class. Standard HTML5 pattern.
+
+### v14.1.0 candidate backlog (cumulative, with Stage 7.26 carry-forwards)
+
+Stage 7.26 didn't clear any v14.1.0 items beyond delivering the scaffold itself. The other parked items remain:
+
+- Server log rotation policy
+- `_full_rebuild.ps1` HARD ERROR on WPF publish failure (Stage 7.22 SE5 lesson)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- `_full_rebuild.ps1` JS-only fast path (Stage 7.25.5 noted candidate)
+- **NEW Stage 7.26 backlog:** `_full_rebuild.ps1` fast-path whitelist update to include `customize_v2.html` (helpful during 7.27-7.29 iteration; will be obsolete after 7.30 swap when `customize_v2.html` becomes `customize.html`)
+- `var(--error)` token audit (Stage 7.24)
+- customize.html label brightening audit (Stage 7.24)
+- WPF parked items (Stage 7.19.5 cleanups)
+- Mica vs Acrylic infrastructure review
+- `TrayMenu*` token namespace consolidation
+- Version-string consolidation
+- Theme glow color follow-master
+- Real user feedback from shipping to friends
+- Stage 7.25 NEW backlog items: customize.html rebuild (in progress: 1 of 5 complete), THEMES refactor to themes.json (Stage 7.29 consideration), animation token consolidation (Stage 7.29 consideration), initBindings refactor to config-driven loop (Stage 7.28 consideration), unified bindControl dispatcher (Stage 7.28 consideration), Prefs localStorage wrapper (Stage 7.28+ consideration), cached DOM refs els table (Stage 7.28+ consideration)
+
+### Status: HALT. Stage 7.26 closed. v14 still at 14.0.0 (fix-forward via SHA). Scaffold cycle 1 of 5 delivered. Production `customize.html` UNTOUCHED -- still serves at the tray menu's "Customize overlay" item.
+
+### Next operator action
+
+**Path A:** Approve Stage 7.27 brief writing (Apply-to-OBS infrastructure port). Stage 7.27 will:
+- Port config save/load logic
+- Port master CSS variable setProperty pattern (the 5 masters)
+- Port theme apply flow (deep-merge + sentinel substitution)
+- Wire 3-4 representative controls end-to-end to verify Apply-to-OBS works from customize_v2.html
+- Optional: update `_full_rebuild.ps1` fast-path whitelist for customize_v2.html
+
+**Path B:** Pause. The scaffold is a useful artifact even if rebuild stalls -- it's a reference implementation of the new design language + token system. Future stages or refactors can leverage it.
