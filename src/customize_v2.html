@@ -944,6 +944,63 @@
         }
 
         /* ==========================================================================
+           7. APPLY (CSS variable writing helpers + applyConfig)
+           setMasterVar: writes to both customize_v2 :root AND the iframe
+             contentDocument :root (graceful try/catch for cross-origin).
+           setOverlayVar: writes only to the iframe :root (per-element vars
+             dont need to live in customize_v2's own :root).
+           applyConfig: iterates the known Stage 7.27 paths in State.config
+             and invokes the right setter for each. Stage 7.28 will extend
+             this for the other 137 paths.
+           ========================================================================== */
+        function setMasterVar(name, value) {
+            document.documentElement.style.setProperty(name, String(value));
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.documentElement) {
+                try { f.contentDocument.documentElement.style.setProperty(name, String(value)); }
+                catch (e) { /* cross-origin; SSE pipe handles propagation */ }
+            }
+        }
+
+        function setOverlayVar(name, value) {
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.documentElement) {
+                try { f.contentDocument.documentElement.style.setProperty(name, String(value)); }
+                catch (e) { /* cross-origin; SSE pipe handles propagation */ }
+            }
+        }
+
+        function applyConfig() {
+            const c = State.config;
+
+            // 1. masters.overallSize -> --overall-scale (number 50-150 -> 0.5-1.5)
+            if (c.masters && typeof c.masters.overallSize === 'number') {
+                setMasterVar('--overall-scale', (c.masters.overallSize / 100).toFixed(2));
+            }
+
+            // 2. title.color -> --title-color (hex or sentinel string)
+            if (c.title && typeof c.title.color === 'string') {
+                setOverlayVar('--title-color', c.title.color);
+            }
+
+            // 3. masters.glowEnabled -> --glow-master-enabled + body.no-glow
+            if (c.masters && typeof c.masters.glowEnabled === 'boolean') {
+                const on = c.masters.glowEnabled;
+                setMasterVar('--glow-master-enabled', on ? '1' : '0');
+                const f = document.getElementById('preview-iframe');
+                if (f && f.contentDocument && f.contentDocument.body) {
+                    try { f.contentDocument.body.classList.toggle('no-glow', !on); }
+                    catch (e) { /* cross-origin; SSE handles */ }
+                }
+            }
+
+            // 4. theme -> Stage 7.29 wires visual apply; this stage just logs
+            if (typeof c.theme === 'string') {
+                console.log('[Stage 7.27] theme would apply:', c.theme, '(visual apply deferred to Stage 7.29)');
+            }
+        }
+
+        /* ==========================================================================
            10. INIT
            ========================================================================== */
         function init() {
