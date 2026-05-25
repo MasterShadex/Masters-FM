@@ -570,6 +570,17 @@
             font-style: italic;
         }
 
+        /* Stage 7.27: iframe preview pane.
+           Fills the .preview-frame container exactly; no border; transparent
+           background so the preview-frame's padding shows through. */
+        .preview-frame-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: block;
+        }
+
         .preview-hint {
             padding: var(--s-3) var(--s-5);
             font-size: var(--f-size-sm);
@@ -791,7 +802,15 @@
                 <span class="status-label">Live preview -- updates within 0.5s of any change</span>
             </div>
             <div class="preview-frame" id="preview-frame">
-                <div class="preview-placeholder">Preview pane (Stage 7.27 wires this)</div>
+                <!-- Stage 7.27: iframe pointing at server route `/?preview=1` per current customize.html convention.
+                     PyWebView context: server.js serves the overlay in preview mode.
+                     Browser-direct-open (file://): iframe will fail to load (no server) -- acceptable for
+                     verifying the rest of the UI; full Apply-to-OBS path requires PyWebView. -->
+                <iframe id="preview-iframe"
+                        class="preview-frame-iframe"
+                        src="/?preview=1"
+                        title="Live overlay preview"
+                        scrolling="no"></iframe>
             </div>
             <div class="preview-hint">
                 Adjust controls on the left -- preview updates live. Click <strong>Apply to OBS</strong> to save permanently.
