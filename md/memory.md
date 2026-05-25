@@ -5283,3 +5283,157 @@ Stage 7.26 didn't clear any v14.1.0 items beyond delivering the scaffold itself.
 - Optional: update `_full_rebuild.ps1` fast-path whitelist for customize_v2.html
 
 **Path B:** Pause. The scaffold is a useful artifact even if rebuild stalls -- it's a reference implementation of the new design language + token system. Future stages or refactors can leverage it.
+
+---
+
+## 2026-05-25 21:20 UTC -- Stage 7.27: customize.html rebuild APPLY-TO-OBS PORT (2 of 5)
+
+**Brief:** Second of 5 stages rebuilding customize.html per Stage 7.25 research. Adds Apply-to-OBS infrastructure to `src/customize_v2.html` (still alongside untouched `src/customize.html`) plus 4 representative controls end-to-end to prove the binding pattern works before Stage 7.28 scales it. 13 STEPs (0-12), 1 operator gate at STEP 11.
+
+**Commits (on `d1b165e` Stage 7.26 closure):**
+
+- `402ebca` STEP 0 -- Apply-to-OBS architecture + 4 control bindings locked
+- `c91aded` STEP 1 -- 5 master CSS vars added to :root
+- `2ceaced` STEP 2 -- iframe preview pane (overlay /?preview=1 route)
+- `c9341d3` STEP 3 -- config load/save API matching current customize.html pattern
+- `ba322bf` STEP 4 -- applyConfig + setMasterVar + setOverlayVar
+- `afa685d` STEP 5 -- Overall size slider bound (slider type proven)
+- `41633f5` STEP 6 -- Title color picker bound (color type proven)
+- `5e10a96` STEP 7 -- Glow toggle bound (toggle type proven)
+- `4dac51a` STEP 8 -- Theme dropdown bound (select type proven; visual apply Stage 7.29)
+- `75b3b83` STEP 9 -- Apply to OBS + Reset to Defaults + Preset Manager placeholder + init refactor
+- `e652cb5` STEP 10 -- rebuild note (skip cold)
+- `cd743a4` SE5 DIAGNOSIS -- standalone HTTP testing surfaces 404/501/directory-listing
+- `2617d79` SE5 FIX -- silence standalone-HTTP noise (origin gate + lazy iframe)
+- (this entry) STEP 12 -- memory APPEND + Apply-to-OBS port closure (rebuild cycle 2/5)
+
+**Outcome:** PASS at attempt 2 (post-SE5). Strikes consumed: **1 / 3** (one clean SE5 cycle).
+
+### What this stage did
+
+Added the full Apply-to-OBS infrastructure to `customize_v2.html`:
+
+- **5 master CSS variables (IMMUTABLE)** added to `:root` under explicit comment header: `--accent-master`, `--overall-scale`, `--text-scale`, `--glow-master-enabled`, `--animations-master-enabled`. These names are the only true cross-file contract per Stage 7.25 research; overlay.html consumes them.
+- **iframe preview pane** replaces Stage 7.26 placeholder. `src` is set LAZILY by init() based on origin -- production server.js (port 4242) gets `/?preview=1`; standalone testing gets a `srcdoc` placeholder explaining the limitation (eliminates directory-listing trap on Python static).
+- **State object** with `config` (nested DEFAULTS-shape per current customize.html line 2236) + `isDirty` flag.
+- **Config API** matching current customize.html endpoints EXACTLY: POST `/save-overlay-config` (Apply to OBS), POST `/preview-config` (SSE broadcast for live preview), GET `/get-overlay-config` (defensive load; current customize.html doesn't expose this but customize_v2 tries and falls back to empty). SE5 FIX gates these on `isProductionContext()` so standalone testing doesn't fire pointless fetches.
+- **setMasterVar / setOverlayVar / applyConfig** helpers. `setMasterVar` writes to both customize_v2 `:root` AND iframe contentDocument `:root` (with try/catch). `applyConfig` dispatches the 4 known Stage 7.27 paths.
+- **4 representative bindings** (one per widget type, validating the binding pattern):
+  - **Overall size** (range slider, Start here): `c-master-overall-size` -> `masters.overallSize` -> `--overall-scale` via /100
+  - **Title color** (color picker + hex pair, Text): `c-title-color-p` + `c-title-color` -> `title.color` -> `--title-color`
+  - **Glow** (pill toggle, Start here): `c-master-glow` -> `masters.glowEnabled` -> `--glow-master-enabled` + body.no-glow class
+  - **Theme** (select dropdown, Look): `c-theme` (NEW key) -> `config.theme` -> console.log (visual apply Stage 7.29)
+- **Top bar handlers**: `onApplyToOBS` (POST + 1500ms 'Saving...'/'Applied'/'Failed' UX), `onResetDefaults` (client-side reset matching current customize.html line 4530-4537), `onPresetManager` (placeholder alert).
+- **init() refactor**: cacheElements + initWelcome + wire 3 top-bar buttons + lazy iframe src by origin + iframe-load bootstrap (loadConfig + applyConfig + initBindings) + 1500ms fallback timeout for non-server contexts.
+
+Net file change: 864 -> 1521 lines (+657 / -23 across all stage commits).
+
+### SE5 cycle (strike 1 / 3)
+
+**Trigger at gate:** operator flagged 404/501/directory-listing errors visible in DevTools when testing customize_v2.html via Python static server (port 8765 because the real server.js on port 4242 doesn't have a route for customize_v2; serving from install dir doesn't work because server.js uses route handlers not static file serving).
+
+**Diagnosis (commit `cd743a4`):** endpoints DO match current customize.html exactly (re-verified URLs + methods + body shape). Errors only appear because Python static doesn't have the routes. Real server.js does. Standalone testing was the only viable path for this stage.
+
+**Fix (commit `2617d79`):** defensive guards in customize_v2.html:
+1. `EXPECTED_SERVER_ORIGIN` constant + `isProductionContext()` helper
+2. Origin-gated fetches in loadConfig / saveConfig / previewConfig (silent short-circuit on non-production origin)
+3. Lazy iframe `src` set via JS in init() based on origin (with friendly srcdoc placeholder for standalone testing)
+4. `console.error` -> `console.log` demotion for non-fatal saveConfig failures
+
+Operator PASS on re-test. Clean SE5 cycle (diagnose -> fix -> re-test).
+
+### Constraints honored
+
+- All 4 protected source files (`tray.ps1`, `tray_native/tray_native.cs`, `launcher.cs`, `server.js`) SHA256 UNCHANGED end-to-end (S0.2 + S12.1)
+- **`src/customize.html` UNTOUCHED** (CRITICAL; 0-line `git diff d1b165e..HEAD --`)
+- `src/overlay.html` UNTOUCHED
+- `src/tray_csharp/**` UNTOUCHED (Stage 7.23 surface preserved)
+- `build_tools/build_msi.py` UNTOUCHED
+- `_full_rebuild.ps1` UNTOUCHED
+- `version.json` UNCHANGED (14.0.0)
+- Master CSS variable names IMMUTABLE (5 contract names preserved)
+- Config c-* IDs match current customize.html exactly (c-master-overall-size, c-master-glow, c-title-color-p + c-title-color)
+- Apply-to-OBS endpoints + methods + body shape MATCH current customize.html exactly
+- No git push / tag / GitHub interaction
+- No new external dependencies
+- No em-dash characters in source edits
+- UTF-8 no-BOM throughout
+
+### Strict execution rules honored (SE1-SE8)
+
+- **SE1** per-STEP internal verification: yes (visual + DevTools after each STEP)
+- **SE2** N/A (no rebuild this stage per Stage 7.26 precedent)
+- **SE3** mandatory `git diff --stat HEAD~1 HEAD` after every commit: yes (13 commits)
+- **SE4** literal PASS/FAIL at gate: HONORED. Initial FAIL triggered SE5; PASS after fix via AskUserQuestion.
+- **SE5** mistake handling: 1 clean cycle
+- **SE6** three-strike escalation: NOT TRIGGERED (1 / 3)
+- **SE7** no autonomous scope expansion: HONORED. SE5 FIX stayed within customize_v2.html; didn't touch server.js or _full_rebuild.ps1 even though either could have offered alternate solutions.
+- **SE8** protected files SHA256 verified at S0.2 + S12.1: all UNCHANGED
+
+### v14 status
+
+Still **v14.0.0** (no version bump). Stage 7.27 lands as fix-forward via commit SHA suffix.
+
+Cumulative fix-forward chain:
+- Stage 7.17 `718e3e1` -> Stage 7.21 `9b27a82` -> Stage 7.22 `2605c75` -> Stage 7.23 `82d4aa8` -> Stage 7.24 `0335724` -> Stage 7.25 `4b645da` -> Stage 7.25.5 `ee227ec` -> Stage 7.26 `d1b165e` -> Stage 7.27 (closure SHA assigned by this commit)
+
+### Rebuild cycle progress
+
+| Stage | Status |
+|---|---|
+| 7.26 scaffold | DONE |
+| **7.27 Apply-to-OBS port** | **DONE** |
+| 7.28 sections + 141 controls port | PENDING |
+| 7.29 features port (themes / masters / search / supercat collapse / tooltips / badges / Stage 7.24 polish) | PENDING |
+| 7.30 swap | PENDING |
+
+### Files touched in this stage
+
+- `src/customize_v2.html` (+657 / -23 net; 864 -> 1521 lines)
+- `V14_S7_27_LOG.md` (NEW; force-added past V*_LOG.md gitignore)
+- `V14_S7_27_REPORT.md` (NEW; tracked; 12-section closure report)
+- `md/memory.md` (THIS APPEND)
+- `_BACKUPS_2026-05-25_S7_27_PRE/` (disk-only safety snapshot of customize_v2.html pre-stage)
+
+### Files NOT touched
+
+- All 4 protected source files
+- `src/customize.html` (CRITICAL invariant; 0-line diff verified)
+- `src/overlay.html`, `src/tray_csharp/**`
+- `build_tools/build_msi.py`, `_full_rebuild.ps1`
+- `version.json`
+
+### Lessons learned (Stage 7.27)
+
+- **Standalone HTTP testing of a file destined for a route-handled server creates protocol mismatch noise.** Python http.server returns 404 for non-existent files and 501 for non-GET methods; the real server.js has specific route handlers. The new file's fetches inevitably 404/501 in standalone testing. SE5 FIX (origin-gated fetches + lazy iframe srcdoc) cleanly handles this without modifying the protected server.js.
+- **`location.origin`-based context detection is a useful pattern for files that will live behind different servers in different lifecycle phases.** customize_v2.html knows it's "in production" via `location.origin === 'http://127.0.0.1:4242'`; in any other context (standalone testing) it falls back to placeholder behavior. After Stage 7.30 swap renames customize_v2 -> customize, the origin matches and everything fires.
+- **Iframe `src` set lazily via JS avoids HTML-attribute-driven bad UX on test servers.** The Python static server returns directory listings for `/` regardless of query strings; an HTML `src="/?preview=1"` attribute would trigger this. Setting via JS based on origin gives the same production behavior with a clean fallback.
+- **Defensive endpoint URLs (with empty fallback) outshine hard-coded assumptions.** The customize_v2 `loadConfig` tries `GET /get-overlay-config` even though current customize.html doesn't expose this endpoint -- if server.js ever adds it, future stages benefit; if not, empty fallback is fine. Match the canonical path; let absence be a no-op.
+- **4 widget types validate the binding pattern.** Slider (range) + color (pair) + toggle (checkbox-styled) + dropdown (select) cover the four major input families used in customize.html's 141 controls. Stage 7.28 can confidently scale this to ~141 instances via a data-driven SETTINGS_CONFIG array + bindControl dispatcher (which the research doc Section 7.1 already locked).
+
+### v14.1.0 candidate backlog (cumulative)
+
+Stage 7.27 didn't clear v14.1.0 items. Carry-forward:
+
+- Server log rotation policy
+- `_full_rebuild.ps1` HARD ERROR on WPF publish failure (Stage 7.22 SE5 lesson)
+- `_full_rebuild.ps1` VBCSCompiler pre-kill at end-of-script cleanup
+- `_full_rebuild.ps1` JS-only fast path (Stage 7.25.5 noted candidate)
+- `_full_rebuild.ps1` fast-path whitelist update for customize_v2.html (Stage 7.26 noted; obsolete after Stage 7.30 swap)
+- `var(--error)` token audit (Stage 7.24)
+- customize.html label brightening audit (Stage 7.24)
+- WPF parked items (Stage 7.19.5 cleanups)
+- Mica vs Acrylic infrastructure review
+- `TrayMenu*` token namespace consolidation
+- Version-string consolidation
+- Theme glow color follow-master
+- Real user feedback from shipping to friends
+- Stage 7.25 NEW backlog items: customize.html rebuild (in progress: 2 of 5 complete), THEMES refactor (Stage 7.29 consideration), animation token consolidation, initBindings refactor to config-driven loop (Stage 7.28 -- the proven 4-binding pattern this stage), unified bindControl dispatcher (Stage 7.28), Prefs localStorage wrapper, cached DOM refs els table
+
+### Status: HALT. Stage 7.27 closed. v14 still at 14.0.0 (fix-forward via SHA). Apply-to-OBS port cycle 2 of 5 delivered. Production `customize.html` UNTOUCHED.
+
+### Next operator action
+
+**Path A:** Approve Stage 7.28 brief writing (port all 141 controls). Largest stage of the rebuild cycle (~5-6h Ruflo). Will replicate the proven 4-binding pattern via a data-driven SETTINGS_CONFIG array + bindControl dispatcher.
+
+**Path B:** Pause. The Apply-to-OBS port is a useful artifact even if rebuild stalls -- 4 controls + infrastructure is enough to validate the architecture.
