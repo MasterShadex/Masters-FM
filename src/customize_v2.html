@@ -1735,153 +1735,258 @@
                 CSS var write -> applySpecialCases -> previewConfig
            ========================================================================== */
 
-        // Stage 7.27 binding 1 of 4: Overall size (range slider, Start here)
-        function bindOverallSize() {
-            const $input = document.getElementById('c-master-overall-size');
-            const $display = document.getElementById('c-master-overall-size-display');
-            if (!$input) return;
-
-            // 1+2: Restore from State.config.masters.overallSize (if present)
-            const stored = State.config.masters && State.config.masters.overallSize;
-            if (typeof stored === 'number') {
-                $input.value = stored;
+        // Per-control apply helper. Reads config.cssVar / cssTarget / transform
+        // and writes the appropriate CSS variable. Also triggers id-specific
+        // special cases (body class toggles on iframe document) via
+        // applySpecialCases. Reused by applyConfig (STEP 5).
+        function applyControlValue(config, value) {
+            let cssValue = value;
+            if (config.transform === 'percent') {
+                cssValue = (Number(value) / 100).toFixed(2);
+            } else if (config.transform === 'boolToInt') {
+                cssValue = value ? '1' : '0';
+            } else if (config.transform === 'px') {
+                cssValue = String(value) + 'px';
             }
-            $display.textContent = $input.value + '%';
+            // 'identity' or undefined -> pass-through
 
-            // 3: Apply CSS var to match current value
-            setMasterVar('--overall-scale', (Number($input.value) / 100).toFixed(2));
+            if (config.cssVar) {
+                if (config.cssTarget === 'master') {
+                    setMasterVar(config.cssVar, cssValue);
+                } else if (config.cssTarget === 'overlay') {
+                    setOverlayVar(config.cssVar, cssValue);
+                }
+            }
 
-            // 4: Listen for changes
+            applySpecialCases(config, value);
+        }
+
+        // Id-specific special-case handlers. c-master-glow + c-master-animations
+        // toggle iframe body classes (Stage 7.20.5 mechanism). Extensible
+        // without touching the per-type bind functions.
+        function applySpecialCases(config, value) {
+            if (config.id === 'c-master-glow') {
+                toggleIframeBodyClass('no-glow', !value);
+            } else if (config.id === 'c-master-animations') {
+                toggleIframeBodyClass('no-animations', !value);
+            }
+        }
+
+        function toggleIframeBodyClass(className, on) {
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.body) {
+                try { f.contentDocument.body.classList.toggle(className, on); }
+                catch (e) { /* cross-origin; SSE pipe handles */ }
+            }
+        }
+
+        // ---------- 9 per-type bind functions ----------
+
+        function bindSlider(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) {
+                console.warn('[Stage 7.28] bindSlider: missing input', config.id);
+                return;
+            }
+            const $display = document.getElementById(config.id + '-display');
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'number') ? stored : config.default;
+            $input.value = value;
+            if ($display) $display.textContent = value + (config.unit || '');
+            applyControlValue(config, value);
+
             $input.addEventListener('input', () => {
-                const pct = Number($input.value);
-                $display.textContent = pct + '%';
-                if (!State.config.masters) State.config.masters = {};
-                State.config.masters.overallSize = pct;
+                const v = Number($input.value);
+                State.config[config.id] = v;
                 State.isDirty = true;
-                setMasterVar('--overall-scale', (pct / 100).toFixed(2));
+                if ($display) $display.textContent = v + (config.unit || '');
+                applyControlValue(config, v);
                 previewConfig();
             });
         }
 
-        // Stage 7.27 binding 2 of 4: Title color (color picker + hex text, Text)
-        function bindTitleColor() {
-            const $picker = document.getElementById('c-title-color-p');
-            const $hex = document.getElementById('c-title-color');
+        function bindColor(config) {
+            // Reserved/unused in current SETTINGS_CONFIG; behaves like a single picker.
+            const $picker = document.getElementById(config.id);
+            if (!$picker) return;
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string' && isHex6(stored))
+                ? stored
+                : (config.default || '#ffffff');
+            if (isHex6(value)) $picker.value = value;
+            applyControlValue(config, value);
+            $picker.addEventListener('input', () => {
+                const v = $picker.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindColorPair(config) {
+            const $picker = document.getElementById(config.pickerId);
+            const $hex = document.getElementById(config.id);
             if (!$picker || !$hex) return;
 
-            // 1+2: Restore from State.config.title.color (if valid hex)
-            const stored = State.config.title && State.config.title.color;
-            const isHex = typeof stored === 'string' && /^#[0-9a-f]{6}$/i.test(stored);
-            if (isHex) {
-                $picker.value = stored;
-                $hex.value = stored;
-            }
-            // Sentinel 'var(--accent-master)' values are valid too but the
-            // native color picker can't render them; leave $picker at its
-            // current value and let $hex show whatever the stored string is.
-            else if (typeof stored === 'string' && stored.startsWith('var(')) {
-                $hex.value = stored;
-            }
+            const stored = State.config[config.id];
+            const initial = (typeof stored === 'string' && stored.length)
+                ? stored
+                : ((config.default !== undefined && config.default !== null) ? config.default : '#ffffff');
+            // Hex strings sync the picker; sentinel 'var(--accent-master)' or
+            // rgba()/hsla() leave the picker alone (it can't render non-hex)
+            // but appear verbatim in the hex text field.
+            if (isHex6(initial)) $picker.value = initial;
+            $hex.value = initial;
+            applyControlValue(config, initial);
 
-            // 3: Apply CSS var to match current value
-            setOverlayVar('--title-color', $picker.value);
-
-            // 4a: native color picker -> sync hex + apply + previewConfig
             $picker.addEventListener('input', () => {
                 const v = $picker.value;
                 $hex.value = v;
-                if (!State.config.title) State.config.title = {};
-                State.config.title.color = v;
+                State.config[config.id] = v;
                 State.isDirty = true;
-                setOverlayVar('--title-color', v);
+                applyControlValue(config, v);
                 previewConfig();
             });
 
-            // 4b: hex text -> validate, sync picker, apply, previewConfig
             $hex.addEventListener('change', () => {
                 const v = $hex.value.trim();
-                if (/^#[0-9a-f]{6}$/i.test(v)) {
+                if (isHex6(v)) {
                     $picker.value = v;
-                    if (!State.config.title) State.config.title = {};
-                    State.config.title.color = v;
+                    State.config[config.id] = v;
                     State.isDirty = true;
-                    setOverlayVar('--title-color', v);
+                    applyControlValue(config, v);
                     previewConfig();
                 } else {
-                    // Invalid hex: revert to picker value
+                    // Invalid hex: revert hex field to picker value.
                     $hex.value = $picker.value;
                 }
             });
         }
 
-        // Stage 7.27 binding 3 of 4: Glow (toggle, Start here)
-        function bindGlow() {
-            const $toggle = document.getElementById('c-master-glow');
+        function bindToggle(config) {
+            const $toggle = document.getElementById(config.id);
             if (!$toggle) return;
 
-            // 1+2: Restore from State.config.masters.glowEnabled (if boolean)
-            const stored = State.config.masters && State.config.masters.glowEnabled;
-            if (typeof stored === 'boolean') {
-                $toggle.checked = stored;
-            }
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'boolean') ? stored : Boolean(config.default);
+            $toggle.checked = value;
+            applyControlValue(config, value);
 
-            // Helper: apply both the master CSS var AND the body.no-glow class
-            // (Stage 7.20.5 mechanism -- the class disables glow effects in
-            // overlay.html via filter:none + text-shadow:none rules)
-            function apply() {
-                const on = $toggle.checked;
-                setMasterVar('--glow-master-enabled', on ? '1' : '0');
-                const f = document.getElementById('preview-iframe');
-                if (f && f.contentDocument && f.contentDocument.body) {
-                    try { f.contentDocument.body.classList.toggle('no-glow', !on); }
-                    catch (e) { /* cross-origin; SSE pipe handles */ }
-                }
-            }
-
-            // 3: Initial apply
-            apply();
-
-            // 4: Listen for changes
             $toggle.addEventListener('change', () => {
-                if (!State.config.masters) State.config.masters = {};
-                State.config.masters.glowEnabled = $toggle.checked;
+                const v = $toggle.checked;
+                State.config[config.id] = v;
                 State.isDirty = true;
-                apply();
+                applyControlValue(config, v);
                 previewConfig();
             });
         }
 
-        // Stage 7.27 binding 4 of 4: Theme (select dropdown, Look)
-        // Note: Stage 7.27 only proves the binding pattern. Visual theme apply
-        // (deep-merge over DEFAULTS + sentinel substitution) is Stage 7.29.
-        function bindTheme() {
-            const $select = document.getElementById('c-theme');
+        function bindSelect(config) {
+            const $select = document.getElementById(config.id);
             if (!$select) return;
 
-            // 1+2: Restore from State.config.theme (if string)
-            const stored = State.config.theme;
-            if (typeof stored === 'string') {
-                $select.value = stored;
-            }
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : config.default;
+            if (value !== undefined && value !== null) $select.value = value;
+            applyControlValue(config, $select.value);
 
-            // 3: No CSS var to apply this stage (theme is a preset key, not a direct CSS var)
-
-            // 4: Listen for changes
             $select.addEventListener('change', () => {
                 const v = $select.value;
-                State.config.theme = v;
+                State.config[config.id] = v;
                 State.isDirty = true;
-                // Stage 7.29 will deep-merge THEMES[v] over DEFAULTS + applyConfig
-                console.log('[Stage 7.27] theme changed (Stage 7.29 will visually apply):', v);
+                applyControlValue(config, v);
                 previewConfig();
             });
+        }
+
+        function bindText(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : (config.default || '');
+            $input.value = value;
+            applyControlValue(config, value);
+
+            $input.addEventListener('change', () => {
+                const v = $input.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindNumber(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'number') ? stored : config.default;
+            $input.value = value;
+            applyControlValue(config, value);
+
+            $input.addEventListener('input', () => {
+                const v = Number($input.value);
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindColorList(config) {
+            // Spinning-border colors is a comma-separated list. Stage 7.29 may
+            // upgrade to a multi-swatch editor; for now we bind the placeholder
+            // text input and pipe the raw string through.
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : (config.default || '');
+            $input.value = value;
+            $input.addEventListener('change', () => {
+                const v = $input.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                previewConfig();
+            });
+        }
+
+        function bindButton(config) {
+            // c-spec-sensitivity-reset action button. Stage 7.29 wires the
+            // actual reset logic; this stage attaches a no-op click handler
+            // so the dispatcher does not warn on bind.
+            const $btn = document.getElementById(config.id);
+            if (!$btn) return;
+            $btn.addEventListener('click', () => {
+                console.log('[Stage 7.28] button click (Stage 7.29 wires action):', config.id);
+            });
+        }
+
+        // ---------- Dispatcher ----------
+
+        function bindControl(config) {
+            switch (config.type) {
+                case 'slider':    bindSlider(config); break;
+                case 'color':     bindColor(config); break;
+                case 'colorPair': bindColorPair(config); break;
+                case 'toggle':    bindToggle(config); break;
+                case 'select':    bindSelect(config); break;
+                case 'text':      bindText(config); break;
+                case 'number':    bindNumber(config); break;
+                case 'colorList': bindColorList(config); break;
+                case 'button':    bindButton(config); break;
+                default:
+                    console.warn('[Stage 7.28] bindControl: unknown type', config.type, config.id);
+            }
         }
 
         function initBindings() {
-            bindOverallSize();
-            bindTitleColor();
-            bindGlow();
-            bindTheme();
+            for (const cfg of SETTINGS_CONFIG) {
+                bindControl(cfg);
+            }
         }
 
         /* ==========================================================================
