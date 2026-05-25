@@ -880,7 +880,71 @@
         }
 
         /* ==========================================================================
-           4. INIT
+           5. STATE (Stage 7.27)
+           Single source of truth for the current config + dirty flag. Schema
+           matches src/customize.html DEFAULTS const (nested by section: masters,
+           title, glow, art, spectrum, etc.). Stage 7.27 only writes to 4 paths
+           via the 4 representative bindings.
+           ========================================================================== */
+        const State = {
+            config: {},        // nested DEFAULTS-shape; loadConfig populates, bindings mutate
+            isDirty: false     // true if any control changed since last Apply to OBS
+        };
+
+        /* ==========================================================================
+           6. CONFIG API (Stage 7.27)
+           Endpoints match current src/customize.html convention exactly:
+             - POST /save-overlay-config: persisted save (Apply to OBS)
+             - POST /preview-config: live preview broadcast via SSE
+             - GET  /get-overlay-config: defensive load (current customize.html
+                doesnt expose this; we try and fall back to empty if missing)
+           ========================================================================== */
+        async function loadConfig() {
+            try {
+                const r = await fetch('/get-overlay-config');
+                if (!r.ok) return {};
+                const data = await r.json();
+                State.config = data || {};
+                return State.config;
+            } catch (e) {
+                // Endpoint may not exist; current customize.html doesn't use one.
+                // Empty fallback means controls fall back to DEFAULTS-shape defaults.
+                return {};
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const r = await fetch('/save-overlay-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(State.config)
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                State.isDirty = false;
+                return true;
+            } catch (e) {
+                console.error('[Stage 7.27] saveConfig failed:', e);
+                return false;
+            }
+        }
+
+        // Live preview broadcast via SSE (server-side fan-out to the preview
+        // iframe). Non-fatal if it fails (e.g. file:// open with no server).
+        async function previewConfig() {
+            try {
+                await fetch('/preview-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(State.config)
+                });
+            } catch (e) {
+                /* live-preview non-fatal */
+            }
+        }
+
+        /* ==========================================================================
+           10. INIT
            ========================================================================== */
         function init() {
             cacheElements();
