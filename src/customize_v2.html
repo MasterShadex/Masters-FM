@@ -315,10 +315,125 @@
         /* ==========================================================================
            5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
            ========================================================================== */
+        .welcome-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--s-3);
+            background: var(--c-surface-elevated);
+            border: 1px solid var(--c-accent);
+            border-radius: var(--r-lg);
+            padding: var(--s-4);
+            margin-bottom: var(--s-3);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
+        }
+
+        .welcome-banner[hidden] { display: none; }
+
+        .welcome-icon {
+            font-size: 24px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .welcome-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .welcome-body h3 {
+            margin: 0 0 var(--s-1) 0;
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-semibold);
+            color: var(--c-text-primary);
+        }
+
+        .welcome-body p {
+            margin: 0;
+            font-size: var(--f-size-sm);
+            color: var(--c-text-secondary);
+            line-height: var(--f-leading-tight);
+        }
+
+        .welcome-dismiss {
+            background: transparent;
+            border: 1px solid var(--c-border);
+            color: var(--c-text-secondary);
+            padding: var(--s-1) var(--s-3);
+            border-radius: var(--r-md);
+            font-size: var(--f-size-sm);
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background var(--m-dur-fast) var(--m-ease-out),
+                        color var(--m-dur-fast) var(--m-ease-out),
+                        border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .welcome-dismiss:hover {
+            background: var(--c-surface);
+            color: var(--c-text-primary);
+            border-color: var(--c-border-strong);
+        }
 
         /* ==========================================================================
            6. SEARCH BAR (Stage 7.20 carry; shell only this stage)
+           Filter logic (data-search index + JARGON_MAP synonyms + Ctrl+F focus)
+           is Stage 7.29.
            ========================================================================== */
+        .search-bar {
+            position: relative;
+            margin-bottom: var(--s-3);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: var(--s-3);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            color: var(--c-text-tertiary);
+            pointer-events: none;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: var(--s-2) var(--s-8) var(--s-2) var(--s-8);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            line-height: var(--f-leading-tight);
+            transition: border-color var(--m-dur-fast) var(--m-ease-out),
+                        box-shadow var(--m-dur-fast) var(--m-ease-out);
+        }
+        .search-input::placeholder {
+            color: var(--c-text-tertiary);
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--c-accent);
+            box-shadow: 0 0 0 3px var(--c-accent-subtle);
+        }
+
+        .search-clear {
+            position: absolute;
+            right: var(--s-2);
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--c-text-tertiary);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: var(--s-1);
+            border-radius: var(--r-sm);
+            transition: color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .search-clear[hidden] { display: none; }
+        .search-clear:hover { color: var(--c-text-primary); }
 
         /* ==========================================================================
            7. SUPERCATS (Stage 7.21 carry; static render this stage,
@@ -521,18 +636,76 @@
         /* ==========================================================================
            1. CONSTANTS
            ========================================================================== */
+        const WELCOME_SEEN_KEY = 'customize_welcome_seen';
 
         /* ==========================================================================
            2. DOM REFS (cached at init)
+           Stage 7.26 caches only the welcome banner + footer link refs needed by
+           the welcome banner JS. Later stages will extend this with more refs
+           (control inputs, theme grid, supercat bodies, etc.).
            ========================================================================== */
+        let $welcomeBanner = null;
+        let $welcomeDismiss = null;
+        let $showWelcomeAgain = null;
+
+        function cacheElements() {
+            $welcomeBanner = document.getElementById('welcome-banner');
+            $welcomeDismiss = document.getElementById('welcome-dismiss');
+            $showWelcomeAgain = document.getElementById('show-welcome-again');
+        }
 
         /* ==========================================================================
            3. WELCOME BANNER (Stage 7.26 -- only feature this stage)
+           First-time users see the banner; "Got it, hide this" dismisses + persists.
+           Footer "Show welcome message" link reshows it (clears the persistence flag).
+           localStorage access is defensive (try/catch) because the page may be
+           opened from file:// where some browsers restrict localStorage on some
+           protocols, and PyWebView contexts can have intermittent access.
            ========================================================================== */
+        function showWelcome() {
+            if ($welcomeBanner) $welcomeBanner.removeAttribute('hidden');
+        }
+
+        function hideWelcome(persist) {
+            if ($welcomeBanner) $welcomeBanner.setAttribute('hidden', '');
+            if (persist) {
+                try { localStorage.setItem(WELCOME_SEEN_KEY, '1'); }
+                catch (e) { /* localStorage unavailable; non-fatal */ }
+            }
+        }
+
+        function initWelcome() {
+            let seen = false;
+            try { seen = localStorage.getItem(WELCOME_SEEN_KEY) === '1'; }
+            catch (e) { /* localStorage unavailable; treat as not-seen */ }
+            if (!seen) showWelcome();
+
+            if ($welcomeDismiss) {
+                $welcomeDismiss.addEventListener('click', function () { hideWelcome(true); });
+            }
+            if ($showWelcomeAgain) {
+                $showWelcomeAgain.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    try { localStorage.removeItem(WELCOME_SEEN_KEY); }
+                    catch (err) { /* non-fatal */ }
+                    showWelcome();
+                });
+            }
+        }
 
         /* ==========================================================================
            4. INIT
            ========================================================================== */
+        function init() {
+            cacheElements();
+            initWelcome();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
