@@ -621,6 +621,29 @@
             border-color: var(--c-accent);
         }
 
+        /* Stage 7.29: "Following master" badge for 8 accent-following pickers.
+           Appears in .control-input-group when the hex value === 'var(--accent-master)'.
+           Background tracks --accent-master live so the badge colour mirrors
+           the current master accent. Click removes the sentinel + resolves to
+           the concrete hex (handled by unfollowMaster). */
+        .master-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #ffffff;
+            background: var(--accent-master, var(--c-accent));
+            border-radius: var(--r-pill);
+            cursor: pointer;
+            user-select: none;
+            transition: opacity var(--m-dur-fast) var(--m-ease-out);
+            white-space: nowrap;
+        }
+        .master-badge:hover {
+            opacity: 0.85;
+        }
+
         /* Toggle switch (Stage 7.27: Glow) */
         .control-toggle {
             position: relative;
@@ -2170,16 +2193,35 @@
                 State.config[config.id] = v;
                 State.isDirty = true;
                 applyControlValue(config, v);
+                // Stage 7.29: master-following badge updates whenever a colorPair
+                // changes. Master accent change re-evaluates ALL 8; per-element
+                // picker change re-evaluates just that one.
+                if (config.id === 'c-master-accent-color') {
+                    refreshAllMasterBadges();
+                } else {
+                    updateMasterBadge(config.id);
+                }
                 previewConfig();
             });
 
             $hex.addEventListener('change', () => {
                 const v = $hex.value.trim();
+                // Stage 7.29: allow the sentinel string verbatim through the
+                // hex input (e.g. user types `var(--accent-master)` to re-enable
+                // master-following).
                 if (isHex6(v)) {
                     $picker.value = v;
                     State.config[config.id] = v;
                     State.isDirty = true;
                     applyControlValue(config, v);
+                    if (config.id === 'c-master-accent-color') refreshAllMasterBadges();
+                    else updateMasterBadge(config.id);
+                    previewConfig();
+                } else if (v === 'var(--accent-master)') {
+                    State.config[config.id] = v;
+                    State.isDirty = true;
+                    applyControlValue(config, v);
+                    updateMasterBadge(config.id);
                     previewConfig();
                 } else {
                     // Invalid hex: revert hex field to picker value.
@@ -2413,8 +2455,85 @@
             // depends on the new State.config), and broadcast preview.
             refreshControlValues();
             applyConfig();
-            if (typeof refreshAllMasterBadges === 'function') refreshAllMasterBadges();
+            refreshAllMasterBadges();
             previewConfig();
+        }
+
+        /* ==========================================================================
+           8c. MASTER-FOLLOWING BADGES (Stage 7.29)
+           8 accent-following pickers show a "Following master" badge when their
+           State.config[id] === 'var(--accent-master)' (the sentinel that lets
+           the overlay CSS resolve the value to the current master accent at
+           runtime). Click the badge -> unfollowMaster writes the resolved
+           hex into State.config so the picker becomes independent.
+
+           Badge background is bound to var(--accent-master) via CSS so the
+           badge colour live-tracks the master accent without JS work.
+
+           8 IDs verbatim from current customize.html Stage 7.21 STEP 4.
+           ========================================================================== */
+        const MASTER_FOLLOWING_IDS = [
+            'c-np-color',
+            'c-bars-color',
+            'c-platform-color',
+            'c-platform-dot',
+            'c-title-color',
+            'c-artist-color',
+            'c-spec-color',
+            'c-ts-color'
+        ];
+
+        function updateMasterBadge(id) {
+            if (!MASTER_FOLLOWING_IDS.includes(id)) return;
+            const row = document.querySelector('[data-control-id="' + id + '"]');
+            if (!row) return;
+            const grp = row.querySelector('.control-input-group');
+            if (!grp) return;
+            const val = State.config[id];
+            const isFollowing = (val === 'var(--accent-master)');
+            let badge = grp.querySelector('.master-badge');
+            if (isFollowing) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'master-badge';
+                    badge.textContent = 'Following master';
+                    badge.title = 'Click to set an independent color';
+                    badge.addEventListener('click', () => unfollowMaster(id));
+                    grp.appendChild(badge);
+                }
+            } else if (badge) {
+                badge.remove();
+            }
+        }
+
+        function unfollowMaster(id) {
+            // Resolve the current master accent to a concrete hex; fall back to
+            // the SETTINGS_CONFIG default for c-master-accent-color if the CSS
+            // var hasn't been written yet (rare; happens at very early init).
+            let resolved = '';
+            try {
+                resolved = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--accent-master').trim();
+            } catch (e) { /* ignore */ }
+            if (!resolved) {
+                const masterCfg = SETTINGS_CONFIG.find(c => c.id === 'c-master-accent-color');
+                resolved = (masterCfg && masterCfg.default) || '#c060ff';
+            }
+            State.config[id] = resolved;
+            State.isDirty = true;
+            // Find the SETTINGS_CONFIG entry so applyControlValue gets the
+            // right transform / cssVar / cssTarget for this picker.
+            const cfg = SETTINGS_CONFIG.find(c => c.id === id);
+            if (cfg) {
+                refreshControlValues();
+                applyControlValue(cfg, resolved);
+            }
+            updateMasterBadge(id);
+            previewConfig();
+        }
+
+        function refreshAllMasterBadges() {
+            for (const id of MASTER_FOLLOWING_IDS) updateMasterBadge(id);
         }
 
         /* ==========================================================================
@@ -2457,6 +2576,10 @@
 
             refreshControlValues();
             applyConfig();
+            // Stage 7.29: reset returns the 8 accent-following pickers back to
+            // the 'var(--accent-master)' sentinel default -> the badge should
+            // re-appear on every one of them.
+            refreshAllMasterBadges();
             previewConfig();
 
             // Reload iframe to flush any per-element CSS vars from the previous
@@ -2519,6 +2642,11 @@
                 await loadConfig();
                 applyConfig();
                 initBindings();
+                // Stage 7.29: one-shot pass to surface the badges on the 8
+                // accent-following pickers after the DOM rows exist (rendered
+                // by renderAllControls above) and State.config has been
+                // restored (loadConfig populated it).
+                refreshAllMasterBadges();
             };
             if ($iframe) {
                 // If iframe already loaded (cached), fire bootstrap immediately;
