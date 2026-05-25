@@ -1559,21 +1559,193 @@
         }
 
         /* ==========================================================================
-           8. BINDINGS (control event handlers; Stage 7.27 has 4 representative
-           bindings as proof-of-pattern; Stage 7.28 will replicate this 137 more
-           times -- likely as a data-driven SETTINGS_CONFIG array + bindControl
-           dispatcher.
+           7b. RENDERING (Stage 7.28 -- data-driven control HTML generation)
+           renderControl(config) returns the DOM Node for one control row based on
+           config.type. renderAllControls() iterates SETTINGS_CONFIG and appends
+           each rendered row into the correct supercat body (advanced:true -> Advanced).
+           All DOM construction uses createElement (no innerHTML for security).
+           ========================================================================== */
+        function renderControl(config) {
+            const row = document.createElement('div');
+            row.className = 'control-row';
+            row.dataset.controlId = config.id;
+            row.dataset.controlType = config.type;
 
-           Binding pattern template:
+            const label = document.createElement('label');
+            label.className = 'control-label';
+            label.setAttribute('for', config.id);
+            label.textContent = config.label;
+            row.appendChild(label);
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'control-input-group';
+
+            let input;
+            switch (config.type) {
+                case 'slider':    input = createSliderInput(config); break;
+                case 'color':     input = createColorInput(config); break;
+                case 'colorPair': input = createColorPairInputs(config); break;
+                case 'toggle':    input = createToggleInput(config); break;
+                case 'select':    input = createSelectInput(config); break;
+                case 'text':      input = createTextInput(config); break;
+                case 'number':    input = createNumberInput(config); break;
+                case 'colorList': input = createColorListPlaceholder(config); break;
+                case 'button':    input = createButtonInput(config); break;
+                default:
+                    console.warn('[Stage 7.28] unknown control type:', config.type, config.id);
+                    return null;
+            }
+
+            if (input instanceof DocumentFragment) {
+                inputGroup.appendChild(input);
+            } else if (Array.isArray(input)) {
+                input.forEach(el => inputGroup.appendChild(el));
+            } else if (input) {
+                inputGroup.appendChild(input);
+            }
+            row.appendChild(inputGroup);
+            return row;
+        }
+
+        function createSliderInput(config) {
+            const frag = document.createDocumentFragment();
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.id = config.id;
+            slider.className = 'control-slider';
+            slider.min = config.min;
+            slider.max = config.max;
+            slider.step = config.step != null ? config.step : 1;
+            slider.value = config.default;
+            const display = document.createElement('span');
+            display.className = 'control-value';
+            display.id = config.id + '-display';
+            display.textContent = String(config.default) + (config.unit || '');
+            frag.appendChild(slider);
+            frag.appendChild(display);
+            return frag;
+        }
+
+        function createColorInput(config) {
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.id = config.id;
+            picker.className = 'control-color';
+            picker.value = isHex6(config.default) ? config.default : '#ffffff';
+            picker.setAttribute('aria-label', config.label + ' picker');
+            return picker;
+        }
+
+        function createColorPairInputs(config) {
+            const frag = document.createDocumentFragment();
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.id = config.pickerId;
+            picker.className = 'control-color';
+            picker.value = isHex6(config.default) ? config.default : '#ffffff';
+            picker.setAttribute('aria-label', config.label + ' picker');
+
+            const hex = document.createElement('input');
+            hex.type = 'text';
+            hex.id = config.id;
+            hex.className = 'control-hex';
+            hex.value = String(config.default);
+            hex.maxLength = 50;
+            hex.spellcheck = false;
+            hex.setAttribute('aria-label', config.label + ' value');
+
+            frag.appendChild(picker);
+            frag.appendChild(hex);
+            return frag;
+        }
+
+        function createToggleInput(config) {
+            const wrap = document.createElement('label');
+            wrap.className = 'control-toggle';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.id = config.id;
+            if (config.default) cb.checked = true;
+            const track = document.createElement('span');
+            track.className = 'control-toggle-track';
+            wrap.appendChild(cb);
+            wrap.appendChild(track);
+            return wrap;
+        }
+
+        function createSelectInput(config) {
+            const sel = document.createElement('select');
+            sel.id = config.id;
+            sel.className = 'control-select';
+            (config.options || []).forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                sel.appendChild(o);
+            });
+            sel.value = String(config.default);
+            return sel;
+        }
+
+        function createTextInput(config) {
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.id = config.id;
+            inp.className = 'control-text';
+            inp.value = String(config.default || '');
+            if (config.placeholder) inp.placeholder = config.placeholder;
+            return inp;
+        }
+
+        function createNumberInput(config) {
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.id = config.id;
+            inp.className = 'control-number';
+            if (config.min != null) inp.min = config.min;
+            if (config.max != null) inp.max = config.max;
+            if (config.step != null) inp.step = config.step;
+            inp.value = String(config.default);
+            return inp;
+        }
+
+        function createColorListPlaceholder(config) {
+            // Stage 7.28: minimal placeholder rendering for the spinning border
+            // colorList (5-hex array). Operator can paste hex strings comma-separated;
+            // Stage 7.29 may upgrade to a multi-swatch editor.
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.id = config.id;
+            inp.className = 'control-hex';
+            inp.value = Array.isArray(config.default) ? config.default.join(',') : '';
+            inp.spellcheck = false;
+            inp.setAttribute('aria-label', config.label);
+            inp.placeholder = '#hex,#hex,#hex,#hex,#hex';
+            return inp;
+        }
+
+        function createButtonInput(config) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = config.id;
+            btn.className = 'control-action-btn';
+            btn.textContent = config.buttonText || 'Action';
+            return btn;
+        }
+
+        // Helper: hex-color match (6-digit)
+        function isHex6(v) {
+            return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+        }
+
+        /* ==========================================================================
+           8. BINDINGS (Stage 7.28 -- data-driven via SETTINGS_CONFIG + bindControl
+           dispatcher. Replaces the 4 Stage 7.27 hand-wired binds. Pattern:
              1. DOM ref via getElementById
-             2. Restore from State.config (initial value, if valid type)
-             3. Apply (write CSS var) to match current input value
-             4. Attach event listener:
-                a. Read new value, normalize
-                b. Write to State.config (nested path)
-                c. Set State.isDirty = true
-                d. Apply (CSS var or class toggle)
-                e. previewConfig() for SSE live-broadcast
+             2. Restore from State.config[config.id]
+             3. Initial apply via setMasterVar / setOverlayVar
+             4. Listen for input/change -> State.config write -> isDirty true ->
+                CSS var write -> applySpecialCases -> previewConfig
            ========================================================================== */
 
         // Stage 7.27 binding 1 of 4: Overall size (range slider, Start here)
