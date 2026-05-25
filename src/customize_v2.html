@@ -389,9 +389,10 @@
         }
 
         /* ==========================================================================
-           6. SEARCH BAR (Stage 7.20 carry; shell only this stage)
-           Filter logic (data-search index + JARGON_MAP synonyms + Ctrl+F focus)
-           is Stage 7.29.
+           6. SEARCH BAR (Stage 7.20 carry; wired in Stage 7.29 via initSearchFilter)
+           Filter logic: filterControls(query) walks .control-row, matches
+           lowercased query against label / id / JARGON_MAP[label] synonyms,
+           hides non-matches + empty supercats. Ctrl+F focuses input; Esc clears.
            ========================================================================== */
         .search-bar {
             position: relative;
@@ -450,8 +451,7 @@
         .search-clear:hover { color: var(--c-text-primary); }
 
         /* ==========================================================================
-           7. SUPERCATS (Stage 7.21 carry; static render this stage,
-           collapse/expand JS in Stage 7.29)
+           7. SUPERCATS (Stage 7.21 carry; collapse JS wired in Stage 7.29)
            Option A consolidated: 7 supercats (Start here / Look / Text / Effects
            / Audio / Layout / Advanced). Each supercat header is a full-width
            clickable button with inline SVG icon + uppercase label + chevron.
@@ -864,7 +864,7 @@
                     <button class="welcome-dismiss" id="welcome-dismiss" type="button">Got it, hide this</button>
                 </div>
 
-                <!-- Search bar: Stage 7.20 carry, shell only (filter logic in Stage 7.29) -->
+                <!-- Search bar: wired in Stage 7.29 via initSearchFilter (JARGON_MAP + Ctrl+F) -->
                 <div class="search-bar">
                     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="11" cy="11" r="7"></circle>
@@ -875,7 +875,7 @@
                 </div>
 
                 <!-- 7 supercats (Option A consolidated): Start here / Look / Text / Effects / Audio / Layout / Advanced -->
-                <!-- Static render this stage; collapse/expand JS in Stage 7.29 -->
+                <!-- Collapse/expand wired in Stage 7.29 via initSupercatCollapse. -->
 
                 <div class="supercat" id="supercat-start">
                     <button class="supercat-header" data-supercat="start" type="button">
@@ -2326,13 +2326,14 @@
         }
 
         function bindButton(config) {
-            // c-spec-sensitivity-reset action button. Stage 7.29 wires the
-            // actual reset logic; this stage attaches a no-op click handler
-            // so the dispatcher does not warn on bind.
+            // c-spec-sensitivity-reset is the only button in SETTINGS_CONFIG.
+            // The actual reset action (sensitivity slider -> default) is deferred
+            // to v14.1.0 alongside the Preset Manager; this no-op handler keeps
+            // the dispatcher quiet and reserves the click slot.
             const $btn = document.getElementById(config.id);
             if (!$btn) return;
             $btn.addEventListener('click', () => {
-                console.log('[Stage 7.28] button click (Stage 7.29 wires action):', config.id);
+                console.log('[Stage 7.29] button click (action wires in v14.1.0):', config.id);
             });
         }
 
@@ -2766,9 +2767,11 @@
         }
 
         function onPresetManager() {
-            // Stage 7.29 will implement the full Preset Manager modal
-            // (save / load / delete / list presets). Stage 7.27 placeholder:
-            alert('Preset Manager: coming in Stage 7.29');
+            // Stage 7.29 polish: deferred to v14.1.0 per operator decision.
+            // The full Preset Manager modal (save / load / delete / list
+            // presets) will use the existing server endpoints already wired
+            // in customize.html Stage 7.18.
+            alert('Preset Manager: coming in v14.1.0');
         }
 
         /* ==========================================================================
