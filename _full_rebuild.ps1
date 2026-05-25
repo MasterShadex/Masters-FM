@@ -1,4 +1,12 @@
-﻿Set-Location "G:\Project Folder\Master FM"
+﻿# Stage 7.25.5 (R14 prep): -FullRebuild switch forces the full cold rebuild
+# path even when only HTML files have changed. Default behavior with no flags
+# is fast-path-when-eligible, cold-rebuild-otherwise. See the entry-point
+# branch below (after the helper function definitions) for the dispatch.
+param(
+    [switch]$FullRebuild
+)
+
+Set-Location "G:\Project Folder\Master FM"
 $root  = "G:\Project Folder\Master FM"
 $logDir = "$root\logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
@@ -99,6 +107,21 @@ function Invoke-HtmlOnlyFastPath {
     L ""
     L "=== HTML-ONLY FAST PATH DONE ==="
     return $true
+}
+
+# ============================================================================
+# Stage 7.25.5: HTML-only fast-path entry-point branch (R14 prep).
+# ----------------------------------------------------------------------------
+# When the working tree shows ONLY src/customize.html and/or src/overlay.html
+# changes vs HEAD, skip the ~10-minute cold rebuild and just copy the HTML
+# files into the install location (~5 seconds total). The -FullRebuild
+# switch (declared in the param() block at the top of the file) overrides
+# this and forces the full cold rebuild even on HTML-only changes -- use
+# it when you suspect the fast path is missing something.
+# ============================================================================
+if (-not $FullRebuild -and (Test-IsHtmlOnlyChange)) {
+    Invoke-HtmlOnlyFastPath | Out-Null
+    exit 0
 }
 
 L "=== REBUILD START ==="
