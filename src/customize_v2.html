@@ -998,6 +998,287 @@
         const WELCOME_SEEN_KEY = 'customize_welcome_seen';
 
         /* ==========================================================================
+           1a. THEMES (Stage 7.29 -- 22 themes ported verbatim from current
+           src/customize.html L2302-2567). Theme keys serve as both dropdown
+           option value AND label. Nested shape: top-level element groups
+           (font / masters / card / border / glow / nowPlaying / bars / title /
+           artist / spectrum / progressBar / timestamps). Leaf values can be
+           hex strings, rgba()/CSS literals, the sentinel 'var(--accent-master)',
+           arrays (border.colors, progressBar.fillColors), or numbers.
+
+           applyTheme() walks each nested path through THEME_KEY_MAP (defined
+           below SETTINGS_CONFIG) to write into the flat State.config[c-*-id]
+           shape used by Stage 7.28 binds. Unmapped paths log + skip (e.g.
+           progressBar.fillColors which has no v2 control yet).
+           ========================================================================== */
+        const THEMES = {
+            'Rainbow (Default)': {},  // just the raw DEFAULTS
+            'Neon Blue': {
+                font: 'Space Grotesk',
+                masters: { accentColor: '#00c8ff' },
+                card: { backgroundTop: 'rgba(0,8,32,0.99)', backgroundBottom: 'rgba(0,4,20,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#00c8ff', '#0080ff', '#4040ff', '#00ffcc', '#0060cc'] },
+                glow: { color1: '#00c8ff', color2: '#0040ff' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#0060cc', '#00c8ff', '#0080ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Hot Pink': {
+                font: 'Poppins',
+                masters: { accentColor: '#ff4499' },
+                card: { backgroundTop: 'rgba(32,0,18,0.99)', backgroundBottom: 'rgba(20,0,12,0.99)', backgroundAngle: 135 },
+                border: { colors: ['#ff0066', '#ff4499', '#ff0099', '#cc0055', '#ff66aa'] },
+                glow: { color1: '#ff0066', color2: '#cc0044' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#cc0044', '#ff4499', '#ff0077'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Retro Orange': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff9900' },
+                card: { backgroundTop: 'rgba(28,10,0,0.99)', backgroundBottom: 'rgba(16,6,0,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#ff6600', '#ff9900', '#ffcc00', '#ff4400', '#ff8800'] },
+                glow: { color1: '#ff6600', color2: '#ff9900' },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 8 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#cc4400', '#ff8800', '#ffcc00'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Synthwave': {
+                font: 'Raleway',
+                masters: { accentColor: '#ff00cc' },
+                card: { backgroundTop: 'rgba(10,0,30,0.99)', backgroundBottom: 'rgba(5,0,20,0.99)', backgroundAngle: 145 },
+                border: { colors: ['#ff00aa', '#aa00ff', '#ff00ff', '#cc00cc', '#ff44cc'] },
+                glow: { color1: '#ff00aa', color2: '#8800ff', intensity: 1.4, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 7 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ff00aa', glowSize: 25 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'rainbow', barCount: 60, heightMult: 1.2 },
+                progressBar: { fillColors: ['#8800ff', '#ff00aa', '#aa00ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Forest Green': {
+                font: 'DM Sans',
+                masters: { accentColor: '#00ff88' },
+                card: { backgroundTop: 'rgba(0,14,6,0.99)', backgroundBottom: 'rgba(0,8,4,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#00ff88', '#00cc66', '#44ff99', '#00aa55', '#22ddaa'] },
+                glow: { color1: '#00ff88', color2: '#00aa44' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 45 },
+                progressBar: { fillColors: ['#00aa44', '#00ff88', '#44ffaa'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Crimson': {
+                font: 'Montserrat',
+                masters: { accentColor: '#ff4422' },
+                card: { backgroundTop: 'rgba(28,0,0,0.99)', backgroundBottom: 'rgba(16,0,0,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff2200', '#ff6600', '#ff0000', '#cc2200', '#ff4400'] },
+                glow: { color1: '#ff2200', color2: '#cc0000', intensity: 1.2 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 800 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', heightMult: 1.1 },
+                progressBar: { fillColors: ['#aa0000', '#ff2200', '#ff6600'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Midnight': {
+                font: 'Nunito',
+                masters: { accentColor: '#8899cc' },
+                card: { backgroundTop: 'rgba(2,4,18,0.99)', backgroundBottom: 'rgba(1,2,10,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#6688aa', '#4466cc', '#8899bb', '#335588', '#aabbcc'] },
+                glow: { color1: '#4466cc', color2: '#224488', intensity: 0.7, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 40, heightMult: 0.8 },
+                progressBar: { fillColors: ['#224488', '#4466cc', '#8899bb'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Cherry Blossom': {
+                font: 'Outfit',
+                masters: { accentColor: '#ff88bb' },
+                card: { backgroundTop: 'rgba(30,2,14,0.99)', backgroundBottom: 'rgba(18,0,10,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#ff88bb', '#ffaacc', '#ff66aa', '#ff99bb', '#ffccdd'] },
+                glow: { color1: '#ff88bb', color2: '#ff44aa', intensity: 0.9 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 4 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barRadius: 6 },
+                progressBar: { fillColors: ['#ff44aa', '#ff88bb', '#ffaacc'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Minimal White': {
+                font: 'Inter',
+                masters: { accentColor: '#aaaacc' },
+                card: { backgroundTop: 'rgba(16,16,20,0.99)', backgroundBottom: 'rgba(8,8,12,0.99)', backgroundAngle: 180, borderThickness: 2 },
+                border: { enabled: true, spinDuration: 8, colors: ['#555566', '#888899', '#aaaacc', '#666677', '#999988'] },
+                glow: { enabled: false },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 35, heightMult: 0.75 },
+                progressBar: { fillColors: ['#555566', '#888899', '#aaaacc'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            // v8.0.1: 12 new visual themes
+            'Vaporwave': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff71ce' },
+                card: { backgroundTop: 'rgba(28,4,52,0.99)', backgroundBottom: 'rgba(8,2,32,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff71ce', '#01cdfe', '#b967ff', '#fffb96', '#05ffa1'] },
+                glow: { color1: '#ff71ce', color2: '#01cdfe', intensity: 1.4, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 6 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ff71ce', glowSize: 22 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#01cdfe', glowSize: 14 },
+                spectrum: { colorMode: 'rainbow', barCount: 55, heightMult: 1.1 },
+                progressBar: { fillColors: ['#01cdfe', '#ff71ce', '#b967ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Aurora': {
+                font: 'DM Sans',
+                masters: { accentColor: '#22ddff' },
+                card: { backgroundTop: 'rgba(2,12,28,0.99)', backgroundBottom: 'rgba(0,4,16,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#00ff88', '#22ddff', '#aa66ff', '#33cc99', '#66ddff'] },
+                glow: { color1: '#22ddff', color2: '#aa66ff', intensity: 1.5, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#22ddff', glowSize: 22 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 60, heightMult: 1.15 },
+                progressBar: { fillColors: ['#22ddff', '#aa66ff', '#00ff88'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Royal Purple': {
+                font: 'Playfair Display',
+                masters: { accentColor: '#9b51e0' },
+                card: { backgroundTop: 'rgba(20,4,40,0.99)', backgroundBottom: 'rgba(10,2,22,0.99)', backgroundAngle: 148 },
+                border: { colors: ['#9b51e0', '#d4a017', '#7b1fa2', '#ffd966', '#a855f7'] },
+                glow: { color1: '#9b51e0', color2: '#ffd966', intensity: 1.3, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 5 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#9b51e0', glowSize: 18 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 50 },
+                progressBar: { fillColors: ['#7b1fa2', '#9b51e0', '#ffd966'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Coffee': {
+                font: 'Lato',
+                masters: { accentColor: '#d2a679' },
+                card: { backgroundTop: 'rgba(28,18,10,0.99)', backgroundBottom: 'rgba(16,10,6,0.99)', backgroundAngle: 145 },
+                border: { colors: ['#a47148', '#d2a679', '#7a4f2b', '#e6c79c', '#8b5a2b'] },
+                glow: { color1: '#a47148', color2: '#d2a679', intensity: 0.9, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 40, heightMult: 0.9 },
+                progressBar: { fillColors: ['#7a4f2b', '#a47148', '#d2a679'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Volcano': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff6600' },
+                card: { backgroundTop: 'rgba(36,4,0,0.99)', backgroundBottom: 'rgba(8,0,0,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#ff3300', '#ffcc00', '#ff6600', '#ff0000', '#ff9900'] },
+                glow: { color1: '#ff3300', color2: '#ffcc00', intensity: 1.6, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 800, glowEnabled: true, glowColor: '#ff3300', glowSize: 24 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 55, heightMult: 1.2 },
+                progressBar: { fillColors: ['#cc1100', '#ff6600', '#ffcc00'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Ice Crystal': {
+                font: 'Space Grotesk',
+                masters: { accentColor: '#a0e6ff' },
+                card: { backgroundTop: 'rgba(4,16,32,0.99)', backgroundBottom: 'rgba(0,8,20,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#a0e6ff', '#c8f0ff', '#80ccff', '#e6f7ff', '#66b3ff'] },
+                glow: { color1: '#a0e6ff', color2: '#80ccff', intensity: 1.2, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#a0e6ff', glowSize: 20 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 45, heightMult: 0.95 },
+                progressBar: { fillColors: ['#66b3ff', '#a0e6ff', '#e6f7ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Galaxy': {
+                font: 'Raleway',
+                masters: { accentColor: '#b388ff' },
+                card: { backgroundTop: 'rgba(4,2,20,0.99)', backgroundBottom: 'rgba(0,0,8,0.99)', backgroundAngle: 135 },
+                border: { colors: ['#7c4dff', '#3d5afe', '#e040fb', '#651fff', '#b388ff'] },
+                glow: { color1: '#7c4dff', color2: '#e040fb', intensity: 1.5, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 8 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#7c4dff', glowSize: 25 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'rainbow', barCount: 65, heightMult: 1.0 },
+                progressBar: { fillColors: ['#3d5afe', '#7c4dff', '#e040fb'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Sunset': {
+                font: 'Poppins',
+                masters: { accentColor: '#ff6e7f' },
+                card: { backgroundTop: 'rgba(40,12,32,0.99)', backgroundBottom: 'rgba(20,4,16,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff6e7f', '#bfe9ff', '#ff9966', '#ffcc66', '#ff6e7f'] },
+                glow: { color1: '#ff6e7f', color2: '#ff9966', intensity: 1.3, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#ff6e7f', glowSize: 18 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 50 },
+                progressBar: { fillColors: ['#ff6e7f', '#ff9966', '#ffcc66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Lime': {
+                font: 'Manrope',
+                masters: { accentColor: '#aaff00' },
+                card: { backgroundTop: 'rgba(8,20,4,0.99)', backgroundBottom: 'rgba(2,12,2,0.99)', backgroundAngle: 148 },
+                border: { colors: ['#aaff00', '#ccff33', '#88ff00', '#eeff66', '#66cc00'] },
+                glow: { color1: '#aaff00', color2: '#ccff33', intensity: 1.2, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 50, heightMult: 1.0 },
+                progressBar: { fillColors: ['#66cc00', '#aaff00', '#eeff66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Vintage Sepia': {
+                font: 'Playfair Display',
+                masters: { accentColor: '#c9a96e' },
+                card: { backgroundTop: 'rgba(28,20,12,0.99)', backgroundBottom: 'rgba(16,10,4,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#c9a96e', '#a07e4f', '#e0c896', '#7a5a32', '#bf9560'] },
+                glow: { color1: '#c9a96e', color2: '#a07e4f', intensity: 0.8, pulseDuration: 6 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 7 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 38, heightMult: 0.85 },
+                progressBar: { fillColors: ['#7a5a32', '#c9a96e', '#e0c896'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Cyber Matrix': {
+                font: 'Oxanium',
+                masters: { accentColor: '#00ff41' },
+                card: { backgroundTop: 'rgba(0,12,4,0.99)', backgroundBottom: 'rgba(0,4,2,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#00ff41', '#00cc33', '#33ff66', '#008f25', '#22dd55'] },
+                glow: { color1: '#00ff41', color2: '#33ff66', intensity: 1.6, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 9 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#00ff41', glowSize: 22 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#33ff66', glowSize: 12 },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 55, heightMult: 1.1 },
+                progressBar: { fillColors: ['#008f25', '#00ff41', '#33ff66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Dreamcore': {
+                font: 'Manrope',
+                masters: { accentColor: '#d9b3ff' },
+                card: { backgroundTop: 'rgba(20,12,32,0.99)', backgroundBottom: 'rgba(10,6,18,0.99)', backgroundAngle: 152 },
+                border: { colors: ['#ffb3d9', '#b3d9ff', '#d9b3ff', '#ffd9b3', '#b3ffd9'] },
+                glow: { color1: '#ffb3d9', color2: '#d9b3ff', intensity: 1.1, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ffb3d9', glowSize: 20 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#b3d9ff', glowSize: 10 },
+                spectrum: { colorMode: 'rainbow', barCount: 55, heightMult: 1.0 },
+                progressBar: { fillColors: ['#ffb3d9', '#d9b3ff', '#b3d9ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            }
+        };
+
+        /* ==========================================================================
            1b. SETTINGS_CONFIG (Stage 7.28)
            Single source of truth for all 141 controls. One entry per LOGICAL
            control (color picker + hex text input share one entry of type
@@ -1027,6 +1308,13 @@
             { id: 'c-overlay-opacity', type: 'slider', supercat: 'start', label: 'Overlay opacity',
               cssVar: '--overlay-opacity', cssTarget: 'overlay', default: 1.0,
               min: 0.05, max: 1, step: 0.05, unit: '', transform: 'identity' },
+
+            // ===== THEME (supercat: look) -- Stage 7.29 special-case via bindThemeControl =====
+            { id: 'c-theme', type: 'select', supercat: 'look', label: 'Theme',
+              cssTarget: null, default: 'Rainbow (Default)',
+              // Stage 7.29: options computed from THEMES const at render time.
+              // Each theme key serves as both option value AND label.
+              options: Object.keys(THEMES).map(k => ({ value: k, label: k })) },
 
             // ===== FONT (supercat: look) =====
             { id: 'c-font', type: 'select', supercat: 'look', label: 'Font',
@@ -2000,9 +2288,36 @@
             });
         }
 
+        // Stage 7.29: theme dropdown is a select but it triggers applyTheme()
+        // instead of the plain bindSelect flow (which only writes State.config[id]).
+        function bindThemeControl(config) {
+            const $select = document.getElementById(config.id);
+            if (!$select) return;
+
+            // Restore initial value from State.config or default.
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string' && THEMES[stored]) ? stored : config.default;
+            if (value !== undefined && value !== null) $select.value = value;
+
+            // Initial apply: if a non-default theme is stored, run applyTheme
+            // so the rest of State.config matches the stored theme's keys.
+            if (value && value !== 'Rainbow (Default)' && THEMES[value]) {
+                applyTheme(value);
+            }
+
+            $select.addEventListener('change', () => {
+                applyTheme($select.value);
+            });
+        }
+
         // ---------- Dispatcher ----------
 
         function bindControl(config) {
+            // Stage 7.29: special-case the theme dropdown so picking a theme
+            // applies all its nested keys via applyTheme instead of just
+            // writing State.config['c-theme'].
+            if (config.id === 'c-theme') return bindThemeControl(config);
+
             switch (config.type) {
                 case 'slider':    bindSlider(config); break;
                 case 'color':     bindColor(config); break;
@@ -2022,6 +2337,84 @@
             for (const cfg of SETTINGS_CONFIG) {
                 bindControl(cfg);
             }
+        }
+
+        /* ==========================================================================
+           8b. THEMES (Stage 7.29 -- apply algorithm + nested-to-flat translator)
+           THEME_KEY_MAP maps each nested theme path (e.g. 'card.backgroundTop')
+           to the flat SETTINGS_CONFIG c-* DOM ID. applyTheme walks the table,
+           reads each leaf via getNestedValue, and writes into State.config.
+           Unmapped paths (e.g. progressBar.fillColors, glow.intensity) are
+           logged once and skipped -- they have no v2 control yet.
+
+           Sentinel substitution is automatic: the literal string
+           'var(--accent-master)' lands in State.config[id]; applyControlValue
+           writes it to the per-element CSS var; the overlay's CSS engine
+           resolves var() at runtime against --accent-master.
+           ========================================================================== */
+        const THEME_KEY_MAP = {
+            'font':                         'c-font',
+            'masters.accentColor':          'c-master-accent-color',
+            'card.backgroundTop':           'c-card-top',
+            'card.backgroundBottom':        'c-card-bot',
+            'card.backgroundAngle':         'c-card-angle',
+            'border.colors':                'c-border-colors',
+            'glow.color1':                  'c-glow-c1',
+            'glow.color2':                  'c-glow-c2',
+            'nowPlaying.color':             'c-np-color',
+            'nowPlaying.letterSpacing':     'c-np-spacing',
+            'bars.color':                   'c-bars-color',
+            'title.color':                  'c-title-color',
+            'title.fontWeight':             'c-title-weight',
+            'title.glowColor':              'c-title-glow-color',
+            'title.glowSize':               'c-title-glow-size',
+            'artist.color':                 'c-artist-color',
+            'artist.glowColor':             'c-artist-glow-color',
+            'artist.glowSize':              'c-artist-glow-size',
+            'spectrum.color':               'c-spec-color',
+            'timestamps.color':             'c-ts-color'
+            // Unmapped (intentionally; v2 SETTINGS_CONFIG has no matching ID):
+            //   glow.intensity, glow.pulseDuration, glow.enabled,
+            //   title.glowEnabled, artist.glowEnabled,
+            //   spectrum.colorMode, spectrum.barCount, spectrum.heightMult, spectrum.barRadius,
+            //   progressBar.fillColors,
+            //   card.borderThickness, border.enabled, border.spinDuration
+            // Stage 7.30 swap will re-evaluate which of these need v2 controls.
+        };
+
+        function getNestedValue(obj, path) {
+            return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+        }
+
+        function applyTheme(themeKey) {
+            const theme = THEMES[themeKey];
+            if (theme === undefined) {
+                console.warn('[Stage 7.29] applyTheme: unknown theme', themeKey);
+                return;
+            }
+
+            // Remember the selection itself.
+            State.config['c-theme'] = themeKey;
+            State.isDirty = true;
+
+            // Walk THEME_KEY_MAP and write each mapped leaf into State.config.
+            // 'Rainbow (Default)' is the empty object -- skips every path.
+            for (const [nestedPath, flatId] of Object.entries(THEME_KEY_MAP)) {
+                const value = getNestedValue(theme, nestedPath);
+                if (value === undefined) continue;
+                // border.colors and similar arrays -> comma-separated for the
+                // colorList placeholder text input.
+                const writable = Array.isArray(value) ? value.join(',') : value;
+                State.config[flatId] = writable;
+            }
+
+            // Re-sync the UI to the new State.config, re-apply CSS variables,
+            // re-evaluate the master-following badges (sentinel detection
+            // depends on the new State.config), and broadcast preview.
+            refreshControlValues();
+            applyConfig();
+            if (typeof refreshAllMasterBadges === 'function') refreshAllMasterBadges();
+            previewConfig();
         }
 
         /* ==========================================================================
