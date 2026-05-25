@@ -664,6 +664,28 @@
             box-shadow: 0 0 0 3px var(--c-accent-subtle);
         }
 
+        /* Select dropdown (Stage 7.27: Theme) */
+        .control-select {
+            flex: 1;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            cursor: pointer;
+            transition: border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-select:focus {
+            outline: none;
+            border-color: var(--c-accent);
+        }
+        .control-select option {
+            background: var(--c-surface);
+            color: var(--c-text-primary);
+        }
+
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
            Vertical flex layout: status bar at top + preview content fluid in
@@ -871,7 +893,21 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-look-body">
+                        <!-- Stage 7.27: Theme dropdown (representative select control;
+                             Stage 7.29 replaces with full theme-grid + visual apply) -->
+                        <div class="control-row">
+                            <label class="control-label" for="c-theme">Theme</label>
+                            <div class="control-input-group">
+                                <select id="c-theme" class="control-select">
+                                    <option value="rainbow">Rainbow (Default)</option>
+                                    <option value="neon-blue">Neon Blue</option>
+                                    <option value="hot-pink">Hot Pink</option>
+                                    <!-- Stage 7.29 will inject the full 22-theme list from THEMES const -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="supercat" id="supercat-text">
@@ -1308,11 +1344,37 @@
             });
         }
 
+        // Stage 7.27 binding 4 of 4: Theme (select dropdown, Look)
+        // Note: Stage 7.27 only proves the binding pattern. Visual theme apply
+        // (deep-merge over DEFAULTS + sentinel substitution) is Stage 7.29.
+        function bindTheme() {
+            const $select = document.getElementById('c-theme');
+            if (!$select) return;
+
+            // 1+2: Restore from State.config.theme (if string)
+            const stored = State.config.theme;
+            if (typeof stored === 'string') {
+                $select.value = stored;
+            }
+
+            // 3: No CSS var to apply this stage (theme is a preset key, not a direct CSS var)
+
+            // 4: Listen for changes
+            $select.addEventListener('change', () => {
+                const v = $select.value;
+                State.config.theme = v;
+                State.isDirty = true;
+                // Stage 7.29 will deep-merge THEMES[v] over DEFAULTS + applyConfig
+                console.log('[Stage 7.27] theme changed (Stage 7.29 will visually apply):', v);
+                previewConfig();
+            });
+        }
+
         function initBindings() {
             bindOverallSize();
             bindTitleColor();
             bindGlow();
-            // Stage 7.27 STEP 8 will add: bindTheme
+            bindTheme();
         }
 
         /* ==========================================================================
