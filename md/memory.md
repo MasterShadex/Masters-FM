@@ -4178,6 +4178,42 @@ Closed the Stage 7.20.5 documented limitation: Master Accent Color now propagate
 
 The overlay.html SE5 substitution fix (factory-default detection) becomes a HARMLESS NO-OP for post-Stage-7.20.6 configs (no factory hex remains to substitute). It stays in place for backward compat with pre-Stage-7.20.6 saved configs that still hold factory hex values. Removing it is parked per SE7 as a future cleanup.
 
+---
+
+## 2026-05-25 22:49 — STANDING TESTING RULE: serve customize_v2.html at http://localhost:8765/
+
+Operator standing instruction at Stage 7.28 STEP 8 gate: ALWAYS spin up the
+Python static server when testing customize_v2.html during the rebuild cycle.
+URL: **http://localhost:8765/customize_v2.html** (testing only -- not the
+production route).
+
+### How to start the server (one of these)
+
+- **Preview MCP** (preferred during a working session):
+  - `mcp__Claude_Preview__preview_start` with config `customize_v2_static`
+  - Config lives in `.claude/launch.json`:
+    `python -m http.server 8765 --directory "G:/Project Folder/Master FM/src" --bind 127.0.0.1`
+- **Direct shell** (if preview MCP not available):
+  - `python -m http.server 8765 --directory "G:/Project Folder/Master FM/src" --bind 127.0.0.1`
+
+### Important caveats
+
+- Port 8765 must be free. If something else is bound (e.g. a stale Python
+  process), kill it before starting.
+- This is STANDALONE testing, not production. `Apply to OBS` will hit the
+  origin gate (Stage 7.27 SE5 fix) and log `saveConfig skipped (not on real
+  server.js origin)`. Live preview iframe stays in srcdoc placeholder. That
+  is correct behavior in this mode.
+- Production route (real server.js on 4242) -> `http://127.0.0.1:4242/customize`
+  (still customize.html until Stage 7.30 swap).
+- The launch.json `customize_v2_static` entry was added in commit `6b48c63`.
+
+### When this rule retires
+
+Stage 7.30 (the swap) replaces customize.html with the v2 file. From then on,
+testing uses the real `/customize` route via server.js -- the 8765 fallback is
+obsolete. Until then: 8765 is the standing test URL.
+
 ### Trade-off accepted at gate
 
 Themes that previously had subtle accent-shade gradients between elements (e.g., Neon Blue had slightly different blues for nowPlaying vs timestamps) now share ONE master accent color when applied. Users wanting subtle intra-theme variation can manually override per-element colors after applying the theme (per-element wins) or use the "Use accent" link to restore follow-master. Operator-accepted at gate.
@@ -5437,3 +5473,117 @@ Stage 7.27 didn't clear v14.1.0 items. Carry-forward:
 **Path A:** Approve Stage 7.28 brief writing (port all 141 controls). Largest stage of the rebuild cycle (~5-6h Ruflo). Will replicate the proven 4-binding pattern via a data-driven SETTINGS_CONFIG array + bindControl dispatcher.
 
 **Path B:** Pause. The Apply-to-OBS port is a useful artifact even if rebuild stalls -- 4 controls + infrastructure is enough to validate the architecture.
+
+---
+
+## 2026-05-25 22:55 — Stage 7.28 closed (PASS): 141 controls ported via data-driven SETTINGS_CONFIG
+
+Stage 7.28 (customize.html rebuild SECTIONS + 141 CONTROLS PORT, cycle 3 of 5,
+the BIGGEST stage) PASSED operator gate cleanly. Zero SE5 cycles. Zero strikes
+consumed. 11 commits between `298af85` (Stage 7.27 closure) and `6b48c63`
+(Stage 7.28 closure).
+
+### What shipped
+
+- `const SETTINGS_CONFIG` -- 119 logical entries x (1 or 2 DOM IDs each) =
+  exactly 141 c-* DOM IDs accounted for. Reconciled against current
+  customize.html via `diff /tmp/customize_ids /tmp/v2_ids` -> EMPTY.
+- 9 per-type create functions + `renderControl` dispatcher (createElement,
+  no innerHTML).
+- `renderAllControls()` -- iterates SETTINGS_CONFIG, routes each entry into
+  `#supercat-{start|look|text|effects|audio|layout|advanced}-body`. Option A
+  consolidation locked in: `cfg.advanced ? 'advanced' : cfg.supercat` -- 56
+  advanced entries route to Advanced regardless of source supercat.
+- 4 hand-coded Stage 7.27 rows removed (Overall size / Glow / Theme / Title
+  color). 4 anonymous supercat-body divs got their IDs.
+- `bindControl(config)` + 9 per-type binds + new data-driven `initBindings()`.
+  4 Stage 7.27 hand-wired binds (`bindOverallSize` / `bindTitleColor` /
+  `bindGlow` / `bindTheme`) removed.
+- Shared `applyControlValue` helper + `applySpecialCases` (id-specific body
+  class toggles for c-master-glow / c-master-animations).
+- `applyConfig` refactored to 5-line iterator over SETTINGS_CONFIG.
+- `refreshControlValues` (new) -- DOM-side mirror used by reset.
+- `onResetDefaults` rewritten to populate State.config from defaults + call
+  refreshControlValues + applyConfig + previewConfig.
+- Section 7 header comment refreshed to remove stale Stage 7.27 description.
+
+### State shape change (intentional)
+
+Stage 7.27 binds wrote nested paths (`State.config.masters.overallSize`,
+`State.config.title.color`). Stage 7.28 switches to flat `State.config[cfg.id]`.
+Server-shape compatibility is deferred to Stage 7.30 swap -- saveConfig still
+POSTs `State.config` verbatim, server interprets it.
+
+### Smoke test (preview MCP via Python static server)
+
+- URL: http://localhost:8765/customize_v2.html (standing test URL per memory entry above)
+- 119 `.control-row` elements rendered
+- Type distribution matches: 47 slider / 37 toggle / 22 colorPair / 9 select / 2 text / 1 colorList / 1 button
+- Supercat distribution matches (Option A): start:6 / look:10 / text:21 / effects:9 / audio:17 / layout:0 / advanced:56
+- 20 random control interactions: 20/20 PASS
+- Reset modify-then-default round-trip: 3/3 PASS
+- Apply to OBS in standalone mode: origin-gate works (silently no-ops via Stage 7.27 SE5 fix); UI doesn't lock
+- Console clean: 0 errors, 0 warnings; only 2 informational `[Stage 7.27] saveConfig skipped` lines
+
+### Closure SHA256
+
+- `src/tray.ps1`: `19011F0BD093...` MATCH 7.27
+- `src/tray_native/tray_native.cs`: `6B9804A1AB70...` MATCH 7.27
+- `src/launcher.cs`: `291ED4C92B9B...` MATCH 7.27
+- `src/server.js`: `C15ED9310CB3...` MATCH 7.27
+- `src/customize.html`: `7E98377DC97F...` UNCHANGED (Stage 7.24 closure SHA carried verbatim)
+- `src/customize_v2.html`: `A17462A49D53BD13DD2FCFEAEBFA73449B526DE553E74D2743460B119E633483` (2160 lines, +639 net)
+
+### Files NOT touched
+
+- All 4 protected source files (tray.ps1, tray_native/tray_native.cs, launcher.cs, server.js)
+- `src/customize.html` (production customize -- untouched until Stage 7.30 swap)
+- `src/overlay.html`
+- All WPF / `src/tray_csharp/**`
+- `version.json` (stays `14.0.0`)
+- No git tag, no push
+
+### Constraints honored (SE1-SE8)
+
+- SE1 per-STEP internal verification: yes
+- SE2 mandatory log inspection: N/A (HTML-only stage, fast path / no _full_rebuild.ps1 invocation needed)
+- SE3 mandatory diff review after every commit: yes (11 commits, all scope-matched)
+- SE4 no "continue" shortcut at gate: yes (operator gave explicit `PASS`)
+- SE5 mistake handling: zero diagnosis-fix pairs
+- SE6 three-strike escalation: not triggered (0 / 3)
+- SE7 no autonomous scope expansion: out-of-scope items (themes UI, search filter, supercat collapse, Preset Manager, master following badges, "Use accent" links) all parked for Stage 7.29
+- SE8 protected files SHA256 verified at STEP 0 + STEP 9: all UNCHANGED
+
+### Known not-yet-wired (deferred)
+
+- 8 layout vis/lock pairs that current customize.html generates dynamically
+  via `rebuildLayoutEditor()` -- only the static `c-layout-vis-spectrum` +
+  `c-layout-lock-spectrum` pair is in SETTINGS_CONFIG. Wiring in Stage 7.29.
+- `colorList` (`c-border-colors`) placeholder text input -- Stage 7.29
+  upgrades to multi-swatch editor.
+- `button` (`c-spec-sensitivity-reset`) attaches a logging no-op; Stage 7.29
+  wires the actual reset.
+
+### Files touched
+
+- `src/customize_v2.html` (+639 net; +829 / -190)
+- `V14_S7_28_LOG.md` (NEW; STEPs 0-7 entries)
+- `V14_S7_28_REPORT.md` (NEW; closure report)
+- `.claude/launch.json` (added `customize_v2_static` preview config)
+- `md/memory.md` (THIS APPEND + the standing-URL entry above)
+
+### Rebuild cycle progress
+
+- Stage 7.26 (SCAFFOLD 1/5): DONE
+- Stage 7.27 (APPLY-TO-OBS PORT 2/5): DONE
+- Stage 7.28 (SECTIONS + 141 CONTROLS PORT 3/5): **DONE THIS STAGE**
+- Stage 7.29 (FUNCTIONALITY 4/5): pending operator decision
+- Stage 7.30 (SWAP 5/5): pending
+
+### Next operator action
+
+Operator decides Stage 7.29 brief. Likely scope: themes UI + sentinel + visual
+apply + Preset Manager + search filter + supercat collapse + master following
+badges + "Use accent" links + dynamic layout-editor wiring + colorList
+multi-swatch + sensitivity reset action. Or operator can pause here -- the
+141-control port is already a useful artifact (cycle 3 of 5).
