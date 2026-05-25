@@ -859,26 +859,7 @@
                         </svg>
                     </button>
                     <div class="supercat-body" id="supercat-start-body">
-                        <!-- Stage 7.27: Overall size slider (representative range control) -->
-                        <div class="control-row">
-                            <label class="control-label" for="c-master-overall-size">Overall size</label>
-                            <div class="control-input-group">
-                                <input type="range" id="c-master-overall-size" class="control-slider"
-                                       min="50" max="150" step="5" value="100">
-                                <span class="control-value" id="c-master-overall-size-display">100%</span>
-                            </div>
-                        </div>
-
-                        <!-- Stage 7.27: Glow toggle (representative checkbox/toggle control) -->
-                        <div class="control-row">
-                            <label class="control-label" for="c-master-glow">Glow</label>
-                            <div class="control-input-group">
-                                <label class="control-toggle">
-                                    <input type="checkbox" id="c-master-glow" checked>
-                                    <span class="control-toggle-track"></span>
-                                </label>
-                            </div>
-                        </div>
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
                     </div>
                 </div>
 
@@ -894,19 +875,7 @@
                         </svg>
                     </button>
                     <div class="supercat-body" id="supercat-look-body">
-                        <!-- Stage 7.27: Theme dropdown (representative select control;
-                             Stage 7.29 replaces with full theme-grid + visual apply) -->
-                        <div class="control-row">
-                            <label class="control-label" for="c-theme">Theme</label>
-                            <div class="control-input-group">
-                                <select id="c-theme" class="control-select">
-                                    <option value="rainbow">Rainbow (Default)</option>
-                                    <option value="neon-blue">Neon Blue</option>
-                                    <option value="hot-pink">Hot Pink</option>
-                                    <!-- Stage 7.29 will inject the full 22-theme list from THEMES const -->
-                                </select>
-                            </div>
-                        </div>
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
                     </div>
                 </div>
 
@@ -923,14 +892,7 @@
                         </svg>
                     </button>
                     <div class="supercat-body" id="supercat-text-body">
-                        <!-- Stage 7.27: Title color picker (representative color control) -->
-                        <div class="control-row">
-                            <label class="control-label" for="c-title-color">Title color</label>
-                            <div class="control-input-group">
-                                <input type="color" id="c-title-color-p" class="control-color" value="#ffffff" aria-label="Title color picker">
-                                <input type="text" id="c-title-color" class="control-hex" value="#ffffff" maxlength="7" spellcheck="false" aria-label="Title color hex value">
-                            </div>
-                        </div>
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
                     </div>
                 </div>
 
@@ -946,7 +908,7 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-effects-body"></div>
                 </div>
 
                 <div class="supercat" id="supercat-audio">
@@ -961,7 +923,7 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-audio-body"></div>
                 </div>
 
                 <div class="supercat" id="supercat-layout">
@@ -977,7 +939,7 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-layout-body"></div>
                 </div>
 
                 <div class="supercat" id="supercat-advanced">
@@ -995,7 +957,7 @@
                             <polyline points="6 9 12 15 18 9"></polyline>
                         </svg>
                     </button>
-                    <div class="supercat-body"></div>
+                    <div class="supercat-body" id="supercat-advanced-body"></div>
                 </div>
             </div>
             <div class="sidebar-footer">
@@ -1738,6 +1700,31 @@
             return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
         }
 
+        // Iterate SETTINGS_CONFIG and render each control into the appropriate
+        // supercat body. Option A consolidation: advanced:true entries go to
+        // Advanced supercat regardless of their config.supercat field.
+        function renderAllControls() {
+            const containers = {
+                start:    document.getElementById('supercat-start-body'),
+                look:     document.getElementById('supercat-look-body'),
+                text:     document.getElementById('supercat-text-body'),
+                effects:  document.getElementById('supercat-effects-body'),
+                audio:    document.getElementById('supercat-audio-body'),
+                layout:   document.getElementById('supercat-layout-body'),
+                advanced: document.getElementById('supercat-advanced-body')
+            };
+            for (const cfg of SETTINGS_CONFIG) {
+                const targetKey = cfg.advanced ? 'advanced' : cfg.supercat;
+                const target = containers[targetKey];
+                if (!target) {
+                    console.warn('[Stage 7.28] no container for supercat:', cfg.supercat, cfg.id);
+                    continue;
+                }
+                const row = renderControl(cfg);
+                if (row) target.appendChild(row);
+            }
+        }
+
         /* ==========================================================================
            8. BINDINGS (Stage 7.28 -- data-driven via SETTINGS_CONFIG + bindControl
            dispatcher. Replaces the 4 Stage 7.27 hand-wired binds. Pattern:
@@ -1977,6 +1964,11 @@
                     $iframe.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><title>Standalone</title></head><body style="background:#1a1a1a;color:#808080;font-family:system-ui,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;line-height:1.5;"><div><strong style="color:#c0c0c0;display:block;margin-bottom:8px;">Preview unavailable in standalone testing</strong>The live overlay preview needs Master&rsquo;s FM server.js (port 4242) at the canonical /customize route. Stage 7.30 swap will put this file there; the preview will then load automatically.</div></body></html>';
                 }
             }
+
+            // Stage 7.28: render all 141 controls into supercat bodies BEFORE
+            // the iframe-load bootstrap binds them. Rendering is synchronous +
+            // independent of the iframe; it can happen as soon as init() runs.
+            renderAllControls();
 
             // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
