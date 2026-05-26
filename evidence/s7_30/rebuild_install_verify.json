@@ -1,0 +1,59 @@
+{
+  "stage": "7.30",
+  "step": "S4 cold rebuild + SE2 + install verification",
+  "rebuild": {
+    "command": "_full_rebuild.ps1 -FullRebuild",
+    "exit_code": 0,
+    "log_file": "_rebuild_logs/s7_30_cold_rebuild.log",
+    "background_task_id": "bc5xte876",
+    "duration": "~10 minutes",
+    "stages": [
+      "[1/5] server.exe (net8.0 ASP.NET Core R2R) -- OK",
+      "[1b/5] tray_native.dll signed -- OK",
+      "[1c/5] WPF tray (net8.0-windows R2R) -- OK (MastersFM_Tray_v14.exe 160 KB; dist total 37155.2 KB)",
+      "[1d/5] audio_spectrum.exe -- OK",
+      "[2/5] build_msi.py -- MSI created + signed (ProductVersion 14.0.0)",
+      "[2c/5] version.json written (14.0.0)",
+      "[3/5] tray + server processes stopped -- OK",
+      "[4/5] uninstall existing -- OK (exit=0)",
+      "[5/5] install MSI -- OK; launched MastersFM.exe"
+    ],
+    "se2_log_inspection": {
+      "error_hits": 0,
+      "warn_hits": 0,
+      "fail_hits": 0,
+      "exception_hits": 0,
+      "verdict": "CLEAN -- zero errors/warnings/failures across full rebuild log"
+    }
+  },
+  "install_verification": {
+    "install_root": "C:\\Users\\Master\\AppData\\Local\\MastersFM",
+    "dll_product_version": "14.0.0+34b558e4d12792eefe620ca95ff487c958ccaf17",
+    "customize_html_in_install": {
+      "size_bytes": 148407,
+      "last_write_time": "2026-05-25 23:46:52",
+      "sha256": "FFAB016B59A5CF8DA032A155117BDAB06C9DFDAAFAFD9AD1FFC2F669E7249AB6",
+      "expected": "V2_SHA",
+      "verdict": "MATCH V2_SHA -- new v2 content live in install"
+    },
+    "customize_legacy_html_in_install": {
+      "present": false,
+      "explanation": "build_msi.py only bundles src/customize.html (line 128); customize_legacy.html is not in the MSI file list. Functional non-issue: the legacy archive lives in the SOURCE TREE for the revert procedure, not in the install. Parked for v14.1.0: optionally update build_msi.py to bundle customize_legacy.html as a verifiable archive in the install."
+    },
+    "customize_v2_html_in_install_stale": {
+      "size_bytes": 65904,
+      "last_write_time": "2026-05-25 21:21:21",
+      "explanation": "STALE residue from a prior install (Stage 7.27 era when v2 was ~1521 lines). build_msi.py does NOT reference customize_v2.html, so it won't be re-added. Windows Installer left it in place during uninstall because it wasn't part of the new MSI. Safe to delete manually; no code references it. Parked for v14.1.0 cleanup pass."
+    }
+  },
+  "source_tree_post_rebuild": {
+    "src/customize.html": {
+      "sha256": "FFAB016B59A5CF8DA032A155117BDAB06C9DFDAAFAFD9AD1FFC2F669E7249AB6",
+      "expected": "V2_SHA (unchanged by rebuild)"
+    },
+    "src/customize_legacy.html": {
+      "sha256": "7E98377DC97F83B31DEE96E805479D70CB4DF008D444C8108242FB1AE942C9B0",
+      "expected": "LEGACY_SHA (unchanged by rebuild)"
+    }
+  }
+}
