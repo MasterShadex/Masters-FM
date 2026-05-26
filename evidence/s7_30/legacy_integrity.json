@@ -1,0 +1,24 @@
+{
+  "stage": "7.30",
+  "step": "S3 legacy file integrity (instant revert path preserved)",
+  "timestamp": "2026-05-26T13:50:06.850Z",
+  "url": "http://localhost:8765/customize_legacy.html",
+  "file_on_disk": "src/customize_legacy.html",
+  "file_sha256": "7E98377DC97F83B31DEE96E805479D70CB4DF008D444C8108242FB1AE942C9B0",
+  "file_sha256_expected": "LEGACY_SHA (Stage 7.24 closure SHA preserved through rename)",
+  "verdict": "MATCH LEGACY_SHA -- archive integrity verified",
+  "title": "Master's FM — Overlay Customizer",
+  "dom_structure_classic": {
+    "section": 17,
+    "row": 125,
+    "sec-header": 17,
+    "supercat": 6,
+    "follow-master-badge": 8,
+    "theme-btn": 22
+  },
+  "dom_structure_v2_absent": {
+    "control-row": 0
+  },
+  "verdict_structure": "Legacy file retains the OLD customize.html Stage 7.24 DOM (sections + rows + theme-grid + follow-master-badge); v2-specific .control-row not present. Confirms this is the genuine pre-rebuild file.",
+  "revert_procedure": "If new customize.html exhibits issues, atomically swap back: git mv src/customize.html src/customize_v2_archive.html; git mv src/customize_legacy.html src/customize.html; rebuild. Documented in V14_S7_30_REPORT.md."
+}
