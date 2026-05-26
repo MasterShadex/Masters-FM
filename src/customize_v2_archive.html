@@ -1737,14 +1737,19 @@
         async function loadConfig() {
             // SE5 FIX: short-circuit in standalone testing to avoid 404 noise.
             // Current customize.html doesnt have a GET endpoint either; on the
-            // real server.js this would also typically 404 (no /get-overlay-config
-            // route exists; we try defensively in case server.js adds one later).
+            // Stage 7.30.1: canonical legacy load endpoint is GET /overlay-config
+            // (verified at server.js line 1143). Returns the saved nested config.
+            // Stage 7.27 used /get-overlay-config which doesn't exist on server.js;
+            // that 404'd silently and State.config stayed empty.
             if (!isProductionContext()) return {};
             try {
-                const r = await fetch('/get-overlay-config');
+                const r = await fetch('/overlay-config');
                 if (!r.ok) return {};
-                const data = await r.json();
-                State.config = data || {};
+                const nested = await r.json();
+                // Stage 7.30.1 transforms: server returns NESTED; SETTINGS_CONFIG
+                // bind handlers read State.config[c-*-id] (FLAT). nestedToFlat
+                // walks FLAT_TO_NESTED_MAP and pulls each path out.
+                State.config = nestedToFlat(nested || {});
                 return State.config;
             } catch (e) {
                 return {};
@@ -1758,10 +1763,14 @@
                 return false;
             }
             try {
+                // Stage 7.30.1: overlay.html expects NESTED config. saveConfig
+                // POSTs the flatToNested(State.config) shape so the persisted
+                // disk JSON matches the overlay's applyConfig contract.
+                const nested = flatToNested(State.config);
                 const r = await fetch('/save-overlay-config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(State.config)
+                    body: JSON.stringify(nested)
                 });
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 State.isDirty = false;
@@ -1779,10 +1788,16 @@
             // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
             if (!isProductionContext()) return;
             try {
+                // Stage 7.30.1: same NESTED-shape transform as saveConfig. The
+                // SSE fan-out (event: preview-config) delivers this payload
+                // verbatim to overlay.html; if it stays flat, overlay can't
+                // dereference cfg.card.backgroundTop etc. and silently falls
+                // back to its own DEFAULTS (the Stage 7.30 SE5 strike 2/3 bug).
+                const nested = flatToNested(State.config);
                 await fetch('/preview-config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(State.config)
+                    body: JSON.stringify(nested)
                 });
             } catch (e) {
                 /* live-preview non-fatal */
