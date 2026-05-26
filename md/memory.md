@@ -5809,3 +5809,128 @@ Strikes for Stage 7.30.1 reset to fresh 0/3.
 Still **v14.0.0**. No version bump. `version.json msi_sha256` is the SHA of the intermediate cold-rebuild MSI from STEP 4 (the MSI was built; install ran; legacy file then replaced the v2 install via fast-path copy). The next install cycle (via _full_rebuild.ps1) will package the legacy file into a new MSI.
 
 Production customize panel = Stage 7.24 polish file. Same as it has been since Stage 7.24 closure -- which is what every shipped friend-tested release has been built on. No user-facing regression from this revert.
+
+---
+
+## 2026-05-26 17:15 — Stage 7.30.1 closed (PASS): FLAT-to-NESTED translator + round-trip smoke
+
+Stage 7.30.1 (the fix for Stage 7.30 SE5 strike 2/3) PASSED operator gate
+cleanly. 0 SE5 cycles consumed (strikes 0/3 fresh). 5 commits between
+`4fba343` (Stage 7.30 close-as-reverted) and `213a049` (Stage 7.30.1
+close-as-PASS).
+
+### What shipped
+
+- **FLAT_TO_NESTED_MAP** (118 entries) in `src/customize_v2_archive.html`.
+  Sourced VERBATIM from legacy `src/customize.html` `initBindings()` at
+  lines 3494-3847 with per-row line citations in the coverage table at
+  V14_S7_30_1_LOG.md S0.4. Paths are arrays (`['card','backgroundTop']`)
+  not dot-strings, with number segments for array indices
+  (`['progressBar','fillColors',0]`).
+- **`flatToNested(flatConfig)`** -- walks the map, creates nested objects
+  / arrays, special-cases `c-border-colors` comma-string -> array.
+- **`nestedToFlat(nestedConfig)`** -- inverse direction for loadConfig.
+  Skips missing paths (overlay may carry keys v2 doesnt expose).
+- **`window.__roundTripSelfTest`** -- identity self-test for DevTools / preview MCP.
+- **loadConfig endpoint fix**: `GET /get-overlay-config` (404'd silently)
+  -> `GET /overlay-config` (canonical legacy endpoint at server.js line 1143).
+- **saveConfig + previewConfig nested wire payload**: both POST
+  `JSON.stringify(flatToNested(State.config))`. This is the literal
+  Stage 7.30 SE5 strike 2/3 root-cause fix.
+- **previewConfig in-flight coalescing** (legacy lines 4450-4479):
+  `_previewInFlight` + `_previewPending` + recursive flush-once. First
+  event always immediate; subsequent events during a fetch flip pending;
+  trailing state flushes on resolution. Bounds server load during rapid
+  drags without lagging first input.
+- **bindButton legacy parity**: `c-spec-sensitivity-reset` now reads
+  `config.actionResetTarget` + `config.resetTo` (already on SETTINGS_CONFIG
+  per Stage 7.28) and dispatches `input` event on the slider per legacy
+  line 3798. Slider bind handler runs the normal preview pipeline.
+
+### Round-trip smoke (the missing test from Stage 7.28 / 7.29)
+
+Two-tier verification via preview MCP:
+1. Translator self-test (`window.__roundTripSelfTest`): 10-control identity
+   round-trip PASS.
+2. Live-control smoke: 12 controls across 8 input types
+   (slider/toggle/colorPair/select/text/colorList; number behaves like
+   slider; button is no-state). 12/12 PASS. Wire payload verified nested.
+3. Coverage: 118/118 mapped; 0 orphans; 2 intentionally-unmapped
+   (c-theme + c-spec-sensitivity-reset).
+
+### Closure SHA256
+
+- All 4 protected source files: MATCH Stage 7.30 baseline (unchanged end-to-end)
+- `src/customize.html` (LEGACY production): `7E98377DC97F...` UNCHANGED (Stage 7.24 polish preserved)
+- `src/overlay.html`: `9A7CC817515F...` UNCHANGED
+- `src/customize_v2_archive.html`: `AD7DABFC97AAB47E...` (Stage 7.30.1 closure)
+- `version.json`: 14.0.0 (no bump)
+
+### Standing rule introduced
+
+**Round-trip smoke pattern** -- any future stage that changes the data
+shape between customize.html and overlay.html MUST include a round-trip
+smoke test (DOM event -> State.config update -> wire-payload-shape
+verification) before the operator gate. Stage 7.28 / 7.29 only verified
+DOM counts; the gap there hid the Stage 7.30 SE5 strike 2/3 bug all the
+way to PyWebView.
+
+### Constraints honored (SE1-SE8)
+
+- SE1 per-STEP internal verification: yes
+- SE2 mandatory rebuild log inspection: N/A (HTML-only)
+- SE3 diff review after every commit: yes (5 commits)
+- SE4 explicit PASS at gate: yes
+- SE5 mistake handling: 0 cycles (clean execution)
+- SE6 three-strike escalation: not triggered (0 / 3)
+- SE7 no autonomous scope expansion: re-swap kept parked for Stage 7.30.2
+- SE8 protected SHA verified end-to-end: all UNCHANGED
+
+### Lessons learned (file under "hard-won")
+
+1. **Research-first sourcing.** Every mapping path traces to a specific
+   legacy code line. 0 invented paths. The brief's "do NOT manually invent
+   120 mappings" directive caught what would have been a 120-edit
+   strike-3 trap. Operator-locked decision earned its weight.
+2. **In-flight coalescing > debounce** for live preview during rapid
+   input. Debounce lags the first event; coalescing keeps the first
+   immediate AND bounds the trailing flood.
+3. **Wire-payload shape contracts cross documents.** customize.html and
+   overlay.html are coupled by the SSE payload that server.js fans out.
+   Refactoring one without the other risks silent data loss.
+
+### v14.1.0 backlog -- carried from Stage 7.30
+
+- Tooltip system replacing inline help (still v14.1.0)
+- Preset Manager UI (still v14.1.0)
+- Sensitivity reset action wiring -- **DONE this stage** (bindButton actionResetTarget)
+- `build_msi.py` extension to bundle `customize_legacy.html` archive (Stage 7.30 STEP 4 noted; still parked)
+- Install hygiene: remove stale `customize_v2.html` in install (Stage 7.30 STEP 4 noted; still parked)
+
+### Files touched
+
+- `src/customize_v2_archive.html` (+307 net; transforms + dispatcher fix)
+- `V14_S7_30_1_LOG.md` (NEW)
+- `V14_S7_30_1_REPORT.md` (NEW)
+- `evidence/s7_30_1/round_trip_smoke.json` (NEW)
+- `evidence/s7_30_1/coverage_verification.json` (NEW)
+- `md/memory.md` (THIS APPEND)
+
+### Rebuild cycle progress
+
+- 7.26 SCAFFOLD ✓
+- 7.27 APPLY-TO-OBS PORT ✓
+- 7.28 141 CONTROLS PORT ✓
+- 7.29 FEATURES PORT ✓
+- 7.30 SWAP -- REVERTED (Stage 7.30 SE5 strike 2/3 surfaced shape mismatch)
+- **7.30.1 FLAT-to-NESTED bridge -- DONE THIS STAGE (operator PASS)**
+- 7.30.2 re-swap -- PENDING operator brief
+
+### Next operator action
+
+Operator approves Stage 7.30.2 brief: re-attempt the swap with the
+translator in place. `src/customize_v2_archive.html` is now the candidate
+file. Expected stage shape: pre-swap baseline -> atomic git mv -> cold
+rebuild + SE2 -> round-trip smoke at production path (should now PASS in
+PyWebView at localhost:4242 thanks to this stage's nested wire payload)
+-> operator-light gate -> closure. REBUILD CYCLE COMPLETE after PASS.
