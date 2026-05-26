@@ -1,0 +1,25 @@
+{
+  "stage": "7.30",
+  "step": "S0.4 pre-swap baseline (BEFORE the swap)",
+  "timestamp": "2026-05-26T13:44:52.364Z",
+  "url": "http://localhost:8765/customize_v2.html",
+  "title": "Customize Overlay -- Master's FM",
+  "file_under_test": "src/customize_v2.html",
+  "file_sha256": "FFAB016B59A5CF8DA032A155117BDAB06C9DFDAAFAFD9AD1FFC2F669E7249AB6",
+  "file_line_count": 2873,
+  "counts": {
+    "controlRows": 120,
+    "themeOptions": 22,
+    "masterBadges": 8,
+    "supercats": 7,
+    "settingsConfig_via_uniqueControlIds": 120,
+    "JARGON_MAP_via_source_grep": 40,
+    "THEMES_via_source_grep": 22
+  },
+  "screenshot_inline_in_chat": "pre_swap_v2_render captured via preview_screenshot",
+  "notes": [
+    "JARGON_MAP count in CLAUDE_CODE_INSTRUCTIONS S0.4 expected ~39; actual is 40 in both customize.html and customize_v2.html. Brief preflight was off by 1; actual match expectation is 40 ↔ 40 through swap.",
+    "controlRows = 120 (Stage 7.29 added c-theme entry to the 119 from Stage 7.28).",
+    "THEMES + JARGON_MAP + SETTINGS_CONFIG are const-scoped to the script tag (not globals). Counted via DOM uniqueness (control-row data-control-id) + source grep."
+  ]
+}
