@@ -1783,10 +1783,27 @@
         }
 
         // Live preview broadcast via SSE (server-side fan-out to the preview
-        // iframe). Non-fatal if it fails (e.g. file:// open with no server).
+        // iframe + OBS overlay). Non-fatal if it fails.
+        //
+        // Stage 7.30.1: in-flight coalescing pattern ported from legacy
+        // customize.html (lines 4450-4479). During rapid slider drags every
+        // input event would otherwise queue a POST -- the server would
+        // process 50+ in-flight fetches, the overlay would lag behind by
+        // hundreds of ms, and the user would see preview stutter. With
+        // coalescing: the first event fires immediately; subsequent events
+        // while a fetch is in-flight just flip _pending; when the in-flight
+        // fetch resolves, trailing state flushes once. This keeps preview
+        // crisp (first event always synchronous) AND server load bounded.
+        let _previewInFlight = false;
+        let _previewPending = false;
         async function previewConfig() {
             // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
             if (!isProductionContext()) return;
+            if (_previewInFlight) {
+                _previewPending = true;
+                return;
+            }
+            _previewInFlight = true;
             try {
                 // Stage 7.30.1: same NESTED-shape transform as saveConfig. The
                 // SSE fan-out (event: preview-config) delivers this payload
@@ -1801,6 +1818,11 @@
                 });
             } catch (e) {
                 /* live-preview non-fatal */
+            }
+            _previewInFlight = false;
+            if (_previewPending) {
+                _previewPending = false;
+                previewConfig();   // flush trailing state once
             }
         }
 
@@ -2351,13 +2373,22 @@
 
         function bindButton(config) {
             // c-spec-sensitivity-reset is the only button in SETTINGS_CONFIG.
-            // The actual reset action (sensitivity slider -> default) is deferred
-            // to v14.1.0 alongside the Preset Manager; this no-op handler keeps
-            // the dispatcher quiet and reserves the click slot.
+            // Stage 7.30.1 wires legacy behavior (customize.html line 3798):
+            // click resets the c-spec-sensitivity slider to its default and
+            // dispatches an 'input' event so the slider's bind handler runs
+            // the normal pipeline (State.config update + previewConfig).
             const $btn = document.getElementById(config.id);
             if (!$btn) return;
             $btn.addEventListener('click', () => {
-                console.log('[Stage 7.29] button click (action wires in v14.1.0):', config.id);
+                if (config.actionResetTarget) {
+                    const $target = document.getElementById(config.actionResetTarget);
+                    if ($target) {
+                        if (config.resetTo !== undefined && config.resetTo !== null) {
+                            $target.value = String(config.resetTo);
+                        }
+                        $target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
             });
         }
 
