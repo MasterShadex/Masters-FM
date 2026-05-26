@@ -2398,6 +2398,255 @@
         }
 
         /* ==========================================================================
+           8b0. FLAT_TO_NESTED_MAP (Stage 7.30.1 -- canonical c-* ID -> nested-path
+           translator for the server wire-payload + Apply-to-OBS save).
+
+           Sourced verbatim from legacy `src/customize.html` initBindings() at
+           lines 3494-3847; coverage table is in V14_S7_30_1_LOG.md S0.4.
+           Each value is an ARRAY (not a dot-string) so flatToNested can walk
+           the path without string-parsing. Array indices appear as numbers
+           (e.g. progressBar.fillColors[0] -> ['progressBar', 'fillColors', 0]).
+
+           Stage 7.30.1 STEP 1 -- 118 entries cover all v2 SETTINGS_CONFIG
+           controls that have a round-trip to overlay.html. c-theme and
+           c-spec-sensitivity-reset are UI-only / meta-state and intentionally
+           absent (they have no overlay-bound nested path).
+           ========================================================================== */
+        const FLAT_TO_NESTED_MAP = {
+            // ----- General -----
+            'c-overlay-opacity':        ['overlay', 'opacity'],
+            'c-font':                   ['font'],
+            // ----- Dynamic Colors -----
+            'c-dynamic-colors':         ['dynamicColors', 'enabled'],
+            'c-dyn-bg':                 ['dynamicColors', 'bg'],
+            'c-dyn-glow':               ['dynamicColors', 'glow'],
+            'c-dyn-title':              ['dynamicColors', 'titleText'],
+            'c-dyn-titleglow':          ['dynamicColors', 'titleGlow'],
+            'c-dyn-artist':             ['dynamicColors', 'artistText'],
+            'c-dyn-artistglow':         ['dynamicColors', 'artistGlow'],
+            'c-dyn-np':                 ['dynamicColors', 'nowPlayingText'],
+            'c-dyn-platform':           ['dynamicColors', 'platformBadge'],
+            'c-dyn-spectrum':           ['dynamicColors', 'spectrum'],
+            'c-dyn-timestamps':         ['dynamicColors', 'timestamps'],
+            'c-dyn-npglow':             ['dynamicColors', 'npGlow'],
+            'c-dyn-platformglow':       ['dynamicColors', 'platformGlow'],
+            'c-dyn-tsglow':             ['dynamicColors', 'tsGlow'],
+            'c-dyn-progressbar':        ['dynamicColors', 'progressBar'],
+            'c-dyn-border':             ['dynamicColors', 'border'],
+            // ----- Layout -----
+            'c-layout-on':              ['layout', 'enabled'],
+            'c-layout-grid':            ['layout', 'gridSize'],
+            // v2 currently only includes the spectrum vis/lock pair statically.
+            // Legacy iterates 8 nodes (albumArt/animatedBars/nowPlayingText/
+            // platformBadge/trackTitle/artistName/spectrum/progressBar); the
+            // other 7 are dynamically rendered. Parked for Stage 7.31 / v14.1.0.
+            'c-layout-vis-spectrum':    ['layout', 'nodes', 'spectrum', 'visible'],
+            'c-layout-lock-spectrum':   ['layout', 'nodes', 'spectrum', 'locked'],
+            // ----- Masters (Quick Settings) -----
+            'c-master-accent-color':    ['masters', 'accentColor'],
+            'c-master-overall-size':    ['masters', 'overallSize'],
+            'c-master-text-size':       ['masters', 'textSize'],
+            'c-master-glow':            ['masters', 'glowEnabled'],
+            'c-master-animations':      ['masters', 'animationsEnabled'],
+            // ----- Card -----
+            'c-card-radius':            ['card', 'borderRadius'],
+            'c-card-thick':             ['card', 'borderThickness'],
+            'c-card-angle':             ['card', 'backgroundAngle'],
+            'c-card-top':               ['card', 'backgroundTop'],
+            'c-card-bot':               ['card', 'backgroundBottom'],
+            'c-card-blur':              ['card', 'backgroundBlur'],
+            'c-card-opacity':           ['card', 'backgroundOpacity'],
+            // ----- Border -----
+            'c-border-on':              ['border', 'enabled'],
+            'c-border-spd':             ['border', 'spinDuration'],
+            'c-border-colors':          ['border', 'colors'],   // colorList; v2 stores comma-string, transformed to array on write
+            // ----- Glow -----
+            'c-glow-on':                ['glow', 'enabled'],
+            'c-glow-c1':                ['glow', 'color1'],
+            'c-glow-c2':                ['glow', 'color2'],
+            'c-glow-int':               ['glow', 'intensity'],
+            'c-glow-pulse':             ['glow', 'pulseDuration'],
+            // ----- Album art -----
+            'c-art-on':                 ['art', 'enabled'],
+            'c-art-position':           ['art', 'position'],
+            'c-art-w':                  ['art', 'width'],
+            'c-art-fade':               ['art', 'fadeWidth'],
+            // ----- Now Playing -----
+            'c-np-text':                ['nowPlaying', 'text'],
+            'c-np-size':                ['nowPlaying', 'fontSize'],
+            'c-np-color':               ['nowPlaying', 'color'],
+            'c-np-spacing':             ['nowPlaying', 'letterSpacing'],
+            'c-np-glow-on':             ['nowPlaying', 'glowEnabled'],
+            'c-np-glow-color':          ['nowPlaying', 'glowColor'],
+            'c-np-glow-size':           ['nowPlaying', 'glowSize'],
+            // ----- Bars (the audio-pulse pip beside the title) -----
+            'c-bars-on':                ['bars', 'enabled'],
+            'c-bars-color':             ['bars', 'color'],
+            'c-bars-count':             ['bars', 'count'],
+            'c-bars-speed':             ['bars', 'speed'],
+            // ----- Pause behaviour -----
+            'c-keep-on-pause':          ['pauseBehavior', 'keepVisibleOnPause'],
+            // ----- Platform badge -----
+            'c-platform-on':            ['platformBadge', 'enabled'],
+            'c-platform-sc-label':      ['platformBadge', 'soundcloudLabel'],
+            'c-platform-color':         ['platformBadge', 'color'],
+            'c-platform-dot':           ['platformBadge', 'dotColor'],
+            'c-platform-size':          ['platformBadge', 'fontSize'],
+            'c-platform-weight':        ['platformBadge', 'fontWeight'],
+            'c-platform-spacing':       ['platformBadge', 'letterSpacing'],
+            'c-platform-glow-on':       ['platformBadge', 'glowEnabled'],
+            'c-platform-glow-color':    ['platformBadge', 'glowColor'],
+            'c-platform-glow-size':     ['platformBadge', 'glowSize'],
+            // ----- Title -----
+            'c-title-size':             ['title', 'fontSize'],
+            'c-title-weight':           ['title', 'fontWeight'],
+            'c-title-color':            ['title', 'color'],
+            'c-title-mspd':             ['title', 'marqueeSpeed'],
+            'c-title-mpause':           ['title', 'marqueePause'],
+            'c-title-spacing':          ['title', 'letterSpacing'],
+            'c-title-glow-on':          ['title', 'glowEnabled'],
+            'c-title-glow-color':       ['title', 'glowColor'],
+            'c-title-glow-size':        ['title', 'glowSize'],
+            // ----- Artist -----
+            'c-artist-size':            ['artist', 'fontSize'],
+            'c-artist-weight':          ['artist', 'fontWeight'],
+            'c-artist-color':           ['artist', 'color'],
+            'c-artist-spacing':         ['artist', 'letterSpacing'],
+            'c-artist-mspd':            ['artist', 'marqueeSpeed'],
+            'c-artist-mpause':          ['artist', 'marqueePause'],
+            'c-artist-glow-on':         ['artist', 'glowEnabled'],
+            'c-artist-glow-color':      ['artist', 'glowColor'],
+            'c-artist-glow-size':       ['artist', 'glowSize'],
+            // ----- Spectrum -----
+            'c-spec-on':                ['spectrum', 'enabled'],
+            'c-spec-mode':              ['spectrum', 'colorMode'],
+            'c-spec-color':             ['spectrum', 'color'],
+            'c-spec-bars':              ['spectrum', 'barCount'],
+            'c-spec-fps':               ['spectrum', 'fps'],
+            'c-spec-response':          ['spectrum', 'responseMs'],
+            'c-spec-sensitivity':       ['spectrum', 'sensitivity'],
+            'c-spec-gap':               ['spectrum', 'gap'],
+            'c-spec-radius':            ['spectrum', 'barRadius'],
+            'c-spec-smooth':            ['spectrum', 'smoothing'],
+            'c-spec-height':            ['spectrum', 'heightMult'],
+            'c-spec-min':               ['spectrum', 'minHeight'],
+            'c-spec-mirror':            ['spectrum', 'mirrorMode'],
+            'c-spec-autogain':          ['spectrum', 'autoGain'],
+            'c-spec-opacity':           ['spectrum', 'opacity'],
+            // ----- Progress bar -----
+            'c-prog-on':                ['progressBar', 'enabled'],
+            'c-prog-h':                 ['progressBar', 'height'],
+            'c-prog-radius':            ['progressBar', 'borderRadius'],
+            'c-prog-track':             ['progressBar', 'trackColor'],
+            'c-prog-f0':                ['progressBar', 'fillColors', 0],
+            'c-prog-f1':                ['progressBar', 'fillColors', 1],
+            'c-prog-f2':                ['progressBar', 'fillColors', 2],
+            // ----- Timestamps -----
+            'c-ts-size':                ['timestamps', 'fontSize'],
+            'c-ts-color':               ['timestamps', 'color'],
+            'c-ts-glow-on':             ['timestamps', 'glowEnabled'],
+            'c-ts-glow-color':          ['timestamps', 'glowColor'],
+            'c-ts-glow-size':           ['timestamps', 'glowSize'],
+            // ----- Slide-in animation -----
+            'c-anim-dur':               ['showAnimation', 'duration'],
+            'c-anim-slide':             ['showAnimation', 'slideDistance'],
+            'c-anim-dir':               ['showAnimation', 'direction'],
+            'c-anim-easing':            ['showAnimation', 'easing'],
+            'c-anim-crossfade':         ['showAnimation', 'crossfadeOnSkip']
+            // Intentionally NOT mapped (UI-only / meta-state; see log S0.4):
+            //   c-theme                    -- theme name; managed by applyTheme; no overlay-bound nested path
+            //   c-spec-sensitivity-reset   -- button; dispatches event on c-spec-sensitivity slider; no own state
+        };
+
+        // Walk a FLAT_TO_NESTED_MAP entry to produce nested config. Each path
+        // is an array; the LEAF (last segment) gets assigned the value. Number
+        // segments (e.g. ['progressBar','fillColors',0]) create / index into
+        // an array; string segments create / index into an object.
+        function flatToNested(flatConfig) {
+            const nested = {};
+            for (const [flatKey, value] of Object.entries(flatConfig || {})) {
+                const path = FLAT_TO_NESTED_MAP[flatKey];
+                if (!path) continue;   // c-theme / c-spec-sensitivity-reset / unknown -- skip
+                let writable = value;
+                // c-border-colors special case: v2 stores comma-separated string;
+                // overlay expects array of hex strings.
+                if (flatKey === 'c-border-colors' && typeof value === 'string') {
+                    writable = value.split(',').map(s => s.trim()).filter(Boolean);
+                }
+                let cursor = nested;
+                for (let i = 0; i < path.length - 1; i++) {
+                    const seg = path[i];
+                    const nextSeg = path[i + 1];
+                    if (cursor[seg] == null || typeof cursor[seg] !== 'object') {
+                        cursor[seg] = (typeof nextSeg === 'number') ? [] : {};
+                    }
+                    cursor = cursor[seg];
+                }
+                cursor[path[path.length - 1]] = writable;
+            }
+            return nested;
+        }
+
+        // Inverse of flatToNested. Iterates FLAT_TO_NESTED_MAP and pulls each
+        // path out of the nested config. Missing paths are skipped (overlay
+        // may carry keys v2 doesnt expose; they pass through untouched on
+        // re-save via deepMerge upstream).
+        function getNestedAtPath(obj, path) {
+            let cursor = obj;
+            for (const seg of path) {
+                if (cursor == null) return undefined;
+                cursor = cursor[seg];
+            }
+            return cursor;
+        }
+
+        function nestedToFlat(nestedConfig) {
+            const flat = {};
+            if (!nestedConfig || typeof nestedConfig !== 'object') return flat;
+            for (const [flatKey, path] of Object.entries(FLAT_TO_NESTED_MAP)) {
+                const val = getNestedAtPath(nestedConfig, path);
+                if (val === undefined) continue;
+                // c-border-colors special case: server stores array; v2 expects comma-string.
+                if (flatKey === 'c-border-colors' && Array.isArray(val)) {
+                    flat[flatKey] = val.join(',');
+                } else {
+                    flat[flatKey] = val;
+                }
+            }
+            return flat;
+        }
+
+        // ==========================================================================
+        //  Dev sanity helper (preview-MCP-callable from console)
+        //  window.__roundTripSelfTest -- verifies flat -> nested -> flat is identity
+        //  for a representative sample. Used in STEP 4 smoke.
+        // ==========================================================================
+        window.__roundTripSelfTest = function (sample) {
+            const probe = sample || {
+                'c-card-top':        '#ff00ff',
+                'c-card-radius':     42,
+                'c-master-overall-size': 75,
+                'c-master-glow':     false,
+                'c-title-color':     'var(--accent-master)',
+                'c-prog-f0':         '#112233',
+                'c-prog-f1':         '#445566',
+                'c-prog-f2':         '#778899',
+                'c-border-colors':   '#aabbcc,#ddeeff,#102030',
+                'c-font':            'Space Grotesk'
+            };
+            const nested = flatToNested(probe);
+            const round  = nestedToFlat(nested);
+            const ok = Object.keys(probe).every(k => {
+                if (k === 'c-border-colors') {
+                    // comma-string -> array -> comma-string; whitespace normalisation possible
+                    return round[k] && round[k].replace(/\s+/g, '') === probe[k].replace(/\s+/g, '');
+                }
+                return round[k] === probe[k];
+            });
+            return { probe, nested, round, ok };
+        };
+
+        /* ==========================================================================
            8b. THEMES (Stage 7.29 -- apply algorithm + nested-to-flat translator)
            THEME_KEY_MAP maps each nested theme path (e.g. 'card.backgroundTop')
            to the flat SETTINGS_CONFIG c-* DOM ID. applyTheme walks the table,
