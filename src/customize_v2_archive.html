@@ -1,0 +1,2882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customize Overlay -- Master's FM</title>
+    <style>
+        /* ==========================================================================
+           1. DESIGN TOKENS
+           Stage 7.26 token system: --c-* colors, --s-* spacing, --f-* typography,
+           --r-* radii, --m-* motion. Apply-to-OBS contract tokens (5 masters)
+           DEFERRED to Stage 7.27.
+           ========================================================================== */
+        :root {
+            /* Brand */
+            --c-accent: #7c3aed;
+            --c-accent-hover: #8b4eff;
+            --c-accent-subtle: rgba(124, 58, 237, 0.10);
+
+            /* Surfaces */
+            --c-bg: #1a1a1a;
+            --c-surface: #242424;
+            --c-surface-elevated: #2e2e2e;
+            --c-border: rgba(255, 255, 255, 0.20);
+            --c-border-strong: rgba(255, 255, 255, 0.30);
+
+            /* Text */
+            --c-text-primary: #ffffff;     /* pure white -- labels, important headings */
+            --c-text-secondary: #c0c0c0;   /* readable secondary -- body, supercat names */
+            --c-text-tertiary: #808080;    /* muted -- sub-labels, helper context */
+            --c-text-disabled: #5c5c66;
+
+            /* Semantic */
+            --c-success: #10b981;
+            --c-warning: #f59e0b;
+            --c-danger: #dc2626;           /* red-600 (Stage 7.24 lock) */
+            --c-danger-hover: rgba(220, 38, 38, 0.10);
+
+            /* Spacing scale (4px grid) */
+            --s-0: 0;
+            --s-1: 4px;
+            --s-2: 8px;
+            --s-3: 12px;
+            --s-4: 16px;
+            --s-5: 20px;
+            --s-6: 24px;
+            --s-8: 32px;
+            --s-10: 40px;
+
+            /* Typography */
+            --f-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --f-family-mono: 'Cascadia Mono', 'Consolas', 'Courier New', monospace;
+            --f-size-xs: 11px;
+            --f-size-sm: 12px;
+            --f-size-md: 13px;
+            --f-size-lg: 15px;
+            --f-size-xl: 17px;
+            --f-size-2xl: 20px;
+            --f-weight-regular: 400;
+            --f-weight-medium: 500;
+            --f-weight-semibold: 600;
+            --f-weight-bold: 700;
+            --f-leading-tight: 1.25;
+            --f-leading-normal: 1.5;
+
+            /* Radii */
+            --r-sm: 4px;
+            --r-md: 6px;
+            --r-lg: 8px;
+            --r-xl: 12px;
+            --r-pill: 9999px;
+
+            /* Motion */
+            --m-dur-fast: 150ms;
+            --m-dur-base: 250ms;
+            --m-dur-slow: 400ms;
+            --m-ease-out: cubic-bezier(0.16, 1, 0.3, 1);        /* Win11 ease */
+            --m-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);    /* macOS ease */
+            --m-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+            /* ----------------------------------------------------------------
+               Apply-to-OBS contract variables (Stage 7.27).
+               IMMUTABLE names -- overlay.html consumes these. The Stage 7.25
+               research doc Section 2.4 documented these as the only true
+               cross-file contract. Do NOT rename to the --c-* convention
+               from Stage 7.26; the names are part of the shared shape between
+               customize and overlay.
+               ---------------------------------------------------------------- */
+            --accent-master: #7c3aed;
+            --overall-scale: 1.0;
+            --text-scale: 1.0;
+            --glow-master-enabled: 1;
+            --animations-master-enabled: 1;
+        }
+
+        /* ==========================================================================
+           2. BASE / RESET / TYPOGRAPHY
+           ========================================================================== */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+
+        body {
+            font-family: var(--f-family);
+            font-size: var(--f-size-md);
+            line-height: var(--f-leading-normal);
+            color: var(--c-text-primary);
+            background: var(--c-bg);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow: hidden;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            margin: 0;
+            font-weight: var(--f-weight-semibold);
+            line-height: var(--f-leading-tight);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            color: inherit;
+        }
+
+        input {
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            color: inherit;
+        }
+
+        /* Scrollbar (slim, theme-aware) */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--c-text-tertiary); }
+
+        /* Respect reduced-motion preferences */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        /* ==========================================================================
+           3. LAYOUT (top bar + sidebar + preview pane)
+           Grid layout: top bar 60px high; below it, 320px sidebar + fluid preview.
+           ========================================================================== */
+        .layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            height: calc(100vh - 60px);   /* minus top bar */
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: var(--c-surface);
+            border-right: 1px solid var(--c-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--s-3);
+        }
+
+        .sidebar-footer {
+            border-top: 1px solid var(--c-border);
+            padding: var(--s-3);
+            font-size: var(--f-size-sm);
+        }
+
+        .preview-pane {
+            background: var(--c-bg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ==========================================================================
+           4. TOP BAR + BUTTONS
+           Top bar 60px tall, fixed at top, signature accent line at very top.
+           ========================================================================== */
+        .top-bar {
+            height: 60px;
+            background: var(--c-surface);
+            border-bottom: 1px solid var(--c-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--s-5);
+            /* Signature 3px accent line at the very top (Stage 7.17 / 7.21 / 7.24 carry) */
+            border-top: 3px solid var(--c-accent);
+            position: relative;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+        }
+
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--c-accent);
+            border-radius: var(--r-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: var(--f-weight-bold);
+            font-size: var(--f-size-md);
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            line-height: var(--f-leading-tight);
+        }
+
+        .brand-name {
+            font-size: var(--f-size-lg);
+            font-weight: var(--f-weight-semibold);
+            color: var(--c-text-primary);
+        }
+
+        .brand-sub {
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+        }
+
+        .top-bar-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+        }
+
+        /* Button base */
+        .btn {
+            padding: var(--s-2) var(--s-4);
+            border-radius: var(--r-md);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-medium);
+            cursor: pointer;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--c-text-primary);
+            transition: background var(--m-dur-fast) var(--m-ease-out),
+                        border-color var(--m-dur-fast) var(--m-ease-out),
+                        color var(--m-dur-fast) var(--m-ease-out),
+                        box-shadow var(--m-dur-fast) var(--m-ease-out),
+                        transform var(--m-dur-fast) var(--m-ease-out);
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Primary: brand accent, the LOUDEST top-bar action */
+        .btn-primary {
+            background: var(--c-accent);
+            color: #ffffff;
+            box-shadow: 0 2px 12px rgba(124, 58, 237, 0.30);
+        }
+        .btn-primary:hover {
+            background: var(--c-accent-hover);
+            box-shadow: 0 4px 18px rgba(124, 58, 237, 0.40);
+        }
+
+        /* Ghost: neutral outlined for non-destructive secondary action */
+        .btn-ghost {
+            background: transparent;
+            color: var(--c-text-secondary);
+            border-color: var(--c-border);
+        }
+        .btn-ghost:hover {
+            background: var(--c-surface-elevated);
+            color: var(--c-text-primary);
+            border-color: var(--c-border-strong);
+        }
+
+        /* Danger-ghost: outlined red, destructive but visually quiet at rest
+           (Stage 7.24 palette: red-600 #dc2626 + rgba(220,38,38,0.5) border;
+           hover stays at #dc2626 instead of flipping pale) */
+        .btn-danger-ghost {
+            background: transparent;
+            color: var(--c-danger);
+            border-color: rgba(220, 38, 38, 0.5);
+        }
+        .btn-danger-ghost:hover {
+            background: var(--c-danger-hover);
+            border-color: var(--c-danger);
+            color: var(--c-danger);
+        }
+
+        /* ==========================================================================
+           5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
+           ========================================================================== */
+        .welcome-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--s-3);
+            background: var(--c-surface-elevated);
+            border: 1px solid var(--c-accent);
+            border-radius: var(--r-lg);
+            padding: var(--s-4);
+            margin-bottom: var(--s-3);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
+        }
+
+        .welcome-banner[hidden] { display: none; }
+
+        .welcome-icon {
+            font-size: 24px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .welcome-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .welcome-body h3 {
+            margin: 0 0 var(--s-1) 0;
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-semibold);
+            color: var(--c-text-primary);
+        }
+
+        .welcome-body p {
+            margin: 0;
+            font-size: var(--f-size-sm);
+            color: var(--c-text-secondary);
+            line-height: var(--f-leading-tight);
+        }
+
+        .welcome-dismiss {
+            background: transparent;
+            border: 1px solid var(--c-border);
+            color: var(--c-text-secondary);
+            padding: var(--s-1) var(--s-3);
+            border-radius: var(--r-md);
+            font-size: var(--f-size-sm);
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background var(--m-dur-fast) var(--m-ease-out),
+                        color var(--m-dur-fast) var(--m-ease-out),
+                        border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .welcome-dismiss:hover {
+            background: var(--c-surface);
+            color: var(--c-text-primary);
+            border-color: var(--c-border-strong);
+        }
+
+        /* ==========================================================================
+           6. SEARCH BAR (Stage 7.20 carry; wired in Stage 7.29 via initSearchFilter)
+           Filter logic: filterControls(query) walks .control-row, matches
+           lowercased query against label / id / JARGON_MAP[label] synonyms,
+           hides non-matches + empty supercats. Ctrl+F focuses input; Esc clears.
+           ========================================================================== */
+        .search-bar {
+            position: relative;
+            margin-bottom: var(--s-3);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: var(--s-3);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            color: var(--c-text-tertiary);
+            pointer-events: none;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: var(--s-2) var(--s-8) var(--s-2) var(--s-8);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            line-height: var(--f-leading-tight);
+            transition: border-color var(--m-dur-fast) var(--m-ease-out),
+                        box-shadow var(--m-dur-fast) var(--m-ease-out);
+        }
+        .search-input::placeholder {
+            color: var(--c-text-tertiary);
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--c-accent);
+            box-shadow: 0 0 0 3px var(--c-accent-subtle);
+        }
+
+        .search-clear {
+            position: absolute;
+            right: var(--s-2);
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--c-text-tertiary);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: var(--s-1);
+            border-radius: var(--r-sm);
+            transition: color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .search-clear[hidden] { display: none; }
+        .search-clear:hover { color: var(--c-text-primary); }
+
+        /* ==========================================================================
+           7. SUPERCATS (Stage 7.21 carry; collapse JS wired in Stage 7.29)
+           Option A consolidated: 7 supercats (Start here / Look / Text / Effects
+           / Audio / Layout / Advanced). Each supercat header is a full-width
+           clickable button with inline SVG icon + uppercase label + chevron.
+           ========================================================================== */
+        .supercat {
+            margin-bottom: var(--s-2);
+        }
+
+        .supercat-header {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+            padding: var(--s-2) var(--s-3);
+            background: transparent;
+            border: none;
+            color: var(--c-text-secondary);
+            font-family: inherit;
+            font-size: var(--f-size-sm);
+            font-weight: var(--f-weight-semibold);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            text-align: left;
+            border-radius: var(--r-md);
+            transition: color var(--m-dur-fast) var(--m-ease-out),
+                        background var(--m-dur-fast) var(--m-ease-out);
+        }
+
+        .supercat-header:hover {
+            color: var(--c-text-primary);
+            background: var(--c-surface-elevated);
+        }
+
+        .supercat-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            color: currentColor;
+        }
+
+        .supercat-label {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .supercat-chevron {
+            width: 14px;
+            height: 14px;
+            color: var(--c-text-tertiary);
+            transition: transform var(--m-dur-base) var(--m-ease-out);
+            flex-shrink: 0;
+        }
+
+        /* Stage 7.29: collapsed supercats hide their body and the chevron
+           rotates -90deg (points right). Click toggles state; localStorage
+           remembers per-supercat collapse with key supercat_<id>_collapsed.
+           Start here is open by default on first load (no localStorage). */
+        .supercat.collapsed .supercat-body {
+            display: none;
+        }
+        .supercat.collapsed .supercat-chevron {
+            transform: rotate(-90deg);
+        }
+
+        .supercat-body {
+            padding: var(--s-2) 0;
+            /* Stage 7.28 fills with .control-row blocks rendered from SETTINGS_CONFIG. */
+        }
+
+        /* ==========================================================================
+           8. CONTROL ROWS (Stage 7.27 minimal; Stage 7.28 expands to all 141)
+           Shared row template: vertical layout with .control-label on top
+           and .control-input-group below. Hover lifts background.
+           ========================================================================== */
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: var(--s-2);
+            padding: var(--s-3);
+            border-radius: var(--r-md);
+            margin-bottom: var(--s-1);
+        }
+
+        .control-row:hover {
+            background: var(--c-surface-elevated);
+        }
+
+        .control-label {
+            font-size: var(--f-size-md);
+            font-weight: var(--f-weight-medium);
+            color: var(--c-text-primary);
+        }
+
+        .control-input-group {
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+        }
+
+        /* Range slider (Stage 7.27: Overall size) */
+        .control-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+            outline: none;
+            cursor: pointer;
+        }
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--c-accent);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        .control-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--c-accent);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .control-value {
+            font-size: var(--f-size-sm);
+            font-weight: var(--f-weight-medium);
+            color: var(--c-accent);
+            min-width: 48px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Color picker pair (Stage 7.27: Title color) */
+        .control-color {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            background: transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .control-color::-webkit-color-swatch-wrapper { padding: 2px; }
+        .control-color::-webkit-color-swatch {
+            border-radius: var(--r-sm);
+            border: none;
+        }
+
+        .control-hex {
+            flex: 1;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: var(--f-family-mono);
+            font-size: var(--f-size-md);
+            transition: border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-hex:focus {
+            outline: none;
+            border-color: var(--c-accent);
+        }
+
+        /* Stage 7.29: "Following master" badge for 8 accent-following pickers.
+           Appears in .control-input-group when the hex value === 'var(--accent-master)'.
+           Background tracks --accent-master live so the badge colour mirrors
+           the current master accent. Click removes the sentinel + resolves to
+           the concrete hex (handled by unfollowMaster). */
+        .master-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #ffffff;
+            background: var(--accent-master, var(--c-accent));
+            border-radius: var(--r-pill);
+            cursor: pointer;
+            user-select: none;
+            transition: opacity var(--m-dur-fast) var(--m-ease-out);
+            white-space: nowrap;
+        }
+        .master-badge:hover {
+            opacity: 0.85;
+        }
+
+        /* Toggle switch (Stage 7.27: Glow) */
+        .control-toggle {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .control-toggle input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .control-toggle-track {
+            position: absolute;
+            inset: 0;
+            background: var(--c-border-strong);
+            border-radius: var(--r-pill);
+            transition: background var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-toggle-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: #ffffff;
+            border-radius: 50%;
+            transition: transform var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-toggle input:checked + .control-toggle-track {
+            background: var(--c-accent);
+        }
+        .control-toggle input:checked + .control-toggle-track::after {
+            transform: translateX(16px);
+        }
+        .control-toggle input:focus-visible + .control-toggle-track {
+            box-shadow: 0 0 0 3px var(--c-accent-subtle);
+        }
+
+        /* Select dropdown (Stage 7.27: Theme) */
+        .control-select {
+            flex: 1;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            cursor: pointer;
+            transition: border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-select:focus {
+            outline: none;
+            border-color: var(--c-accent);
+        }
+        .control-select option {
+            background: var(--c-surface);
+            color: var(--c-text-primary);
+        }
+
+        /* ==========================================================================
+           9. PREVIEW PANE (Stage 7.27 wires the live render)
+           Vertical flex layout: status bar at top + preview content fluid in
+           the middle + hint at bottom. This stage just shows a placeholder;
+           Stage 7.27 will replace the placeholder with the actual iframe or
+           render target.
+           ========================================================================== */
+        .preview-status {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+            padding: var(--s-3) var(--s-5);
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--c-border);
+            flex-shrink: 0;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: var(--r-pill);
+            background: var(--c-success);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.50);
+            flex-shrink: 0;
+        }
+
+        .status-label {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .preview-frame {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: var(--s-5);
+        }
+
+        .preview-placeholder {
+            color: var(--c-text-tertiary);
+            font-size: var(--f-size-md);
+            text-align: center;
+            font-style: italic;
+        }
+
+        /* Stage 7.27: iframe preview pane.
+           Fills the .preview-frame container exactly; no border; transparent
+           background so the preview-frame's padding shows through. */
+        .preview-frame-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: block;
+        }
+
+        .preview-hint {
+            padding: var(--s-3) var(--s-5);
+            font-size: var(--f-size-sm);
+            color: var(--c-text-tertiary);
+            text-align: center;
+            border-top: 1px solid var(--c-border);
+            flex-shrink: 0;
+        }
+
+        .preview-hint strong {
+            color: var(--c-text-secondary);
+            font-weight: var(--f-weight-semibold);
+        }
+
+        /* ==========================================================================
+           10. UTILITIES
+           Sidebar footer link + small a11y helpers.
+           ========================================================================== */
+        .footer-link {
+            color: var(--c-text-tertiary);
+            text-decoration: none;
+            font-size: var(--f-size-sm);
+            transition: color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .footer-link:hover {
+            color: var(--c-text-secondary);
+            text-decoration: underline;
+        }
+
+        /* Screen-reader only (Bootstrap convention; for future accessibility
+           labels on icon-only buttons etc.) */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* Focus-visible outline (keyboard accessibility) */
+        :focus-visible {
+            outline: 2px solid var(--c-accent);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ========================================================================
+         TOP BAR
+         ======================================================================== -->
+    <header class="top-bar">
+        <div class="brand">
+            <div class="brand-icon">FM</div>
+            <div class="brand-text">
+                <div class="brand-name">Master's FM</div>
+                <div class="brand-sub">Overlay Customizer</div>
+            </div>
+        </div>
+        <div class="top-bar-actions">
+            <button class="btn btn-ghost" id="btn-preset-manager" type="button">Preset Manager</button>
+            <button class="btn btn-danger-ghost" id="btn-reset-defaults" type="button">Reset to Defaults</button>
+            <button class="btn btn-primary" id="btn-apply-obs" type="button">Apply to OBS</button>
+        </div>
+    </header>
+
+    <!-- ========================================================================
+         MAIN LAYOUT (sidebar + preview pane)
+         ======================================================================== -->
+    <main class="layout">
+        <!-- ====================================================================
+             SIDEBAR
+             ==================================================================== -->
+        <aside class="sidebar">
+            <div class="sidebar-scroll">
+                <!-- Welcome banner: Stage 7.21 carry, dismiss + reshow functional this stage -->
+                <div class="welcome-banner" id="welcome-banner" hidden>
+                    <div class="welcome-icon" aria-hidden="true">👋</div>
+                    <div class="welcome-body">
+                        <h3>New to Master's FM customize?</h3>
+                        <p>Pick a theme below, or use Quick Settings to change the main color, size, and text size.</p>
+                    </div>
+                    <button class="welcome-dismiss" id="welcome-dismiss" type="button">Got it, hide this</button>
+                </div>
+
+                <!-- Search bar: wired in Stage 7.29 via initSearchFilter (JARGON_MAP + Ctrl+F) -->
+                <div class="search-bar">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" class="search-input" id="settings-search" placeholder="Find a setting..." />
+                    <button class="search-clear" id="settings-search-clear" type="button" hidden aria-label="Clear search">×</button>
+                </div>
+
+                <!-- 7 supercats (Option A consolidated): Start here / Look / Text / Effects / Audio / Layout / Advanced -->
+                <!-- Collapse/expand wired in Stage 7.29 via initSupercatCollapse. -->
+
+                <div class="supercat" id="supercat-start">
+                    <button class="supercat-header" data-supercat="start" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        <span class="supercat-label">Start here</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-start-body">
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
+                    </div>
+                </div>
+
+                <div class="supercat" id="supercat-look">
+                    <button class="supercat-header" data-supercat="look" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2 12 C 5 7 9 5 12 5 C 15 5 19 7 22 12 C 19 17 15 19 12 19 C 9 19 5 17 2 12 Z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <span class="supercat-label">Look</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-look-body">
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
+                    </div>
+                </div>
+
+                <div class="supercat" id="supercat-text">
+                    <button class="supercat-header" data-supercat="text" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                            <line x1="9" y1="20" x2="15" y2="20"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
+                        </svg>
+                        <span class="supercat-label">Text</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-text-body">
+                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
+                    </div>
+                </div>
+
+                <div class="supercat" id="supercat-effects">
+                    <button class="supercat-header" data-supercat="effects" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3 L 13.5 8.5 L 19 10 L 13.5 11.5 L 12 17 L 10.5 11.5 L 5 10 L 10.5 8.5 Z"></path>
+                            <path d="M19 16 L 19.7 18 L 21.5 18.7 L 19.7 19.3 L 19 21 L 18.3 19.3 L 16.5 18.7 L 18.3 18 Z"></path>
+                            <path d="M5 4 L 5.6 5.5 L 7 6 L 5.6 6.4 L 5 8 L 4.4 6.4 L 3 6 L 4.4 5.5 Z"></path>
+                        </svg>
+                        <span class="supercat-label">Effects</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-effects-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-audio">
+                    <button class="supercat-header" data-supercat="audio" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M16 9 C 18 10 18 14 16 15"></path>
+                            <path d="M19 6 C 23 8 23 16 19 18"></path>
+                        </svg>
+                        <span class="supercat-label">Audio</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-audio-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-layout">
+                    <button class="supercat-header" data-supercat="layout" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <span class="supercat-label">Layout</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-layout-body"></div>
+                </div>
+
+                <div class="supercat" id="supercat-advanced">
+                    <button class="supercat-header" data-supercat="advanced" type="button">
+                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="4" y1="6" x2="20" y2="6"></line>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                            <line x1="4" y1="18" x2="20" y2="18"></line>
+                            <circle cx="8" cy="6" r="2" fill="currentColor"></circle>
+                            <circle cx="16" cy="12" r="2" fill="currentColor"></circle>
+                            <circle cx="8" cy="18" r="2" fill="currentColor"></circle>
+                        </svg>
+                        <span class="supercat-label">Advanced</span>
+                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="supercat-body" id="supercat-advanced-body"></div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <a href="#" id="show-welcome-again" class="footer-link">Show welcome message</a>
+            </div>
+        </aside>
+
+        <!-- ====================================================================
+             PREVIEW PANE
+             ==================================================================== -->
+        <section class="preview-pane">
+            <div class="preview-status">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span class="status-label">Live preview -- updates within 0.5s of any change</span>
+            </div>
+            <div class="preview-frame" id="preview-frame">
+                <!-- Stage 7.27 + SE5 FIX: iframe src is set LAZILY by JS init() so the
+                     directory-listing trap doesnt fire when standalone-HTTP-served
+                     (e.g. Python http.server on port 8765 returns the directory
+                     listing for /?preview=1 regardless of query string). On the
+                     real server.js (port 4242 -- the canonical host) the JS sets
+                     src='/?preview=1' which renders the live overlay preview. -->
+                <iframe id="preview-iframe"
+                        class="preview-frame-iframe"
+                        title="Live overlay preview"
+                        scrolling="no"></iframe>
+            </div>
+            <div class="preview-hint">
+                Adjust controls on the left -- preview updates live. Click <strong>Apply to OBS</strong> to save permanently.
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /* ==========================================================================
+           1. CONSTANTS
+           ========================================================================== */
+        const WELCOME_SEEN_KEY = 'customize_welcome_seen';
+
+        /* ==========================================================================
+           1a. THEMES (Stage 7.29 -- 22 themes ported verbatim from current
+           src/customize.html L2302-2567). Theme keys serve as both dropdown
+           option value AND label. Nested shape: top-level element groups
+           (font / masters / card / border / glow / nowPlaying / bars / title /
+           artist / spectrum / progressBar / timestamps). Leaf values can be
+           hex strings, rgba()/CSS literals, the sentinel 'var(--accent-master)',
+           arrays (border.colors, progressBar.fillColors), or numbers.
+
+           applyTheme() walks each nested path through THEME_KEY_MAP (defined
+           below SETTINGS_CONFIG) to write into the flat State.config[c-*-id]
+           shape used by Stage 7.28 binds. Unmapped paths log + skip (e.g.
+           progressBar.fillColors which has no v2 control yet).
+           ========================================================================== */
+        const THEMES = {
+            'Rainbow (Default)': {},  // just the raw DEFAULTS
+            'Neon Blue': {
+                font: 'Space Grotesk',
+                masters: { accentColor: '#00c8ff' },
+                card: { backgroundTop: 'rgba(0,8,32,0.99)', backgroundBottom: 'rgba(0,4,20,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#00c8ff', '#0080ff', '#4040ff', '#00ffcc', '#0060cc'] },
+                glow: { color1: '#00c8ff', color2: '#0040ff' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#0060cc', '#00c8ff', '#0080ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Hot Pink': {
+                font: 'Poppins',
+                masters: { accentColor: '#ff4499' },
+                card: { backgroundTop: 'rgba(32,0,18,0.99)', backgroundBottom: 'rgba(20,0,12,0.99)', backgroundAngle: 135 },
+                border: { colors: ['#ff0066', '#ff4499', '#ff0099', '#cc0055', '#ff66aa'] },
+                glow: { color1: '#ff0066', color2: '#cc0044' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#cc0044', '#ff4499', '#ff0077'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Retro Orange': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff9900' },
+                card: { backgroundTop: 'rgba(28,10,0,0.99)', backgroundBottom: 'rgba(16,6,0,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#ff6600', '#ff9900', '#ffcc00', '#ff4400', '#ff8800'] },
+                glow: { color1: '#ff6600', color2: '#ff9900' },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 8 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)' },
+                progressBar: { fillColors: ['#cc4400', '#ff8800', '#ffcc00'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Synthwave': {
+                font: 'Raleway',
+                masters: { accentColor: '#ff00cc' },
+                card: { backgroundTop: 'rgba(10,0,30,0.99)', backgroundBottom: 'rgba(5,0,20,0.99)', backgroundAngle: 145 },
+                border: { colors: ['#ff00aa', '#aa00ff', '#ff00ff', '#cc00cc', '#ff44cc'] },
+                glow: { color1: '#ff00aa', color2: '#8800ff', intensity: 1.4, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 7 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ff00aa', glowSize: 25 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'rainbow', barCount: 60, heightMult: 1.2 },
+                progressBar: { fillColors: ['#8800ff', '#ff00aa', '#aa00ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Forest Green': {
+                font: 'DM Sans',
+                masters: { accentColor: '#00ff88' },
+                card: { backgroundTop: 'rgba(0,14,6,0.99)', backgroundBottom: 'rgba(0,8,4,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#00ff88', '#00cc66', '#44ff99', '#00aa55', '#22ddaa'] },
+                glow: { color1: '#00ff88', color2: '#00aa44' },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 45 },
+                progressBar: { fillColors: ['#00aa44', '#00ff88', '#44ffaa'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Crimson': {
+                font: 'Montserrat',
+                masters: { accentColor: '#ff4422' },
+                card: { backgroundTop: 'rgba(28,0,0,0.99)', backgroundBottom: 'rgba(16,0,0,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff2200', '#ff6600', '#ff0000', '#cc2200', '#ff4400'] },
+                glow: { color1: '#ff2200', color2: '#cc0000', intensity: 1.2 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 800 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', heightMult: 1.1 },
+                progressBar: { fillColors: ['#aa0000', '#ff2200', '#ff6600'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Midnight': {
+                font: 'Nunito',
+                masters: { accentColor: '#8899cc' },
+                card: { backgroundTop: 'rgba(2,4,18,0.99)', backgroundBottom: 'rgba(1,2,10,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#6688aa', '#4466cc', '#8899bb', '#335588', '#aabbcc'] },
+                glow: { color1: '#4466cc', color2: '#224488', intensity: 0.7, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)' }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 40, heightMult: 0.8 },
+                progressBar: { fillColors: ['#224488', '#4466cc', '#8899bb'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Cherry Blossom': {
+                font: 'Outfit',
+                masters: { accentColor: '#ff88bb' },
+                card: { backgroundTop: 'rgba(30,2,14,0.99)', backgroundBottom: 'rgba(18,0,10,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#ff88bb', '#ffaacc', '#ff66aa', '#ff99bb', '#ffccdd'] },
+                glow: { color1: '#ff88bb', color2: '#ff44aa', intensity: 0.9 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 4 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barRadius: 6 },
+                progressBar: { fillColors: ['#ff44aa', '#ff88bb', '#ffaacc'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Minimal White': {
+                font: 'Inter',
+                masters: { accentColor: '#aaaacc' },
+                card: { backgroundTop: 'rgba(16,16,20,0.99)', backgroundBottom: 'rgba(8,8,12,0.99)', backgroundAngle: 180, borderThickness: 2 },
+                border: { enabled: true, spinDuration: 8, colors: ['#555566', '#888899', '#aaaacc', '#666677', '#999988'] },
+                glow: { enabled: false },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 35, heightMult: 0.75 },
+                progressBar: { fillColors: ['#555566', '#888899', '#aaaacc'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            // v8.0.1: 12 new visual themes
+            'Vaporwave': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff71ce' },
+                card: { backgroundTop: 'rgba(28,4,52,0.99)', backgroundBottom: 'rgba(8,2,32,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff71ce', '#01cdfe', '#b967ff', '#fffb96', '#05ffa1'] },
+                glow: { color1: '#ff71ce', color2: '#01cdfe', intensity: 1.4, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 6 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ff71ce', glowSize: 22 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#01cdfe', glowSize: 14 },
+                spectrum: { colorMode: 'rainbow', barCount: 55, heightMult: 1.1 },
+                progressBar: { fillColors: ['#01cdfe', '#ff71ce', '#b967ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Aurora': {
+                font: 'DM Sans',
+                masters: { accentColor: '#22ddff' },
+                card: { backgroundTop: 'rgba(2,12,28,0.99)', backgroundBottom: 'rgba(0,4,16,0.99)', backgroundAngle: 150 },
+                border: { colors: ['#00ff88', '#22ddff', '#aa66ff', '#33cc99', '#66ddff'] },
+                glow: { color1: '#22ddff', color2: '#aa66ff', intensity: 1.5, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#22ddff', glowSize: 22 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 60, heightMult: 1.15 },
+                progressBar: { fillColors: ['#22ddff', '#aa66ff', '#00ff88'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Royal Purple': {
+                font: 'Playfair Display',
+                masters: { accentColor: '#9b51e0' },
+                card: { backgroundTop: 'rgba(20,4,40,0.99)', backgroundBottom: 'rgba(10,2,22,0.99)', backgroundAngle: 148 },
+                border: { colors: ['#9b51e0', '#d4a017', '#7b1fa2', '#ffd966', '#a855f7'] },
+                glow: { color1: '#9b51e0', color2: '#ffd966', intensity: 1.3, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 5 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#9b51e0', glowSize: 18 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 50 },
+                progressBar: { fillColors: ['#7b1fa2', '#9b51e0', '#ffd966'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Coffee': {
+                font: 'Lato',
+                masters: { accentColor: '#d2a679' },
+                card: { backgroundTop: 'rgba(28,18,10,0.99)', backgroundBottom: 'rgba(16,10,6,0.99)', backgroundAngle: 145 },
+                border: { colors: ['#a47148', '#d2a679', '#7a4f2b', '#e6c79c', '#8b5a2b'] },
+                glow: { color1: '#a47148', color2: '#d2a679', intensity: 0.9, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 40, heightMult: 0.9 },
+                progressBar: { fillColors: ['#7a4f2b', '#a47148', '#d2a679'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Volcano': {
+                font: 'Oxanium',
+                masters: { accentColor: '#ff6600' },
+                card: { backgroundTop: 'rgba(36,4,0,0.99)', backgroundBottom: 'rgba(8,0,0,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#ff3300', '#ffcc00', '#ff6600', '#ff0000', '#ff9900'] },
+                glow: { color1: '#ff3300', color2: '#ffcc00', intensity: 1.6, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 800, glowEnabled: true, glowColor: '#ff3300', glowSize: 24 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 55, heightMult: 1.2 },
+                progressBar: { fillColors: ['#cc1100', '#ff6600', '#ffcc00'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Ice Crystal': {
+                font: 'Space Grotesk',
+                masters: { accentColor: '#a0e6ff' },
+                card: { backgroundTop: 'rgba(4,16,32,0.99)', backgroundBottom: 'rgba(0,8,20,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#a0e6ff', '#c8f0ff', '#80ccff', '#e6f7ff', '#66b3ff'] },
+                glow: { color1: '#a0e6ff', color2: '#80ccff', intensity: 1.2, pulseDuration: 4 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#a0e6ff', glowSize: 20 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 45, heightMult: 0.95 },
+                progressBar: { fillColors: ['#66b3ff', '#a0e6ff', '#e6f7ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Galaxy': {
+                font: 'Raleway',
+                masters: { accentColor: '#b388ff' },
+                card: { backgroundTop: 'rgba(4,2,20,0.99)', backgroundBottom: 'rgba(0,0,8,0.99)', backgroundAngle: 135 },
+                border: { colors: ['#7c4dff', '#3d5afe', '#e040fb', '#651fff', '#b388ff'] },
+                glow: { color1: '#7c4dff', color2: '#e040fb', intensity: 1.5, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 8 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#7c4dff', glowSize: 25 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'rainbow', barCount: 65, heightMult: 1.0 },
+                progressBar: { fillColors: ['#3d5afe', '#7c4dff', '#e040fb'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Sunset': {
+                font: 'Poppins',
+                masters: { accentColor: '#ff6e7f' },
+                card: { backgroundTop: 'rgba(40,12,32,0.99)', backgroundBottom: 'rgba(20,4,16,0.99)', backgroundAngle: 155 },
+                border: { colors: ['#ff6e7f', '#bfe9ff', '#ff9966', '#ffcc66', '#ff6e7f'] },
+                glow: { color1: '#ff6e7f', color2: '#ff9966', intensity: 1.3, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#ff6e7f', glowSize: 18 },
+                artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'gradient', color: 'var(--accent-master)', barCount: 50 },
+                progressBar: { fillColors: ['#ff6e7f', '#ff9966', '#ffcc66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Lime': {
+                font: 'Manrope',
+                masters: { accentColor: '#aaff00' },
+                card: { backgroundTop: 'rgba(8,20,4,0.99)', backgroundBottom: 'rgba(2,12,2,0.99)', backgroundAngle: 148 },
+                border: { colors: ['#aaff00', '#ccff33', '#88ff00', '#eeff66', '#66cc00'] },
+                glow: { color1: '#aaff00', color2: '#ccff33', intensity: 1.2, pulseDuration: 3 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 50, heightMult: 1.0 },
+                progressBar: { fillColors: ['#66cc00', '#aaff00', '#eeff66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Vintage Sepia': {
+                font: 'Playfair Display',
+                masters: { accentColor: '#c9a96e' },
+                card: { backgroundTop: 'rgba(28,20,12,0.99)', backgroundBottom: 'rgba(16,10,4,0.99)', backgroundAngle: 140 },
+                border: { colors: ['#c9a96e', '#a07e4f', '#e0c896', '#7a5a32', '#bf9560'] },
+                glow: { color1: '#c9a96e', color2: '#a07e4f', intensity: 0.8, pulseDuration: 6 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 7 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 600 }, artist: { color: 'var(--accent-master)' },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 38, heightMult: 0.85 },
+                progressBar: { fillColors: ['#7a5a32', '#c9a96e', '#e0c896'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Cyber Matrix': {
+                font: 'Oxanium',
+                masters: { accentColor: '#00ff41' },
+                card: { backgroundTop: 'rgba(0,12,4,0.99)', backgroundBottom: 'rgba(0,4,2,0.99)', backgroundAngle: 160 },
+                border: { colors: ['#00ff41', '#00cc33', '#33ff66', '#008f25', '#22dd55'] },
+                glow: { color1: '#00ff41', color2: '#33ff66', intensity: 1.6, pulseDuration: 2 },
+                nowPlaying: { color: 'var(--accent-master)', letterSpacing: 9 }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', fontWeight: 700, glowEnabled: true, glowColor: '#00ff41', glowSize: 22 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#33ff66', glowSize: 12 },
+                spectrum: { colorMode: 'solid', color: 'var(--accent-master)', barCount: 55, heightMult: 1.1 },
+                progressBar: { fillColors: ['#008f25', '#00ff41', '#33ff66'] },
+                timestamps: { color: 'var(--accent-master)' }
+            },
+            'Dreamcore': {
+                font: 'Manrope',
+                masters: { accentColor: '#d9b3ff' },
+                card: { backgroundTop: 'rgba(20,12,32,0.99)', backgroundBottom: 'rgba(10,6,18,0.99)', backgroundAngle: 152 },
+                border: { colors: ['#ffb3d9', '#b3d9ff', '#d9b3ff', '#ffd9b3', '#b3ffd9'] },
+                glow: { color1: '#ffb3d9', color2: '#d9b3ff', intensity: 1.1, pulseDuration: 5 },
+                nowPlaying: { color: 'var(--accent-master)' }, bars: { color: 'var(--accent-master)' },
+                title: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#ffb3d9', glowSize: 20 },
+                artist: { color: 'var(--accent-master)', glowEnabled: true, glowColor: '#b3d9ff', glowSize: 10 },
+                spectrum: { colorMode: 'rainbow', barCount: 55, heightMult: 1.0 },
+                progressBar: { fillColors: ['#ffb3d9', '#d9b3ff', '#b3d9ff'] },
+                timestamps: { color: 'var(--accent-master)' }
+            }
+        };
+
+        /* ==========================================================================
+           1b. SETTINGS_CONFIG (Stage 7.28)
+           Single source of truth for all 141 controls. One entry per LOGICAL
+           control (color picker + hex text input share one entry of type
+           'colorPair'). Schema documented in V14_S7_28_LOG.md S0.4.
+           Each entry: { id, type, supercat, advanced?, label, cssVar?, cssTarget?,
+                         default, plus type-specific (min/max/step/unit/transform/
+                         options/placeholder/pickerId) }
+           Stage 7.28 replaces the 4 hand-wired Stage 7.27 controls with this
+           data-driven pattern. Stage 7.25 research Section 1 + 2 lists all IDs.
+           ========================================================================== */
+        const SETTINGS_CONFIG = [
+            // ===== 5 MASTERS (supercat: start) =====
+            { id: 'c-master-accent-color', type: 'colorPair', supercat: 'start', label: 'Master Accent Color',
+              pickerId: 'c-master-accent-color-p', cssVar: '--accent-master', cssTarget: 'master', default: '#c060ff' },
+            { id: 'c-master-overall-size', type: 'slider', supercat: 'start', label: 'Overall size',
+              cssVar: '--overall-scale', cssTarget: 'master', default: 100,
+              min: 50, max: 150, step: 5, unit: '%', transform: 'percent' },
+            { id: 'c-master-text-size', type: 'slider', supercat: 'start', label: 'Text size',
+              cssVar: '--text-scale', cssTarget: 'master', default: 100,
+              min: 50, max: 150, step: 5, unit: '%', transform: 'percent' },
+            { id: 'c-master-glow', type: 'toggle', supercat: 'start', label: 'Glow',
+              cssVar: '--glow-master-enabled', cssTarget: 'master', default: true, transform: 'boolToInt' },
+            { id: 'c-master-animations', type: 'toggle', supercat: 'start', label: 'Animations',
+              cssVar: '--animations-master-enabled', cssTarget: 'master', default: true, transform: 'boolToInt' },
+
+            // ===== GENERAL (supercat: start) =====
+            { id: 'c-overlay-opacity', type: 'slider', supercat: 'start', label: 'Overlay opacity',
+              cssVar: '--overlay-opacity', cssTarget: 'overlay', default: 1.0,
+              min: 0.05, max: 1, step: 0.05, unit: '', transform: 'identity' },
+
+            // ===== THEME (supercat: look) -- Stage 7.29 special-case via bindThemeControl =====
+            { id: 'c-theme', type: 'select', supercat: 'look', label: 'Theme',
+              cssTarget: null, default: 'Rainbow (Default)',
+              // Stage 7.29: options computed from THEMES const at render time.
+              // Each theme key serves as both option value AND label.
+              options: Object.keys(THEMES).map(k => ({ value: k, label: k })) },
+
+            // ===== FONT (supercat: look) =====
+            { id: 'c-font', type: 'select', supercat: 'look', label: 'Font',
+              cssTarget: null, default: 'Inter',
+              options: [
+                  { value: 'Inter', label: 'Inter' },
+                  { value: 'Roboto', label: 'Roboto' },
+                  { value: 'Poppins', label: 'Poppins' },
+                  { value: 'Manrope', label: 'Manrope' },
+                  { value: 'Raleway', label: 'Raleway' },
+                  { value: 'Oxanium', label: 'Oxanium' },
+                  { value: 'Space Grotesk', label: 'Space Grotesk' }
+              ] },
+
+            // ===== CARD (supercat: look; blur+opacity are advanced) =====
+            { id: 'c-card-radius', type: 'slider', supercat: 'look', label: 'Card corner radius',
+              cssTarget: null, default: 56, min: 0, max: 120, step: 2, unit: 'px' },
+            { id: 'c-card-thick', type: 'slider', supercat: 'look', label: 'Card border thickness',
+              cssTarget: null, default: 5, min: 0, max: 20, step: 1, unit: 'px' },
+            { id: 'c-card-angle', type: 'slider', supercat: 'look', label: 'Card background angle',
+              cssTarget: null, default: 148, min: 0, max: 360, step: 5, unit: 'deg' },
+            { id: 'c-card-top', type: 'colorPair', supercat: 'look', label: 'Card background top',
+              pickerId: 'c-card-top-p', cssTarget: null, default: 'rgba(18,6,36,0.99)' },
+            { id: 'c-card-bot', type: 'colorPair', supercat: 'look', label: 'Card background bottom',
+              pickerId: 'c-card-bot-p', cssTarget: null, default: 'rgba(12,4,24,0.99)' },
+            { id: 'c-card-blur', type: 'slider', supercat: 'look', advanced: true, label: 'Blur behind the card',
+              cssTarget: null, default: 0, min: 0, max: 20, step: 1, unit: 'px' },
+            { id: 'c-card-opacity', type: 'slider', supercat: 'look', advanced: true, label: 'Card opacity',
+              cssTarget: null, default: 0.99, min: 0, max: 1, step: 0.01, unit: '' },
+
+            // ===== ALBUM ART (supercat: look) =====
+            { id: 'c-art-on', type: 'toggle', supercat: 'look', label: 'Album art enabled', cssTarget: null, default: true },
+            { id: 'c-art-position', type: 'select', supercat: 'look', label: 'Album art position',
+              cssTarget: null, default: 'left',
+              options: [
+                  { value: 'left', label: 'Left' },
+                  { value: 'right', label: 'Right' },
+                  { value: 'top', label: 'Top' },
+                  { value: 'bottom', label: 'Bottom' }
+              ] },
+            { id: 'c-art-w', type: 'slider', supercat: 'look', label: 'Album art width',
+              cssTarget: null, default: 310, min: 80, max: 500, step: 10, unit: 'px' },
+            { id: 'c-art-fade', type: 'slider', supercat: 'look', label: 'Album art fade width',
+              cssTarget: null, default: 130, min: 0, max: 300, step: 10, unit: 'px' },
+
+            // ===== NOW PLAYING (supercat: text) =====
+            { id: 'c-np-text', type: 'text', supercat: 'text', label: '"Now Playing" text',
+              cssTarget: null, default: 'Now Playing', placeholder: 'Now Playing' },
+            { id: 'c-np-size', type: 'slider', supercat: 'text', label: '"Now Playing" size',
+              cssTarget: null, default: 44, min: 20, max: 80, step: 2, unit: 'px' },
+            { id: 'c-np-color', type: 'colorPair', supercat: 'text', label: '"Now Playing" color',
+              pickerId: 'c-np-color-p', cssVar: '--np-color', cssTarget: 'overlay', default: 'var(--accent-master)' },
+            { id: 'c-np-spacing', type: 'slider', supercat: 'text', label: '"Now Playing" letter spacing',
+              cssTarget: null, default: 5, min: 0, max: 20, step: 1, unit: 'px' },
+
+            // ===== TITLE (supercat: text; letter spacing + scroll pause are advanced) =====
+            { id: 'c-title-size', type: 'slider', supercat: 'text', label: 'Title size',
+              cssTarget: null, default: 68, min: 30, max: 120, step: 2, unit: 'px' },
+            { id: 'c-title-weight', type: 'select', supercat: 'text', label: 'Title weight',
+              cssTarget: null, default: '800',
+              options: [
+                  { value: '400', label: '400 Regular' },
+                  { value: '500', label: '500 Medium' },
+                  { value: '600', label: '600 SemiBold' },
+                  { value: '700', label: '700 Bold' },
+                  { value: '800', label: '800 ExtraBold' },
+                  { value: '900', label: '900 Black' }
+              ] },
+            { id: 'c-title-color', type: 'colorPair', supercat: 'text', label: 'Title color',
+              pickerId: 'c-title-color-p', cssVar: '--title-color', cssTarget: 'overlay', default: 'var(--accent-master)' },
+            { id: 'c-title-mspd', type: 'slider', supercat: 'text', label: 'Title scroll speed',
+              cssTarget: null, default: 68, min: 10, max: 200, step: 5, unit: '' },
+            { id: 'c-title-mpause', type: 'slider', supercat: 'text', advanced: true, label: 'Title scroll pause',
+              cssTarget: null, default: 2, min: 0, max: 10, step: 0.5, unit: 's' },
+            { id: 'c-title-spacing', type: 'slider', supercat: 'text', advanced: true, label: 'Title letter spacing',
+              cssTarget: null, default: 0, min: -5, max: 20, step: 1, unit: 'px' },
+
+            // ===== ARTIST (supercat: text; letter spacing + scroll pause are advanced) =====
+            { id: 'c-artist-size', type: 'slider', supercat: 'text', label: 'Artist size',
+              cssTarget: null, default: 44, min: 20, max: 80, step: 2, unit: 'px' },
+            { id: 'c-artist-weight', type: 'select', supercat: 'text', label: 'Artist weight',
+              cssTarget: null, default: '500',
+              options: [
+                  { value: '400', label: '400 Regular' },
+                  { value: '500', label: '500 Medium' },
+                  { value: '600', label: '600 SemiBold' },
+                  { value: '700', label: '700 Bold' }
+              ] },
+            { id: 'c-artist-color', type: 'colorPair', supercat: 'text', label: 'Artist color',
+              pickerId: 'c-artist-color-p', cssVar: '--artist-color', cssTarget: 'overlay', default: 'var(--accent-master)' },
+            { id: 'c-artist-spacing', type: 'slider', supercat: 'text', advanced: true, label: 'Artist letter spacing',
+              cssTarget: null, default: 0, min: -5, max: 15, step: 1, unit: 'px' },
+            { id: 'c-artist-mspd', type: 'slider', supercat: 'text', label: 'Artist scroll speed',
+              cssTarget: null, default: 68, min: 10, max: 200, step: 5, unit: '' },
+            { id: 'c-artist-mpause', type: 'slider', supercat: 'text', advanced: true, label: 'Artist scroll pause',
+              cssTarget: null, default: 2, min: 0, max: 10, step: 0.5, unit: 's' },
+
+            // ===== PROGRESS BAR + TIMESTAMPS (supercat: text) =====
+            { id: 'c-prog-on', type: 'toggle', supercat: 'text', label: 'Progress bar enabled', cssTarget: null, default: true },
+            { id: 'c-prog-h', type: 'slider', supercat: 'text', label: 'Progress bar height',
+              cssTarget: null, default: 9, min: 2, max: 30, step: 1, unit: 'px' },
+            { id: 'c-prog-radius', type: 'slider', supercat: 'text', label: 'Progress bar radius',
+              cssTarget: null, default: 6, min: 0, max: 15, step: 1, unit: 'px' },
+            { id: 'c-prog-track', type: 'colorPair', supercat: 'text', label: 'Progress track color',
+              pickerId: 'c-prog-track-p', cssTarget: null, default: 'rgba(160,70,255,0.10)' },
+            { id: 'c-prog-f0', type: 'colorPair', supercat: 'text', label: 'Progress fill color 1',
+              pickerId: 'c-prog-f0-p', cssTarget: null, default: '#8020c0' },
+            { id: 'c-prog-f1', type: 'colorPair', supercat: 'text', label: 'Progress fill color 2',
+              pickerId: 'c-prog-f1-p', cssTarget: null, default: '#ff60c8' },
+            { id: 'c-prog-f2', type: 'colorPair', supercat: 'text', label: 'Progress fill color 3',
+              pickerId: 'c-prog-f2-p', cssTarget: null, default: '#c040ff' },
+            { id: 'c-ts-size', type: 'slider', supercat: 'text', label: 'Timestamp size',
+              cssTarget: null, default: 46, min: 20, max: 80, step: 2, unit: 'px' },
+            { id: 'c-ts-color', type: 'colorPair', supercat: 'text', label: 'Timestamp color',
+              pickerId: 'c-ts-color-p', cssTarget: null, default: 'var(--accent-master)' },
+
+            // ===== OUTER GLOW (supercat: effects; first/second color are advanced) =====
+            { id: 'c-glow-on', type: 'toggle', supercat: 'effects', label: 'Outer glow enabled', cssTarget: null, default: true },
+            { id: 'c-glow-c1', type: 'colorPair', supercat: 'effects', advanced: true, label: 'First color',
+              pickerId: 'c-glow-c1-p', cssTarget: null, default: '#e632b4' },
+            { id: 'c-glow-c2', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Second color',
+              pickerId: 'c-glow-c2-p', cssTarget: null, default: '#961ee6' },
+            { id: 'c-glow-int', type: 'slider', supercat: 'effects', label: 'Glow intensity',
+              cssTarget: null, default: 1.0, min: 0, max: 3, step: 0.1, unit: 'x' },
+            { id: 'c-glow-pulse', type: 'slider', supercat: 'effects', label: 'Glow pulse duration',
+              cssTarget: null, default: 3, min: 0.5, max: 10, step: 0.5, unit: 's' },
+
+            // ===== TEXT GLOW (supercat: effects; per-element overrides go to Advanced) =====
+            // 5 groups (NP / Platform / Title / Artist / Timestamps); each has on + color + size
+            // Master toggles stay in Effects; per-element controls are advanced
+            { id: 'c-np-glow-on', type: 'toggle', supercat: 'effects', label: 'Now Playing glow', cssTarget: null, default: false },
+            { id: 'c-np-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Now Playing glow color',
+              pickerId: 'c-np-glow-color-p', cssTarget: null, default: '#c060ff' },
+            { id: 'c-np-glow-size', type: 'slider', supercat: 'effects', advanced: true, label: 'Now Playing glow size',
+              cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
+            { id: 'c-platform-glow-on', type: 'toggle', supercat: 'effects', label: 'Platform badge glow', cssTarget: null, default: false },
+            { id: 'c-platform-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Platform glow color',
+              pickerId: 'c-platform-glow-color-p', cssTarget: null, default: '#c8a0ff' },
+            { id: 'c-platform-glow-size', type: 'slider', supercat: 'effects', advanced: true, label: 'Platform glow size',
+              cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
+            { id: 'c-title-glow-on', type: 'toggle', supercat: 'effects', label: 'Title glow', cssTarget: null, default: false },
+            { id: 'c-title-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Title glow color',
+              pickerId: 'c-title-glow-color-p', cssTarget: null, default: '#ff80ff' },
+            { id: 'c-title-glow-size', type: 'slider', supercat: 'effects', advanced: true, label: 'Title glow size',
+              cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
+            { id: 'c-artist-glow-on', type: 'toggle', supercat: 'effects', label: 'Artist glow', cssTarget: null, default: false },
+            { id: 'c-artist-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Artist glow color',
+              pickerId: 'c-artist-glow-color-p', cssTarget: null, default: '#80c0ff' },
+            { id: 'c-artist-glow-size', type: 'slider', supercat: 'effects', advanced: true, label: 'Artist glow size',
+              cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
+            { id: 'c-ts-glow-on', type: 'toggle', supercat: 'effects', label: 'Timestamps glow', cssTarget: null, default: false },
+            { id: 'c-ts-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Timestamps glow color',
+              pickerId: 'c-ts-glow-color-p', cssTarget: null, default: '#e090ff' },
+            { id: 'c-ts-glow-size', type: 'slider', supercat: 'effects', advanced: true, label: 'Timestamps glow size',
+              cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
+
+            // ===== DYNAMIC COLORS / AUTO-COLOR FROM ALBUM ART (supercat: effects;
+            //       per-element overrides go to Advanced; master enabled stays here) =====
+            { id: 'c-dynamic-colors', type: 'toggle', supercat: 'effects', label: 'Auto-color from album art',
+              cssTarget: null, default: false },
+            { id: 'c-dyn-bg', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: card background', cssTarget: null, default: true },
+            { id: 'c-dyn-glow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: outer glow', cssTarget: null, default: true },
+            { id: 'c-dyn-title', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title text', cssTarget: null, default: true },
+            { id: 'c-dyn-titleglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title glow', cssTarget: null, default: true },
+            { id: 'c-dyn-artist', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist text', cssTarget: null, default: true },
+            { id: 'c-dyn-artistglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist glow', cssTarget: null, default: true },
+            { id: 'c-dyn-np', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: "Now Playing" text', cssTarget: null, default: true },
+            { id: 'c-dyn-platform', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform badge', cssTarget: null, default: true },
+            { id: 'c-dyn-npglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: NP glow', cssTarget: null, default: true },
+            { id: 'c-dyn-platformglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform glow', cssTarget: null, default: true },
+            { id: 'c-dyn-spectrum', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spectrum', cssTarget: null, default: true },
+            { id: 'c-dyn-timestamps', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps', cssTarget: null, default: true },
+            { id: 'c-dyn-tsglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps glow', cssTarget: null, default: true },
+            { id: 'c-dyn-progressbar', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: progress bar', cssTarget: null, default: true },
+            { id: 'c-dyn-border', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spinning border', cssTarget: null, default: true },
+
+            // ===== AUDIO BARS (supercat: audio) =====
+            { id: 'c-bars-on', type: 'toggle', supercat: 'audio', label: 'Audio bars enabled', cssTarget: null, default: true },
+            { id: 'c-bars-color', type: 'colorPair', supercat: 'audio', label: 'Audio bars color',
+              pickerId: 'c-bars-color-p', cssTarget: null, default: 'var(--accent-master)' },
+            { id: 'c-bars-count', type: 'slider', supercat: 'audio', label: 'Audio bar count',
+              cssTarget: null, default: 4, min: 1, max: 12, step: 1, unit: '' },
+            { id: 'c-bars-speed', type: 'slider', supercat: 'audio', label: 'Audio bars speed',
+              cssTarget: null, default: 0.85, min: 0.2, max: 3, step: 0.05, unit: 'x' },
+            { id: 'c-keep-on-pause', type: 'toggle', supercat: 'audio', label: 'Keep visible when paused', cssTarget: null, default: false },
+
+            // ===== SPECTRUM (supercat: audio; reactivity sub-controls are advanced) =====
+            { id: 'c-spec-on', type: 'toggle', supercat: 'audio', label: 'Spectrum enabled', cssTarget: null, default: true },
+            { id: 'c-spec-autogain', type: 'toggle', supercat: 'audio', advanced: true, label: 'Make quiet sounds louder', cssTarget: null, default: false },
+            { id: 'c-spec-sensitivity', type: 'slider', supercat: 'audio', label: 'Spectrum sensitivity',
+              cssTarget: null, default: 1.0, min: 0.5, max: 100, step: 0.5, unit: 'x' },
+            { id: 'c-spec-sensitivity-reset', type: 'button', supercat: 'audio', label: 'Reset sensitivity to 1.0x',
+              cssTarget: null, default: null, buttonText: '↺ Reset', actionResetTarget: 'c-spec-sensitivity', resetTo: 1.0 },
+            { id: 'c-spec-mode', type: 'select', supercat: 'audio', label: 'Spectrum color mode',
+              cssTarget: null, default: 'rainbow',
+              options: [
+                  { value: 'solid', label: 'Solid' },
+                  { value: 'gradient', label: 'Gradient' },
+                  { value: 'rainbow', label: 'Rainbow' }
+              ] },
+            { id: 'c-spec-color', type: 'colorPair', supercat: 'audio', label: 'Spectrum color',
+              pickerId: 'c-spec-color-p', cssTarget: null, default: 'var(--accent-master)' },
+            { id: 'c-spec-mirror', type: 'toggle', supercat: 'audio', label: 'Mirror mode', cssTarget: null, default: false },
+            { id: 'c-spec-opacity', type: 'slider', supercat: 'audio', label: 'Spectrum opacity',
+              cssTarget: null, default: 1.0, min: 0.05, max: 1, step: 0.05, unit: '' },
+            { id: 'c-spec-bars', type: 'slider', supercat: 'audio', label: 'Spectrum bar count',
+              cssTarget: null, default: 50, min: 10, max: 480, step: 1, unit: '' },
+            { id: 'c-spec-gap', type: 'slider', supercat: 'audio', label: 'Spectrum bar gap',
+              cssTarget: null, default: 3, min: 0, max: 10, step: 1, unit: 'px' },
+            { id: 'c-spec-radius', type: 'slider', supercat: 'audio', label: 'Spectrum bar radius',
+              cssTarget: null, default: 4, min: 0, max: 10, step: 1, unit: 'px' },
+            { id: 'c-spec-min', type: 'slider', supercat: 'audio', label: 'Spectrum min height',
+              cssTarget: null, default: 2, min: 0, max: 20, step: 1, unit: 'px' },
+            { id: 'c-spec-height', type: 'slider', supercat: 'audio', label: 'Spectrum height multiplier',
+              cssTarget: null, default: 1.0, min: 0.2, max: 3.0, step: 0.1, unit: 'x' },
+            { id: 'c-spec-response', type: 'slider', supercat: 'audio', advanced: true, label: 'How quickly bars react to music',
+              cssTarget: null, default: 10.7, min: 0.01, max: 42, step: 0.01, unit: 'ms' },
+            { id: 'c-spec-smooth', type: 'slider', supercat: 'audio', advanced: true, label: 'Smoothness',
+              cssTarget: null, default: 0.6, min: 0, max: 0.99, step: 0.01, unit: '' },
+            { id: 'c-spec-fps', type: 'slider', supercat: 'audio', advanced: true, label: 'Animation frame rate (advanced)',
+              cssTarget: null, default: 120, min: 30, max: 120, step: 10, unit: 'fps' },
+
+            // ===== PLATFORM BADGE (entire section is advanced per markAdvancedElements) =====
+            { id: 'c-platform-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Platform badge enabled', cssTarget: null, default: true },
+            { id: 'c-platform-sc-label', type: 'text', supercat: 'layout', advanced: true, label: 'SoundCloud label text',
+              cssTarget: null, default: 'SoundCloud', placeholder: 'SoundCloud' },
+            { id: 'c-platform-color', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform color',
+              pickerId: 'c-platform-color-p', cssTarget: null, default: 'var(--accent-master)' },
+            { id: 'c-platform-dot', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform dot color',
+              pickerId: 'c-platform-dot-p', cssTarget: null, default: 'var(--accent-master)' },
+            { id: 'c-platform-size', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform size',
+              cssTarget: null, default: 30, min: 14, max: 60, step: 1, unit: 'px' },
+            { id: 'c-platform-weight', type: 'select', supercat: 'layout', advanced: true, label: 'Platform weight',
+              cssTarget: null, default: '600',
+              options: [
+                  { value: '400', label: '400 Regular' },
+                  { value: '500', label: '500 Medium' },
+                  { value: '600', label: '600 SemiBold' },
+                  { value: '700', label: '700 Bold' }
+              ] },
+            { id: 'c-platform-spacing', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform letter spacing',
+              cssTarget: null, default: 2, min: 0, max: 10, step: 1, unit: 'px' },
+
+            // ===== SPINNING BORDER (entire section is advanced) =====
+            { id: 'c-border-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Spinning border enabled', cssTarget: null, default: true },
+            { id: 'c-border-spd', type: 'slider', supercat: 'layout', advanced: true, label: 'Spinning border speed',
+              cssTarget: null, default: 4, min: 0.5, max: 20, step: 0.5, unit: 's' },
+            { id: 'c-border-colors', type: 'colorList', supercat: 'layout', advanced: true, label: 'Spinning border colors',
+              cssTarget: null, default: ['#ff1085','#ff60c8','#d040ff','#8020e0','#4a0ab8'] },
+
+            // ===== LAYOUT (entire section is advanced) =====
+            { id: 'c-layout-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout editor enabled', cssTarget: null, default: false },
+            { id: 'c-layout-grid', type: 'select', supercat: 'layout', advanced: true, label: 'Layout grid size',
+              cssTarget: null, default: '8',
+              options: [
+                  { value: '0', label: 'Off' },
+                  { value: '4', label: '4 px' },
+                  { value: '8', label: '8 px' },
+                  { value: '16', label: '16 px' }
+              ] },
+            // Layout node visibility + lock pairs: only the spectrum pair exists
+            // as STATIC HTML in current customize.html (the other 8 node rows
+            // are dynamically generated by rebuildLayoutEditor() at runtime per
+            // the layout.nodes config). Stage 7.28 SETTINGS_CONFIG mirrors the
+            // static-HTML reality; Stage 7.29 can later wire the dynamic layout
+            // node generation if needed.
+            { id: 'c-layout-vis-spectrum', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-spectrum', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum locked', cssTarget: null, default: false },
+
+            // ===== SLIDE-IN ANIMATION (entire section is advanced) =====
+            { id: 'c-anim-dur', type: 'slider', supercat: 'layout', advanced: true, label: 'Slide-in duration',
+              cssTarget: null, default: 0.5, min: 0.1, max: 2, step: 0.1, unit: 's' },
+            { id: 'c-anim-slide', type: 'slider', supercat: 'layout', advanced: true, label: 'Slide-in distance',
+              cssTarget: null, default: 28, min: 0, max: 100, step: 2, unit: 'px' },
+            { id: 'c-anim-dir', type: 'select', supercat: 'layout', advanced: true, label: 'Slide-in direction',
+              cssTarget: null, default: 'up',
+              options: [
+                  { value: 'up', label: 'Up' },
+                  { value: 'down', label: 'Down' },
+                  { value: 'left', label: 'Left' },
+                  { value: 'right', label: 'Right' }
+              ] },
+            { id: 'c-anim-easing', type: 'select', supercat: 'layout', advanced: true, label: 'Slide-in easing',
+              cssTarget: null, default: 'spring',
+              options: [
+                  { value: 'linear', label: 'Linear' },
+                  { value: 'ease-out', label: 'Ease out' },
+                  { value: 'ease-in-out', label: 'Ease in-out' },
+                  { value: 'spring', label: 'Spring' }
+              ] },
+            { id: 'c-anim-crossfade', type: 'toggle', supercat: 'layout', advanced: true, label: 'Crossfade on track skip',
+              cssTarget: null, default: false }
+        ];
+
+        /* ==========================================================================
+           2. DOM REFS (cached at init)
+           Stage 7.26 caches only the welcome banner + footer link refs needed by
+           the welcome banner JS. Later stages will extend this with more refs
+           (control inputs, theme grid, supercat bodies, etc.).
+           ========================================================================== */
+        let $welcomeBanner = null;
+        let $welcomeDismiss = null;
+        let $showWelcomeAgain = null;
+
+        function cacheElements() {
+            $welcomeBanner = document.getElementById('welcome-banner');
+            $welcomeDismiss = document.getElementById('welcome-dismiss');
+            $showWelcomeAgain = document.getElementById('show-welcome-again');
+        }
+
+        /* ==========================================================================
+           3. WELCOME BANNER (Stage 7.26 -- only feature this stage)
+           First-time users see the banner; "Got it, hide this" dismisses + persists.
+           Footer "Show welcome message" link reshows it (clears the persistence flag).
+           localStorage access is defensive (try/catch) because the page may be
+           opened from file:// where some browsers restrict localStorage on some
+           protocols, and PyWebView contexts can have intermittent access.
+           ========================================================================== */
+        function showWelcome() {
+            if ($welcomeBanner) $welcomeBanner.removeAttribute('hidden');
+        }
+
+        function hideWelcome(persist) {
+            if ($welcomeBanner) $welcomeBanner.setAttribute('hidden', '');
+            if (persist) {
+                try { localStorage.setItem(WELCOME_SEEN_KEY, '1'); }
+                catch (e) { /* localStorage unavailable; non-fatal */ }
+            }
+        }
+
+        function initWelcome() {
+            let seen = false;
+            try { seen = localStorage.getItem(WELCOME_SEEN_KEY) === '1'; }
+            catch (e) { /* localStorage unavailable; treat as not-seen */ }
+            if (!seen) showWelcome();
+
+            if ($welcomeDismiss) {
+                $welcomeDismiss.addEventListener('click', function () { hideWelcome(true); });
+            }
+            if ($showWelcomeAgain) {
+                $showWelcomeAgain.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    try { localStorage.removeItem(WELCOME_SEEN_KEY); }
+                    catch (err) { /* non-fatal */ }
+                    showWelcome();
+                });
+            }
+        }
+
+        /* ==========================================================================
+           5. STATE (Stage 7.27)
+           Single source of truth for the current config + dirty flag. Schema
+           matches src/customize.html DEFAULTS const (nested by section: masters,
+           title, glow, art, spectrum, etc.). Stage 7.27 only writes to 4 paths
+           via the 4 representative bindings.
+
+           SE5 FIX: EXPECTED_SERVER_ORIGIN + isProductionContext() gate the
+           server-side fetches so standalone HTTP testing (Python static
+           server on port 8765, file://, any other origin) silently skips
+           the fetches that would 404/501 anyway. On the real server.js
+           (port 4242, route /customize after Stage 7.30 swap) all fetches
+           fire normally.
+           ========================================================================== */
+        const State = {
+            config: {},        // nested DEFAULTS-shape; loadConfig populates, bindings mutate
+            isDirty: false     // true if any control changed since last Apply to OBS
+        };
+
+        // Stage 7.30 SE5 fix (strike 1/3): customize.exe (PyWebView/WebView2)
+        // navigates to 'http://localhost:4242/customize' -- browsers treat
+        // 'localhost' and '127.0.0.1' as distinct origins, so the Stage 7.27
+        // hardcoded check missed the production host and short-circuited
+        // every server-side fetch (preview iframe + Apply to OBS + load).
+        // Accept BOTH hostnames on the canonical server port.
+        const EXPECTED_SERVER_ORIGINS = [
+            'http://127.0.0.1:4242',
+            'http://localhost:4242'
+        ];
+        function isProductionContext() {
+            return EXPECTED_SERVER_ORIGINS.indexOf(location.origin) !== -1;
+        }
+
+        /* ==========================================================================
+           6. CONFIG API (Stage 7.27)
+           Endpoints match current src/customize.html convention exactly:
+             - POST /save-overlay-config: persisted save (Apply to OBS)
+             - POST /preview-config: live preview broadcast via SSE
+             - GET  /get-overlay-config: defensive load (current customize.html
+                doesnt expose this; we try and fall back to empty if missing)
+           ========================================================================== */
+        async function loadConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 404 noise.
+            // Current customize.html doesnt have a GET endpoint either; on the
+            // real server.js this would also typically 404 (no /get-overlay-config
+            // route exists; we try defensively in case server.js adds one later).
+            if (!isProductionContext()) return {};
+            try {
+                const r = await fetch('/get-overlay-config');
+                if (!r.ok) return {};
+                const data = await r.json();
+                State.config = data || {};
+                return State.config;
+            } catch (e) {
+                return {};
+            }
+        }
+
+        async function saveConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
+            if (!isProductionContext()) {
+                console.log('[Stage 7.27] saveConfig skipped (not on real server.js origin; standalone test mode)');
+                return false;
+            }
+            try {
+                const r = await fetch('/save-overlay-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(State.config)
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                State.isDirty = false;
+                return true;
+            } catch (e) {
+                // SE5 FIX: demoted from console.error to console.log (non-fatal)
+                console.log('[Stage 7.27] saveConfig failed:', e);
+                return false;
+            }
+        }
+
+        // Live preview broadcast via SSE (server-side fan-out to the preview
+        // iframe). Non-fatal if it fails (e.g. file:// open with no server).
+        async function previewConfig() {
+            // SE5 FIX: short-circuit in standalone testing to avoid 501 noise.
+            if (!isProductionContext()) return;
+            try {
+                await fetch('/preview-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(State.config)
+                });
+            } catch (e) {
+                /* live-preview non-fatal */
+            }
+        }
+
+        /* ==========================================================================
+           7. APPLY (CSS variable writing helpers + applyConfig + refreshControlValues)
+           setMasterVar: writes to both customize_v2 :root AND the iframe
+             contentDocument :root (graceful try/catch for cross-origin).
+           setOverlayVar: writes only to the iframe :root (per-element vars
+             dont need to live in customize_v2's own :root).
+           applyConfig (Stage 7.28): data-driven. Iterates SETTINGS_CONFIG,
+             reads State.config[id] (fallback to cfg.default), and calls
+             applyControlValue defined in section 8.
+           refreshControlValues (Stage 7.28): syncs DOM input values to
+             State.config[id] without re-binding. Used by onResetDefaults.
+           ========================================================================== */
+        function setMasterVar(name, value) {
+            document.documentElement.style.setProperty(name, String(value));
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.documentElement) {
+                try { f.contentDocument.documentElement.style.setProperty(name, String(value)); }
+                catch (e) { /* cross-origin; SSE pipe handles propagation */ }
+            }
+        }
+
+        function setOverlayVar(name, value) {
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.documentElement) {
+                try { f.contentDocument.documentElement.style.setProperty(name, String(value)); }
+                catch (e) { /* cross-origin; SSE pipe handles propagation */ }
+            }
+        }
+
+        // Stage 7.28: data-driven applyConfig. Iterates SETTINGS_CONFIG, reads
+        // State.config[id] (falling back to config.default), and calls the
+        // shared applyControlValue helper. That helper handles transform +
+        // cssVar/cssTarget routing + applySpecialCases (body.no-glow, etc).
+        function applyConfig() {
+            for (const cfg of SETTINGS_CONFIG) {
+                const stored = State.config[cfg.id];
+                const value = (stored !== undefined && stored !== null) ? stored : cfg.default;
+                if (value === undefined) continue;
+                applyControlValue(cfg, value);
+            }
+        }
+
+        // Stage 7.28: sync DOM input values to current State.config[id] without
+        // re-binding. Used by onResetDefaults after State.config is repopulated
+        // from defaults. Each control type updates its input element + display
+        // span if applicable; checkboxes toggle .checked; selects set .value.
+        function refreshControlValues() {
+            for (const cfg of SETTINGS_CONFIG) {
+                const stored = State.config[cfg.id];
+                const value = (stored !== undefined && stored !== null) ? stored : cfg.default;
+                if (value === undefined) continue;
+
+                switch (cfg.type) {
+                    case 'slider':
+                    case 'number': {
+                        const $i = document.getElementById(cfg.id);
+                        if ($i) $i.value = value;
+                        const $d = document.getElementById(cfg.id + '-display');
+                        if ($d) $d.textContent = value + (cfg.unit || '');
+                        break;
+                    }
+                    case 'colorPair': {
+                        const $picker = document.getElementById(cfg.pickerId);
+                        const $hex = document.getElementById(cfg.id);
+                        if ($hex) $hex.value = value;
+                        if ($picker && isHex6(value)) $picker.value = value;
+                        break;
+                    }
+                    case 'color': {
+                        const $p = document.getElementById(cfg.id);
+                        if ($p && isHex6(value)) $p.value = value;
+                        break;
+                    }
+                    case 'toggle': {
+                        const $t = document.getElementById(cfg.id);
+                        if ($t) $t.checked = Boolean(value);
+                        break;
+                    }
+                    case 'select':
+                    case 'text':
+                    case 'colorList': {
+                        const $i = document.getElementById(cfg.id);
+                        if ($i) $i.value = value;
+                        break;
+                    }
+                    case 'button':
+                        /* no input value to refresh */
+                        break;
+                }
+            }
+        }
+
+        /* ==========================================================================
+           7b. RENDERING (Stage 7.28 -- data-driven control HTML generation)
+           renderControl(config) returns the DOM Node for one control row based on
+           config.type. renderAllControls() iterates SETTINGS_CONFIG and appends
+           each rendered row into the correct supercat body (advanced:true -> Advanced).
+           All DOM construction uses createElement (no innerHTML for security).
+           ========================================================================== */
+        function renderControl(config) {
+            const row = document.createElement('div');
+            row.className = 'control-row';
+            row.dataset.controlId = config.id;
+            row.dataset.controlType = config.type;
+
+            const label = document.createElement('label');
+            label.className = 'control-label';
+            label.setAttribute('for', config.id);
+            label.textContent = config.label;
+            row.appendChild(label);
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'control-input-group';
+
+            let input;
+            switch (config.type) {
+                case 'slider':    input = createSliderInput(config); break;
+                case 'color':     input = createColorInput(config); break;
+                case 'colorPair': input = createColorPairInputs(config); break;
+                case 'toggle':    input = createToggleInput(config); break;
+                case 'select':    input = createSelectInput(config); break;
+                case 'text':      input = createTextInput(config); break;
+                case 'number':    input = createNumberInput(config); break;
+                case 'colorList': input = createColorListPlaceholder(config); break;
+                case 'button':    input = createButtonInput(config); break;
+                default:
+                    console.warn('[Stage 7.28] unknown control type:', config.type, config.id);
+                    return null;
+            }
+
+            if (input instanceof DocumentFragment) {
+                inputGroup.appendChild(input);
+            } else if (Array.isArray(input)) {
+                input.forEach(el => inputGroup.appendChild(el));
+            } else if (input) {
+                inputGroup.appendChild(input);
+            }
+            row.appendChild(inputGroup);
+            return row;
+        }
+
+        function createSliderInput(config) {
+            const frag = document.createDocumentFragment();
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.id = config.id;
+            slider.className = 'control-slider';
+            slider.min = config.min;
+            slider.max = config.max;
+            slider.step = config.step != null ? config.step : 1;
+            slider.value = config.default;
+            const display = document.createElement('span');
+            display.className = 'control-value';
+            display.id = config.id + '-display';
+            display.textContent = String(config.default) + (config.unit || '');
+            frag.appendChild(slider);
+            frag.appendChild(display);
+            return frag;
+        }
+
+        function createColorInput(config) {
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.id = config.id;
+            picker.className = 'control-color';
+            picker.value = isHex6(config.default) ? config.default : '#ffffff';
+            picker.setAttribute('aria-label', config.label + ' picker');
+            return picker;
+        }
+
+        function createColorPairInputs(config) {
+            const frag = document.createDocumentFragment();
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.id = config.pickerId;
+            picker.className = 'control-color';
+            picker.value = isHex6(config.default) ? config.default : '#ffffff';
+            picker.setAttribute('aria-label', config.label + ' picker');
+
+            const hex = document.createElement('input');
+            hex.type = 'text';
+            hex.id = config.id;
+            hex.className = 'control-hex';
+            hex.value = String(config.default);
+            hex.maxLength = 50;
+            hex.spellcheck = false;
+            hex.setAttribute('aria-label', config.label + ' value');
+
+            frag.appendChild(picker);
+            frag.appendChild(hex);
+            return frag;
+        }
+
+        function createToggleInput(config) {
+            const wrap = document.createElement('label');
+            wrap.className = 'control-toggle';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.id = config.id;
+            if (config.default) cb.checked = true;
+            const track = document.createElement('span');
+            track.className = 'control-toggle-track';
+            wrap.appendChild(cb);
+            wrap.appendChild(track);
+            return wrap;
+        }
+
+        function createSelectInput(config) {
+            const sel = document.createElement('select');
+            sel.id = config.id;
+            sel.className = 'control-select';
+            (config.options || []).forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                sel.appendChild(o);
+            });
+            sel.value = String(config.default);
+            return sel;
+        }
+
+        function createTextInput(config) {
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.id = config.id;
+            inp.className = 'control-text';
+            inp.value = String(config.default || '');
+            if (config.placeholder) inp.placeholder = config.placeholder;
+            return inp;
+        }
+
+        function createNumberInput(config) {
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.id = config.id;
+            inp.className = 'control-number';
+            if (config.min != null) inp.min = config.min;
+            if (config.max != null) inp.max = config.max;
+            if (config.step != null) inp.step = config.step;
+            inp.value = String(config.default);
+            return inp;
+        }
+
+        function createColorListPlaceholder(config) {
+            // Stage 7.28: minimal placeholder rendering for the spinning border
+            // colorList (5-hex array). Operator can paste hex strings comma-separated;
+            // Stage 7.29 may upgrade to a multi-swatch editor.
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.id = config.id;
+            inp.className = 'control-hex';
+            inp.value = Array.isArray(config.default) ? config.default.join(',') : '';
+            inp.spellcheck = false;
+            inp.setAttribute('aria-label', config.label);
+            inp.placeholder = '#hex,#hex,#hex,#hex,#hex';
+            return inp;
+        }
+
+        function createButtonInput(config) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = config.id;
+            btn.className = 'control-action-btn';
+            btn.textContent = config.buttonText || 'Action';
+            return btn;
+        }
+
+        // Helper: hex-color match (6-digit)
+        function isHex6(v) {
+            return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+        }
+
+        // Iterate SETTINGS_CONFIG and render each control into the appropriate
+        // supercat body. Option A consolidation: advanced:true entries go to
+        // Advanced supercat regardless of their config.supercat field.
+        function renderAllControls() {
+            const containers = {
+                start:    document.getElementById('supercat-start-body'),
+                look:     document.getElementById('supercat-look-body'),
+                text:     document.getElementById('supercat-text-body'),
+                effects:  document.getElementById('supercat-effects-body'),
+                audio:    document.getElementById('supercat-audio-body'),
+                layout:   document.getElementById('supercat-layout-body'),
+                advanced: document.getElementById('supercat-advanced-body')
+            };
+            for (const cfg of SETTINGS_CONFIG) {
+                const targetKey = cfg.advanced ? 'advanced' : cfg.supercat;
+                const target = containers[targetKey];
+                if (!target) {
+                    console.warn('[Stage 7.28] no container for supercat:', cfg.supercat, cfg.id);
+                    continue;
+                }
+                const row = renderControl(cfg);
+                if (row) target.appendChild(row);
+            }
+        }
+
+        /* ==========================================================================
+           8. BINDINGS (Stage 7.28 -- data-driven via SETTINGS_CONFIG + bindControl
+           dispatcher. Replaces the 4 Stage 7.27 hand-wired binds. Pattern:
+             1. DOM ref via getElementById
+             2. Restore from State.config[config.id]
+             3. Initial apply via setMasterVar / setOverlayVar
+             4. Listen for input/change -> State.config write -> isDirty true ->
+                CSS var write -> applySpecialCases -> previewConfig
+           ========================================================================== */
+
+        // Per-control apply helper. Reads config.cssVar / cssTarget / transform
+        // and writes the appropriate CSS variable. Also triggers id-specific
+        // special cases (body class toggles on iframe document) via
+        // applySpecialCases. Reused by applyConfig (STEP 5).
+        function applyControlValue(config, value) {
+            let cssValue = value;
+            if (config.transform === 'percent') {
+                cssValue = (Number(value) / 100).toFixed(2);
+            } else if (config.transform === 'boolToInt') {
+                cssValue = value ? '1' : '0';
+            } else if (config.transform === 'px') {
+                cssValue = String(value) + 'px';
+            }
+            // 'identity' or undefined -> pass-through
+
+            if (config.cssVar) {
+                if (config.cssTarget === 'master') {
+                    setMasterVar(config.cssVar, cssValue);
+                } else if (config.cssTarget === 'overlay') {
+                    setOverlayVar(config.cssVar, cssValue);
+                }
+            }
+
+            applySpecialCases(config, value);
+        }
+
+        // Id-specific special-case handlers. c-master-glow + c-master-animations
+        // toggle iframe body classes (Stage 7.20.5 mechanism). Extensible
+        // without touching the per-type bind functions.
+        function applySpecialCases(config, value) {
+            if (config.id === 'c-master-glow') {
+                toggleIframeBodyClass('no-glow', !value);
+            } else if (config.id === 'c-master-animations') {
+                toggleIframeBodyClass('no-animations', !value);
+            }
+        }
+
+        function toggleIframeBodyClass(className, on) {
+            const f = document.getElementById('preview-iframe');
+            if (f && f.contentDocument && f.contentDocument.body) {
+                try { f.contentDocument.body.classList.toggle(className, on); }
+                catch (e) { /* cross-origin; SSE pipe handles */ }
+            }
+        }
+
+        // ---------- 9 per-type bind functions ----------
+
+        function bindSlider(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) {
+                console.warn('[Stage 7.28] bindSlider: missing input', config.id);
+                return;
+            }
+            const $display = document.getElementById(config.id + '-display');
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'number') ? stored : config.default;
+            $input.value = value;
+            if ($display) $display.textContent = value + (config.unit || '');
+            applyControlValue(config, value);
+
+            $input.addEventListener('input', () => {
+                const v = Number($input.value);
+                State.config[config.id] = v;
+                State.isDirty = true;
+                if ($display) $display.textContent = v + (config.unit || '');
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindColor(config) {
+            // Reserved/unused in current SETTINGS_CONFIG; behaves like a single picker.
+            const $picker = document.getElementById(config.id);
+            if (!$picker) return;
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string' && isHex6(stored))
+                ? stored
+                : (config.default || '#ffffff');
+            if (isHex6(value)) $picker.value = value;
+            applyControlValue(config, value);
+            $picker.addEventListener('input', () => {
+                const v = $picker.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindColorPair(config) {
+            const $picker = document.getElementById(config.pickerId);
+            const $hex = document.getElementById(config.id);
+            if (!$picker || !$hex) return;
+
+            const stored = State.config[config.id];
+            const initial = (typeof stored === 'string' && stored.length)
+                ? stored
+                : ((config.default !== undefined && config.default !== null) ? config.default : '#ffffff');
+            // Hex strings sync the picker; sentinel 'var(--accent-master)' or
+            // rgba()/hsla() leave the picker alone (it can't render non-hex)
+            // but appear verbatim in the hex text field.
+            if (isHex6(initial)) $picker.value = initial;
+            $hex.value = initial;
+            applyControlValue(config, initial);
+
+            $picker.addEventListener('input', () => {
+                const v = $picker.value;
+                $hex.value = v;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                // Stage 7.29: master-following badge updates whenever a colorPair
+                // changes. Master accent change re-evaluates ALL 8; per-element
+                // picker change re-evaluates just that one.
+                if (config.id === 'c-master-accent-color') {
+                    refreshAllMasterBadges();
+                } else {
+                    updateMasterBadge(config.id);
+                }
+                previewConfig();
+            });
+
+            $hex.addEventListener('change', () => {
+                const v = $hex.value.trim();
+                // Stage 7.29: allow the sentinel string verbatim through the
+                // hex input (e.g. user types `var(--accent-master)` to re-enable
+                // master-following).
+                if (isHex6(v)) {
+                    $picker.value = v;
+                    State.config[config.id] = v;
+                    State.isDirty = true;
+                    applyControlValue(config, v);
+                    if (config.id === 'c-master-accent-color') refreshAllMasterBadges();
+                    else updateMasterBadge(config.id);
+                    previewConfig();
+                } else if (v === 'var(--accent-master)') {
+                    State.config[config.id] = v;
+                    State.isDirty = true;
+                    applyControlValue(config, v);
+                    updateMasterBadge(config.id);
+                    previewConfig();
+                } else {
+                    // Invalid hex: revert hex field to picker value.
+                    $hex.value = $picker.value;
+                }
+            });
+        }
+
+        function bindToggle(config) {
+            const $toggle = document.getElementById(config.id);
+            if (!$toggle) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'boolean') ? stored : Boolean(config.default);
+            $toggle.checked = value;
+            applyControlValue(config, value);
+
+            $toggle.addEventListener('change', () => {
+                const v = $toggle.checked;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindSelect(config) {
+            const $select = document.getElementById(config.id);
+            if (!$select) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : config.default;
+            if (value !== undefined && value !== null) $select.value = value;
+            applyControlValue(config, $select.value);
+
+            $select.addEventListener('change', () => {
+                const v = $select.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindText(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : (config.default || '');
+            $input.value = value;
+            applyControlValue(config, value);
+
+            $input.addEventListener('change', () => {
+                const v = $input.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindNumber(config) {
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'number') ? stored : config.default;
+            $input.value = value;
+            applyControlValue(config, value);
+
+            $input.addEventListener('input', () => {
+                const v = Number($input.value);
+                State.config[config.id] = v;
+                State.isDirty = true;
+                applyControlValue(config, v);
+                previewConfig();
+            });
+        }
+
+        function bindColorList(config) {
+            // Spinning-border colors is a comma-separated list. Stage 7.29 may
+            // upgrade to a multi-swatch editor; for now we bind the placeholder
+            // text input and pipe the raw string through.
+            const $input = document.getElementById(config.id);
+            if (!$input) return;
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string') ? stored : (config.default || '');
+            $input.value = value;
+            $input.addEventListener('change', () => {
+                const v = $input.value;
+                State.config[config.id] = v;
+                State.isDirty = true;
+                previewConfig();
+            });
+        }
+
+        function bindButton(config) {
+            // c-spec-sensitivity-reset is the only button in SETTINGS_CONFIG.
+            // The actual reset action (sensitivity slider -> default) is deferred
+            // to v14.1.0 alongside the Preset Manager; this no-op handler keeps
+            // the dispatcher quiet and reserves the click slot.
+            const $btn = document.getElementById(config.id);
+            if (!$btn) return;
+            $btn.addEventListener('click', () => {
+                console.log('[Stage 7.29] button click (action wires in v14.1.0):', config.id);
+            });
+        }
+
+        // Stage 7.29: theme dropdown is a select but it triggers applyTheme()
+        // instead of the plain bindSelect flow (which only writes State.config[id]).
+        function bindThemeControl(config) {
+            const $select = document.getElementById(config.id);
+            if (!$select) return;
+
+            // Restore initial value from State.config or default.
+            const stored = State.config[config.id];
+            const value = (typeof stored === 'string' && THEMES[stored]) ? stored : config.default;
+            if (value !== undefined && value !== null) $select.value = value;
+
+            // Initial apply: if a non-default theme is stored, run applyTheme
+            // so the rest of State.config matches the stored theme's keys.
+            if (value && value !== 'Rainbow (Default)' && THEMES[value]) {
+                applyTheme(value);
+            }
+
+            $select.addEventListener('change', () => {
+                applyTheme($select.value);
+            });
+        }
+
+        // ---------- Dispatcher ----------
+
+        function bindControl(config) {
+            // Stage 7.29: special-case the theme dropdown so picking a theme
+            // applies all its nested keys via applyTheme instead of just
+            // writing State.config['c-theme'].
+            if (config.id === 'c-theme') return bindThemeControl(config);
+
+            switch (config.type) {
+                case 'slider':    bindSlider(config); break;
+                case 'color':     bindColor(config); break;
+                case 'colorPair': bindColorPair(config); break;
+                case 'toggle':    bindToggle(config); break;
+                case 'select':    bindSelect(config); break;
+                case 'text':      bindText(config); break;
+                case 'number':    bindNumber(config); break;
+                case 'colorList': bindColorList(config); break;
+                case 'button':    bindButton(config); break;
+                default:
+                    console.warn('[Stage 7.28] bindControl: unknown type', config.type, config.id);
+            }
+        }
+
+        function initBindings() {
+            for (const cfg of SETTINGS_CONFIG) {
+                bindControl(cfg);
+            }
+        }
+
+        /* ==========================================================================
+           8b. THEMES (Stage 7.29 -- apply algorithm + nested-to-flat translator)
+           THEME_KEY_MAP maps each nested theme path (e.g. 'card.backgroundTop')
+           to the flat SETTINGS_CONFIG c-* DOM ID. applyTheme walks the table,
+           reads each leaf via getNestedValue, and writes into State.config.
+           Unmapped paths (e.g. progressBar.fillColors, glow.intensity) are
+           logged once and skipped -- they have no v2 control yet.
+
+           Sentinel substitution is automatic: the literal string
+           'var(--accent-master)' lands in State.config[id]; applyControlValue
+           writes it to the per-element CSS var; the overlay's CSS engine
+           resolves var() at runtime against --accent-master.
+           ========================================================================== */
+        const THEME_KEY_MAP = {
+            'font':                         'c-font',
+            'masters.accentColor':          'c-master-accent-color',
+            'card.backgroundTop':           'c-card-top',
+            'card.backgroundBottom':        'c-card-bot',
+            'card.backgroundAngle':         'c-card-angle',
+            'border.colors':                'c-border-colors',
+            'glow.color1':                  'c-glow-c1',
+            'glow.color2':                  'c-glow-c2',
+            'nowPlaying.color':             'c-np-color',
+            'nowPlaying.letterSpacing':     'c-np-spacing',
+            'bars.color':                   'c-bars-color',
+            'title.color':                  'c-title-color',
+            'title.fontWeight':             'c-title-weight',
+            'title.glowColor':              'c-title-glow-color',
+            'title.glowSize':               'c-title-glow-size',
+            'artist.color':                 'c-artist-color',
+            'artist.glowColor':             'c-artist-glow-color',
+            'artist.glowSize':              'c-artist-glow-size',
+            'spectrum.color':               'c-spec-color',
+            'timestamps.color':             'c-ts-color'
+            // Unmapped (intentionally; v2 SETTINGS_CONFIG has no matching ID):
+            //   glow.intensity, glow.pulseDuration, glow.enabled,
+            //   title.glowEnabled, artist.glowEnabled,
+            //   spectrum.colorMode, spectrum.barCount, spectrum.heightMult, spectrum.barRadius,
+            //   progressBar.fillColors,
+            //   card.borderThickness, border.enabled, border.spinDuration
+            // Stage 7.30 swap will re-evaluate which of these need v2 controls.
+        };
+
+        function getNestedValue(obj, path) {
+            return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+        }
+
+        function applyTheme(themeKey) {
+            const theme = THEMES[themeKey];
+            if (theme === undefined) {
+                console.warn('[Stage 7.29] applyTheme: unknown theme', themeKey);
+                return;
+            }
+
+            // Remember the selection itself.
+            State.config['c-theme'] = themeKey;
+            State.isDirty = true;
+
+            // Walk THEME_KEY_MAP and write each mapped leaf into State.config.
+            // 'Rainbow (Default)' is the empty object -- skips every path.
+            for (const [nestedPath, flatId] of Object.entries(THEME_KEY_MAP)) {
+                const value = getNestedValue(theme, nestedPath);
+                if (value === undefined) continue;
+                // border.colors and similar arrays -> comma-separated for the
+                // colorList placeholder text input.
+                const writable = Array.isArray(value) ? value.join(',') : value;
+                State.config[flatId] = writable;
+            }
+
+            // Re-sync the UI to the new State.config, re-apply CSS variables,
+            // re-evaluate the master-following badges (sentinel detection
+            // depends on the new State.config), and broadcast preview.
+            refreshControlValues();
+            applyConfig();
+            refreshAllMasterBadges();
+            previewConfig();
+        }
+
+        /* ==========================================================================
+           8c. MASTER-FOLLOWING BADGES (Stage 7.29)
+           8 accent-following pickers show a "Following master" badge when their
+           State.config[id] === 'var(--accent-master)' (the sentinel that lets
+           the overlay CSS resolve the value to the current master accent at
+           runtime). Click the badge -> unfollowMaster writes the resolved
+           hex into State.config so the picker becomes independent.
+
+           Badge background is bound to var(--accent-master) via CSS so the
+           badge colour live-tracks the master accent without JS work.
+
+           8 IDs verbatim from current customize.html Stage 7.21 STEP 4.
+           ========================================================================== */
+        const MASTER_FOLLOWING_IDS = [
+            'c-np-color',
+            'c-bars-color',
+            'c-platform-color',
+            'c-platform-dot',
+            'c-title-color',
+            'c-artist-color',
+            'c-spec-color',
+            'c-ts-color'
+        ];
+
+        function updateMasterBadge(id) {
+            if (!MASTER_FOLLOWING_IDS.includes(id)) return;
+            const row = document.querySelector('[data-control-id="' + id + '"]');
+            if (!row) return;
+            const grp = row.querySelector('.control-input-group');
+            if (!grp) return;
+            // State.config[id] may be undefined on first paint (loadConfig
+            // hasn't populated it yet in standalone mode). Fall back to the
+            // SETTINGS_CONFIG default for that ID so the badge surfaces when
+            // the default itself is the sentinel.
+            let val = State.config[id];
+            if (val === undefined) {
+                const cfg = SETTINGS_CONFIG.find(c => c.id === id);
+                if (cfg) val = cfg.default;
+            }
+            const isFollowing = (val === 'var(--accent-master)');
+            let badge = grp.querySelector('.master-badge');
+            if (isFollowing) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'master-badge';
+                    badge.textContent = 'Following master';
+                    badge.title = 'Click to set an independent color';
+                    badge.addEventListener('click', () => unfollowMaster(id));
+                    grp.appendChild(badge);
+                }
+            } else if (badge) {
+                badge.remove();
+            }
+        }
+
+        function unfollowMaster(id) {
+            // Resolve the current master accent to a concrete hex; fall back to
+            // the SETTINGS_CONFIG default for c-master-accent-color if the CSS
+            // var hasn't been written yet (rare; happens at very early init).
+            let resolved = '';
+            try {
+                resolved = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--accent-master').trim();
+            } catch (e) { /* ignore */ }
+            if (!resolved) {
+                const masterCfg = SETTINGS_CONFIG.find(c => c.id === 'c-master-accent-color');
+                resolved = (masterCfg && masterCfg.default) || '#c060ff';
+            }
+            State.config[id] = resolved;
+            State.isDirty = true;
+            // Find the SETTINGS_CONFIG entry so applyControlValue gets the
+            // right transform / cssVar / cssTarget for this picker.
+            const cfg = SETTINGS_CONFIG.find(c => c.id === id);
+            if (cfg) {
+                refreshControlValues();
+                applyControlValue(cfg, resolved);
+            }
+            updateMasterBadge(id);
+            previewConfig();
+        }
+
+        function refreshAllMasterBadges() {
+            for (const id of MASTER_FOLLOWING_IDS) updateMasterBadge(id);
+        }
+
+        /* ==========================================================================
+           8d. SEARCH FILTER (Stage 7.29 -- ported from current customize.html Stage 7.20)
+           JARGON_MAP entries kept verbatim. filterControls walks every
+           .control-row, matches lowercased query against label / id / jargon
+           synonyms, and hides non-matches. Empty supercats are hidden too.
+           Ctrl+F keyboard shortcut focuses the search input.
+           ========================================================================== */
+        const JARGON_MAP = {
+            // Card appearance
+            'corner roundness': 'border radius rounded curve corners',
+            'border thickness': 'border width thick',
+            'background gradient angle': 'bg angle gradient direction degree',
+            'top background color': 'bg top gradient color colour',
+            'bottom background color': 'bg bottom gradient color colour',
+            'blur behind the card': 'background blur backdrop frosted',
+            'card transparency': 'background opacity see through alpha',
+            // Audio bars (Spectrum)
+            'keep bars at a consistent height': 'auto volume match autogain compression normalize',
+            'make quiet sounds louder': 'loudness boost autogain compression normalize',
+            'what color the bars are': 'color mode bar color colour rainbow gradient solid',
+            'mirror the bars': 'mirror symmetric reflection',
+            'how round the bar tops are': 'bar roundness corner radius',
+            'minimum bar height': 'lowest bar height min floor',
+            'maximum bar height': 'tallest bar height max ceiling',
+            'how quickly bars react to music': 'reaction speed reactivity response ms milliseconds smoothing',
+            'animation frame rate (advanced)': 'frame rate fps refresh',
+            // Track and artist
+            'title size': 'font size title px',
+            'title boldness': 'font weight bold heavy title',
+            'title color': 'color colour title hex',
+            'how fast title scrolls': 'marquee speed scroll title',
+            'title scroll pause': 'marquee pause title delay',
+            'title letter spacing': 'letter spacing kerning title tracking',
+            'artist size': 'font size artist px',
+            'artist boldness': 'font weight bold heavy artist',
+            'artist color': 'color colour artist hex',
+            'how fast artist scrolls': 'marquee speed scroll artist',
+            'artist scroll pause': 'marquee pause artist delay',
+            'artist letter spacing': 'letter spacing kerning artist tracking',
+            // Glow + Text glow
+            'how strong the glow is': 'glow size intensity blur strength px',
+            'glow color': 'glow color colour hex',
+            // Slide-in animation
+            'how long the slide-in takes': 'slide in animation duration ms milliseconds time',
+            'how far the card slides in': 'slide distance offset px',
+            // Now Playing
+            'what the label says': 'now playing label text custom',
+            'label color': 'now playing color colour hex',
+            'space between letters': 'letter spacing kerning tracking now playing',
+            // General
+            'overall transparency': 'opacity see through alpha global',
+            // Misc
+            'how thick the spinning border ring is': 'border thickness spinning ring px',
+            'how fast it spins': 'spin duration speed border seconds',
+            'how strong the pulse is': 'glow intensity strength pulse',
+            'how fast it pulses': 'pulse duration speed glow seconds'
+        };
+
+        function filterControls(query) {
+            const q = (query || '').trim().toLowerCase();
+            const rows = document.querySelectorAll('.control-row');
+            const supercats = document.querySelectorAll('.supercat');
+
+            if (!q) {
+                rows.forEach(r => { r.hidden = false; });
+                supercats.forEach(sc => { sc.hidden = false; });
+                return;
+            }
+
+            rows.forEach(row => {
+                const id = (row.dataset.controlId || '').toLowerCase();
+                const labelEl = row.querySelector('.control-label');
+                const label = (labelEl ? labelEl.textContent : '').toLowerCase();
+                const jargon = (JARGON_MAP[label] || '').toLowerCase();
+                const match = label.includes(q) || id.includes(q) || (jargon && jargon.includes(q));
+                row.hidden = !match;
+            });
+
+            // Hide a supercat entirely when none of its rows survived the filter.
+            supercats.forEach(sc => {
+                const visible = sc.querySelectorAll('.control-row:not([hidden])').length;
+                sc.hidden = visible === 0;
+            });
+        }
+
+        /* ==========================================================================
+           8e. SUPERCAT COLLAPSE (Stage 7.29 -- ported from current customize.html
+           Stage 7.21). Each .supercat-header click toggles .collapsed on the
+           parent .supercat container; CSS handles the visual transition.
+
+           localStorage key per supercat: supercat_<id>_collapsed ('0' / '1').
+           Defaults:
+             - 'start' -> EXPANDED on first load (no localStorage entry yet)
+             - all others -> EXPANDED on first load too
+           Stored values override defaults. Only '1' triggers .collapsed; '0'
+           or null leaves the supercat expanded.
+           ========================================================================== */
+        function initSupercatCollapse() {
+            document.querySelectorAll('.supercat-header').forEach(header => {
+                const key = header.dataset.supercat;
+                if (!key) return;
+                const supercat = header.closest('.supercat');
+                if (!supercat) return;
+                const lsKey = 'supercat_' + key + '_collapsed';
+
+                let stored = null;
+                try { stored = localStorage.getItem(lsKey); }
+                catch (e) { /* localStorage unavailable */ }
+
+                if (stored === '1') {
+                    supercat.classList.add('collapsed');
+                }
+                // First-load (stored === null): START HERE stays expanded
+                // explicitly so first-time users see Quick Settings + General
+                // immediately. Other supercats also default expanded (no class
+                // added). Saved '1' or '0' values still take effect above.
+
+                header.addEventListener('click', () => {
+                    supercat.classList.toggle('collapsed');
+                    const collapsed = supercat.classList.contains('collapsed');
+                    try { localStorage.setItem(lsKey, collapsed ? '1' : '0'); }
+                    catch (e) { /* localStorage unavailable */ }
+                });
+            });
+        }
+
+        let _searchDebounceTimer = null;
+
+        function initSearchFilter() {
+            const $input = document.getElementById('settings-search');
+            const $clear = document.getElementById('settings-search-clear');
+            if (!$input) return;
+
+            $input.addEventListener('input', () => {
+                clearTimeout(_searchDebounceTimer);
+                _searchDebounceTimer = setTimeout(() => filterControls($input.value), 80);
+                if ($clear) $clear.hidden = !$input.value;
+            });
+
+            if ($clear) {
+                $clear.addEventListener('click', () => {
+                    $input.value = '';
+                    filterControls('');
+                    $clear.hidden = true;
+                    $input.focus();
+                });
+            }
+
+            // Ctrl+F focuses the search input (and Esc clears + blurs).
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
+                    e.preventDefault();
+                    $input.focus();
+                    $input.select();
+                } else if (e.key === 'Escape' && document.activeElement === $input) {
+                    if ($input.value) {
+                        $input.value = '';
+                        filterControls('');
+                        if ($clear) $clear.hidden = true;
+                    } else {
+                        $input.blur();
+                    }
+                }
+            });
+        }
+
+        /* ==========================================================================
+           9. TOP BAR ACTIONS (Apply to OBS / Reset to Defaults / Preset Manager)
+           ========================================================================== */
+
+        async function onApplyToOBS() {
+            const $btn = document.getElementById('btn-apply-obs');
+            if (!$btn) return;
+
+            $btn.disabled = true;
+            const originalText = $btn.textContent;
+            $btn.textContent = 'Saving...';
+
+            const ok = await saveConfig();
+
+            $btn.textContent = ok ? 'Applied' : 'Failed';
+            setTimeout(() => {
+                $btn.textContent = originalText;
+                $btn.disabled = false;
+            }, 1500);
+        }
+
+        async function onResetDefaults() {
+            if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+
+            // Stage 7.28: data-driven reset. Populate State.config with every
+            // entry's config.default value (skipping undefined defaults), then
+            // sync the DOM via refreshControlValues + re-apply the CSS layer
+            // via applyConfig. Client-side only -- matches current customize.html
+            // behavior (no /reset-overlay-config endpoint exists). User must
+            // click Apply to OBS to persist the reset.
+            State.config = {};
+            for (const cfg of SETTINGS_CONFIG) {
+                if (cfg.default !== undefined) {
+                    State.config[cfg.id] = cfg.default;
+                }
+            }
+            State.isDirty = true;
+
+            refreshControlValues();
+            applyConfig();
+            // Stage 7.29: reset returns the 8 accent-following pickers back to
+            // the 'var(--accent-master)' sentinel default -> the badge should
+            // re-appear on every one of them.
+            refreshAllMasterBadges();
+            previewConfig();
+
+            // Reload iframe to flush any per-element CSS vars from the previous
+            // session (only the entries currently in SETTINGS_CONFIG were
+            // restored by refreshControlValues -- iframe reload is the safety
+            // net for any stale vars set by code paths outside SETTINGS_CONFIG).
+            const $iframe = document.getElementById('preview-iframe');
+            if ($iframe && isProductionContext()) {
+                try { $iframe.contentWindow.location.reload(); }
+                catch (e) { /* cross-origin or no src */ }
+            }
+        }
+
+        function onPresetManager() {
+            // Stage 7.29 polish: deferred to v14.1.0 per operator decision.
+            // The full Preset Manager modal (save / load / delete / list
+            // presets) will use the existing server endpoints already wired
+            // in customize.html Stage 7.18.
+            alert('Preset Manager: coming in v14.1.0');
+        }
+
+        /* ==========================================================================
+           10. INIT
+           Cache elements, wire top bar buttons, wait for iframe to load, then
+           load config from server, apply CSS variables, and attach control
+           bindings. Order matters: bindings restore their initial state from
+           State.config which is only populated after loadConfig().
+           ========================================================================== */
+        function init() {
+            cacheElements();
+            initWelcome();
+
+            // Wire top bar buttons (independent of iframe / config)
+            const $btnApply = document.getElementById('btn-apply-obs');
+            const $btnReset = document.getElementById('btn-reset-defaults');
+            const $btnPreset = document.getElementById('btn-preset-manager');
+            if ($btnApply) $btnApply.addEventListener('click', onApplyToOBS);
+            if ($btnReset) $btnReset.addEventListener('click', onResetDefaults);
+            if ($btnPreset) $btnPreset.addEventListener('click', onPresetManager);
+
+            // SE5 FIX: iframe src is set lazily here to avoid the directory-
+            // listing trap when standalone-HTTP-served (e.g. Python static
+            // server returns directory listings for `/`). On real server.js
+            // origin: src = '/?preview=1' (canonical preview route). On any
+            // other origin: srcdoc placeholder explains the limitation.
+            const $iframe = document.getElementById('preview-iframe');
+            if ($iframe) {
+                if (isProductionContext()) {
+                    $iframe.src = '/?preview=1';
+                } else {
+                    $iframe.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><title>Standalone</title></head><body style="background:#1a1a1a;color:#808080;font-family:system-ui,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;line-height:1.5;"><div><strong style="color:#c0c0c0;display:block;margin-bottom:8px;">Preview unavailable in standalone testing</strong>The live overlay preview needs Master&rsquo;s FM server.js (port 4242) at the canonical /customize route. Stage 7.30 swap will put this file there; the preview will then load automatically.</div></body></html>';
+                }
+            }
+
+            // Stage 7.28: render all 141 controls into supercat bodies BEFORE
+            // the iframe-load bootstrap binds them. Rendering is synchronous +
+            // independent of the iframe; it can happen as soon as init() runs.
+            renderAllControls();
+
+            // Stage 7.29: wire search filter + Ctrl+F shortcut. Filter operates
+            // on the rendered .control-row elements, so this must come AFTER
+            // renderAllControls (but doesn't depend on bindings/state).
+            initSearchFilter();
+
+            // Stage 7.29: wire supercat collapse + restore localStorage state.
+            // Click any .supercat-header to toggle; Start here defaults open.
+            initSupercatCollapse();
+
+            // Wait for iframe to finish loading before bootstrap.
+            const bootstrap = async () => {
+                await loadConfig();
+                applyConfig();
+                initBindings();
+                // Stage 7.29: one-shot pass to surface the badges on the 8
+                // accent-following pickers after the DOM rows exist (rendered
+                // by renderAllControls above) and State.config has been
+                // restored (loadConfig populated it).
+                refreshAllMasterBadges();
+            };
+            if ($iframe) {
+                // If iframe already loaded (cached), fire bootstrap immediately;
+                // otherwise wait for load event.
+                if ($iframe.contentDocument && $iframe.contentDocument.readyState === 'complete') {
+                    bootstrap();
+                } else {
+                    $iframe.addEventListener('load', bootstrap);
+                    // Fallback for environments where iframe never loads
+                    // (e.g. file:// open with no server): bind without preview.
+                    setTimeout(() => {
+                        if (!State.isDirty && Object.keys(State.config).length === 0) {
+                            // Still empty after 1500ms -> iframe load probably failed.
+                            // Run bindings anyway so the UI is interactive.
+                            bootstrap();
+                        }
+                    }, 1500);
+                }
+            } else {
+                // No iframe element (defensive)
+                bootstrap();
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
