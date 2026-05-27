@@ -21,6 +21,10 @@
             --c-bg: #1a1a1a;
             --c-surface: #242424;
             --c-surface-elevated: #2e2e2e;
+            /* Stage 7.30.3 surgical contrast token: darker row card so pure-white
+               labels pop. Applied to .control-row only -- welcome banner / search /
+               top bar / supercat headers keep --c-surface so they don't drift. */
+            --c-row-bg: #1c1c1c;
             --c-border: rgba(255, 255, 255, 0.20);
             --c-border-strong: rgba(255, 255, 255, 0.30);
 
@@ -518,22 +522,30 @@
         }
 
         .supercat-body {
-            padding: var(--s-2) 0;
-            /* Stage 7.28 fills with .control-row blocks rendered from SETTINGS_CONFIG. */
+            padding: var(--s-1) 0;
+            /* Stage 7.28 fills with .control-row blocks rendered from SETTINGS_CONFIG.
+               Stage 7.30.3: tightened 8px -> 4px to reduce vertical rhythm. */
         }
 
         /* ==========================================================================
            8. CONTROL ROWS (Stage 7.27 minimal; Stage 7.28 expands to all 141)
            Shared row template: vertical layout with .control-label on top
            and .control-input-group below. Hover lifts background.
+
+           Stage 7.30.3 density pass: padding 12 -> 8, margin-bottom 4 -> 2
+           to address operator "25 PDF pages of scroll" feedback after Stage 7.30.2.
+           Stage 7.30.3 contrast pass: explicit --c-row-bg darker row card so
+           pure-white labels pop more crisply than they did on the lighter
+           --c-surface background. Hover continues to lift to --c-surface-elevated.
            ========================================================================== */
         .control-row {
             display: flex;
             flex-direction: column;
             gap: var(--s-2);
-            padding: var(--s-3);
+            padding: var(--s-2);
             border-radius: var(--r-md);
-            margin-bottom: var(--s-1);
+            margin-bottom: 2px;
+            background: var(--c-row-bg);
         }
 
         .control-row:hover {
