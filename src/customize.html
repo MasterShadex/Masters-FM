@@ -455,13 +455,37 @@
         .search-clear:hover { color: var(--c-text-primary); }
 
         /* ==========================================================================
+           6b. ADVANCED TOGGLE (Stage 7.30.4 Item 2 -- restores V1 visibility gate)
+           Show advanced settings checkbox below the search bar. Default OFF;
+           when ON, body.show-advanced exposes all .control-row[data-advanced]
+           rows AND the all-advanced Layout supercat.
+           ========================================================================== */
+        .advanced-toggle {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+            padding: var(--s-1) var(--s-2);
+            margin: 2px 0 var(--s-2) 0;
+            color: var(--c-text-secondary);
+            font-size: var(--f-size-sm);
+            cursor: pointer;
+            user-select: none;
+        }
+        .advanced-toggle input { accent-color: var(--c-accent); cursor: pointer; }
+        .advanced-toggle:hover { color: var(--c-text-primary); }
+        body:not(.show-advanced) .control-row[data-advanced] { display: none; }
+        /* Layout supercat is all-advanced (V1 was titled "Layout (advanced)").
+           Hide the whole supercat header + body when the toggle is off so users
+           don't see an empty section marker. */
+        body:not(.show-advanced) #supercat-layout { display: none; }
+
+        /* ==========================================================================
            7. SUPERCATS (Stage 7.21 carry; collapse JS wired in Stage 7.29)
-           Option A consolidated: 7 supercats (Start here / Look / Text / Effects
-           / Audio / Layout / Advanced). Each supercat header is a full-width
-           clickable button with inline SVG icon + uppercase label + chevron.
+           Stage 7.30.4 Item 2: 6 supercats matching legacy V1 (Advanced removed).
+           Stage 7.30.4 Item 3: section separation = bumped margin-bottom 8 -> 12.
            ========================================================================== */
         .supercat {
-            margin-bottom: var(--s-2);
+            margin-bottom: var(--s-3);
         }
 
         .supercat-header {
@@ -469,17 +493,12 @@
             display: flex;
             align-items: center;
             gap: var(--s-3);
-            /* Stage 7.30.3 SE5 strike 1/3: 3px accent left-border as a
-               visual section marker. The 3px border is offset by trimming
-               3px from left padding (var(--s-3) - 3px = 9px) so layout
-               doesn't shift vs the previous header. Right padding stays at
-               var(--s-3) to preserve chevron spacing. */
-            padding: var(--s-2) var(--s-3) var(--s-2) 9px;
-            border-left: 3px solid var(--c-accent);
+            /* Stage 7.30.4 Item 5: accent left-border 2px (Stage 7.30.3 was 3px);
+               padding-left compensated 9 -> 10 (12 - 2 = 10) so text x-position
+               stays fixed. */
+            padding: var(--s-2) var(--s-3) var(--s-2) 10px;
+            border-left: 2px solid var(--c-accent);
             background: transparent;
-            /* Stage 7.30.3 SE5 strike 1/3: pure white (was --c-text-secondary
-               #c0c0c0). Operator feedback: header text too dim against
-               sidebar background. currentColor cascades to .supercat-icon. */
             color: var(--c-text-primary);
             font-family: inherit;
             font-size: var(--f-size-sm);
@@ -490,11 +509,23 @@
             text-align: left;
             border-radius: var(--r-md);
             transition: color var(--m-dur-fast) var(--m-ease-out),
-                        background var(--m-dur-fast) var(--m-ease-out);
+                        background var(--m-dur-fast) var(--m-ease-out),
+                        box-shadow var(--m-dur-fast) var(--m-ease-out),
+                        border-left-color var(--m-dur-fast) var(--m-ease-out);
         }
 
         .supercat-header:hover {
             background: var(--c-surface-elevated);
+        }
+
+        /* Stage 7.30.4 Item 5 polish: dim accent stripe when collapsed
+           (visual cue the section is closed), full opacity + slight box-shadow
+           lift when expanded (visual cue the section is open). */
+        .supercat.collapsed .supercat-header {
+            border-left-color: rgba(124, 58, 237, 0.6);
+        }
+        .supercat:not(.collapsed) .supercat-header {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
 
         .supercat-icon {
@@ -897,8 +928,18 @@
                     <button class="search-clear" id="settings-search-clear" type="button" hidden aria-label="Clear search">×</button>
                 </div>
 
-                <!-- 7 supercats (Option A consolidated): Start here / Look / Text / Effects / Audio / Layout / Advanced -->
-                <!-- Collapse/expand wired in Stage 7.29 via initSupercatCollapse. -->
+                <!-- Stage 7.30.4 Item 2: Show advanced toggle (legacy V1 behavior).
+                     Hidden by default; clicking exposes all .control-row[data-advanced]
+                     plus the entire Layout supercat (all-advanced section). Persisted
+                     in localStorage 'customize_show_advanced'. -->
+                <label class="advanced-toggle">
+                    <input type="checkbox" id="c-show-advanced">
+                    <span>Show advanced settings</span>
+                </label>
+
+                <!-- 6 supercats (Stage 7.30.4 Item 2 restores V1 organization).
+                     Order matches legacy SUPERCATS: Start here / Look / Text /
+                     Effects / Audio / Layout. Collapse via initSupercatCollapse. -->
 
                 <div class="supercat" id="supercat-start">
                     <button class="supercat-header" data-supercat="start" type="button">
@@ -993,24 +1034,10 @@
                     </button>
                     <div class="supercat-body" id="supercat-layout-body"></div>
                 </div>
+                <!-- Stage 7.30.4 Item 2: Advanced supercat removed; advanced
+                     controls now live in their natural supercat with
+                     data-advanced="true" attr + body.show-advanced toggle. -->
 
-                <div class="supercat" id="supercat-advanced">
-                    <button class="supercat-header" data-supercat="advanced" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <line x1="4" y1="6" x2="20" y2="6"></line>
-                            <line x1="4" y1="12" x2="20" y2="12"></line>
-                            <line x1="4" y1="18" x2="20" y2="18"></line>
-                            <circle cx="8" cy="6" r="2" fill="currentColor"></circle>
-                            <circle cx="16" cy="12" r="2" fill="currentColor"></circle>
-                            <circle cx="8" cy="18" r="2" fill="currentColor"></circle>
-                        </svg>
-                        <span class="supercat-label">Advanced</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-advanced-body"></div>
-                </div>
             </div>
             <div class="sidebar-footer">
                 <a href="#" id="show-welcome-again" class="footer-link">Show welcome message</a>
@@ -1953,6 +1980,13 @@
             row.className = 'control-row';
             row.dataset.controlId = config.id;
             row.dataset.controlType = config.type;
+            // Stage 7.30.4 Item 2: advanced rows get a data-advanced attribute.
+            // CSS hides them unless body.show-advanced is set. Replaces the
+            // Stage 7.28 Option A "route to Advanced supercat" pattern with
+            // legacy V1 visibility-toggle behavior.
+            if (config.advanced) {
+                row.dataset.advanced = 'true';
+            }
 
             const label = document.createElement('label');
             label.className = 'control-label';
@@ -2121,9 +2155,11 @@
             return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
         }
 
-        // Iterate SETTINGS_CONFIG and render each control into the appropriate
-        // supercat body. Option A consolidation: advanced:true entries go to
-        // Advanced supercat regardless of their config.supercat field.
+        // Iterate SETTINGS_CONFIG and render each control into its natural
+        // supercat body. Stage 7.30.4 Item 2 reversed Stage 7.28 Option A:
+        // advanced controls now sit in their natural supercat with a
+        // data-advanced attribute (added by renderControl) so a body class
+        // toggle can hide/show them per legacy V1 behavior.
         function renderAllControls() {
             const containers = {
                 start:    document.getElementById('supercat-start-body'),
@@ -2131,14 +2167,12 @@
                 text:     document.getElementById('supercat-text-body'),
                 effects:  document.getElementById('supercat-effects-body'),
                 audio:    document.getElementById('supercat-audio-body'),
-                layout:   document.getElementById('supercat-layout-body'),
-                advanced: document.getElementById('supercat-advanced-body')
+                layout:   document.getElementById('supercat-layout-body')
             };
             for (const cfg of SETTINGS_CONFIG) {
-                const targetKey = cfg.advanced ? 'advanced' : cfg.supercat;
-                const target = containers[targetKey];
+                const target = containers[cfg.supercat];
                 if (!target) {
-                    console.warn('[Stage 7.28] no container for supercat:', cfg.supercat, cfg.id);
+                    console.warn('[Stage 7.30.4] no container for supercat:', cfg.supercat, cfg.id);
                     continue;
                 }
                 const row = renderControl(cfg);
@@ -3004,6 +3038,30 @@
             });
         }
 
+        /* ==========================================================================
+           8f. SHOW ADVANCED TOGGLE (Stage 7.30.4 Item 2 -- V1 visibility gate)
+           Reads / writes localStorage 'customize_show_advanced'. Default OFF.
+           Adds / removes body.show-advanced. The CSS rule below the toggle
+           styling gates .control-row[data-advanced] + #supercat-layout
+           visibility off the body class.
+           ========================================================================== */
+        function initAdvancedToggle() {
+            const $cb = document.getElementById('c-show-advanced');
+            if (!$cb) return;
+            let stored = null;
+            try { stored = localStorage.getItem('customize_show_advanced'); }
+            catch (e) { /* localStorage unavailable */ }
+            const initial = (stored === '1');
+            $cb.checked = initial;
+            document.body.classList.toggle('show-advanced', initial);
+            $cb.addEventListener('change', () => {
+                const on = $cb.checked;
+                document.body.classList.toggle('show-advanced', on);
+                try { localStorage.setItem('customize_show_advanced', on ? '1' : '0'); }
+                catch (e) { /* localStorage unavailable */ }
+            });
+        }
+
         let _searchDebounceTimer = null;
 
         function initSearchFilter() {
@@ -3155,6 +3213,11 @@
             // Stage 7.29: wire supercat collapse + restore localStorage state.
             // Click any .supercat-header to toggle; Start here defaults open.
             initSupercatCollapse();
+
+            // Stage 7.30.4 Item 2: V1 visibility gate. Reads localStorage and
+            // toggles body.show-advanced. Must come AFTER renderAllControls so
+            // the [data-advanced] rows + #supercat-layout exist in the DOM.
+            initAdvancedToggle();
 
             // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
