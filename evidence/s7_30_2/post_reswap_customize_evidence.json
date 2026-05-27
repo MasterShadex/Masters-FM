@@ -1,0 +1,53 @@
+{
+  "stage": "7.30.2",
+  "step": "S2 post-reswap evidence (AFTER the swap)",
+  "timestamp": "2026-05-27T06:08:19.298Z",
+  "url": "http://localhost:8765/customize.html",
+  "file_under_test": "src/customize.html (NEW PRODUCTION)",
+  "file_sha256": "AD7DABFC97AAB47E42EDEDEDF6F0D727F4D1F4E813AA8EC41390F1366CEF9DD3",
+  "file_sha256_expected": "V2_SHA (Stage 7.30.1 closure carried through rename)",
+  "counts_8_canonical_queries": {
+    "controlRows": 120,
+    "themeOptions": 22,
+    "masterBadges": 8,
+    "supercats": 7,
+    "settingsConfig_via_uniqueControlIds": 120,
+    "flatToNestedMap_entries": 118,
+    "JARGON_MAP_via_source_grep": 40,
+    "THEMES_via_source_grep": 22
+  },
+  "baseline_comparison": {
+    "controlRows":          "120 / 120 MATCH",
+    "themeOptions":         "22 / 22 MATCH",
+    "masterBadges":         "8 / 8 MATCH",
+    "supercats":            "7 / 7 MATCH",
+    "settingsConfig":       "120 / 120 MATCH",
+    "flatToNestedMap":      "118 / 118 MATCH",
+    "JARGON_MAP":           "40 / 40 MATCH",
+    "THEMES":               "22 / 22 MATCH",
+    "overall": "ALL 8 COUNTS MATCH BASELINE -- content moved through rename intact"
+  },
+  "translator_self_test_at_new_path": {
+    "function": "window.__roundTripSelfTest",
+    "result_ok": true,
+    "verdict": "FLAT_TO_NESTED translator intact in production customize.html"
+  },
+  "wire_payload_smoke_at_new_path": {
+    "description": "Live-control change of c-card-top + c-master-overall-size then flatToNested(State.config) inspection.",
+    "flat_State_config": {
+      "c-card-top": "#deadbe",
+      "c-master-overall-size": 85
+    },
+    "nested_after_flatToNested": {
+      "card": { "backgroundTop": "#deadbe" },
+      "masters": { "overallSize": 85 }
+    },
+    "sample_wire_payload": "{\"card\":{\"backgroundTop\":\"#deadbe\"},\"masters\":{\"overallSize\":85}}",
+    "verdict": "Wire payload IS NESTED at the production path. Live preview push to OBS now has the correct shape for overlay.html applyConfig to dereference."
+  },
+  "console_state": {
+    "warn_count": 0,
+    "error_count": 0,
+    "verdict": "CLEAN -- no red errors on load or during live-control smoke"
+  }
+}
