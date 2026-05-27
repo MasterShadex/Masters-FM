@@ -6097,3 +6097,127 @@ The cycle is complete. Operator can:
    tooltip system (UX polish), Preset Manager UI (most-requested
    deferred feature), 13 unmapped theme leaves (cleanest theme parity).
 3. **Pause** -- v14.0.0 is stable; v14.1.0 can wait.
+
+---
+
+## 2026-05-27 16:30 — Stage 7.30.3 closed (PASS via SE5 1/3): customize.html density + contrast polish
+
+Stage 7.30.3 (CSS-only density + contrast pass) PASSED operator re-gate after
+1 SE5 cycle (3 follow-ups bundled into one commit). 9 commits between
+`e25e7fe` (Stage 7.30.2 closure) and the Stage 7.30.3 closure commit.
+
+### What this stage did
+
+CSS-only pass. NO JS / SETTINGS_CONFIG / themes / FLAT_TO_NESTED_MAP /
+bind functions touched. Two operator pain points from real-world testing
+post Stage 7.30.2:
+
+1. **"25 PDF pages of scroll"** -- supercats expanded = too much vertical
+   rhythm.
+2. **"White-on-grey contrast weak"** -- pure-white labels (Stage 7.24 lock)
+   didn't pop against `--c-surface` #242424.
+
+### Edits
+
+```css
+:root {
+  --c-row-bg: #1c1c1c;  /* NEW Stage 7.30.3 surgical contrast token */
+}
+.supercat-header {
+  padding: var(--s-2) var(--s-3) var(--s-2) 9px;       /* was var(--s-2) var(--s-3); -3 left compensates border */
+  border-left: 3px solid var(--c-accent);              /* NEW SE5 strike 1/3 */
+  color: var(--c-text-primary);                         /* was --c-text-secondary; SE5 strike 1/3 -- always white */
+}
+.supercat-header:hover { background: var(--c-surface-elevated); }   /* color: removed (always white now) */
+.supercat-body {
+  padding: 2px 0;   /* was var(--s-2) 0 = 8; first pass 4; SE5 to 2 */
+}
+.control-row {
+  padding: 6px;     /* was var(--s-3) = 12; first pass 8; SE5 to 6 */
+  margin-bottom: 2px;          /* was var(--s-1) = 4 */
+  background: var(--c-row-bg); /* NEW; was transparent */
+}
+.control-row:hover { background: var(--c-surface-elevated); }  /* unchanged hover lift */
+```
+
+### Density delta
+
+| Snapshot | sidebar-scroll scrollHeight (px) | Delta vs baseline |
+|---|---:|---|
+| Stage 7.30.2 closure baseline | 10220 | (0) |
+| Stage 7.30.3 first pass (STEPs 1+2) | 8964 | -12.29% |
+| Stage 7.30.3 after SE5 strike 1/3 | **8484** | **-16.98% (-1736 px ~14 PDF pages)** |
+
+### SE5 cycle 1/3 -- 3 follow-ups bundled
+
+Operator FAIL at first gate prescribed three fixes; bundled into one commit (`a8f2f12`):
+
+1. Supercat header color `--c-text-secondary` -> `--c-text-primary`; icon
+   inherits via `currentColor`. Always white (not hover-only).
+2. 3px solid `var(--c-accent)` left-border on `.supercat-header` always-on
+   as a visual section marker; padding-left compensated 12 -> 9 px so
+   layout doesn't shift.
+3. Tighter spacing: `.control-row` padding 8 -> 6; `.supercat-body` 4 -> 2.
+   Font sizes intentionally UNCHANGED per operator deferral.
+
+### Round-trip + console state
+
+Stage 7.30.1 standing-rule self-test `window.__roundTripSelfTest()` PASS
+after first pass AND after SE5. Live-control spot checks: 5/5 PASS. Console
+clean (0 errors / 0 warnings).
+
+### Closure SHA256
+
+- All 4 protected source files: MATCH Stage 7.30.2 baseline (UNCHANGED end-to-end)
+- `src/overlay.html`: `9A7CC817515F...` UNCHANGED
+- `src/customize.html`: `A17F7926B0B8B652...` (Stage 7.30.3 closure)
+- `src/customize_legacy.html`: `7E98377DC97F83B3...` UNCHANGED (LEGACY_SHA preserved)
+- `version.json`: 14.0.0 (no bump)
+
+### Constraints honored (SE1-SE8)
+
+- SE1 yes (DOM verification after each pass)
+- SE2 N/A (fast-path file copy; no rebuild log)
+- SE3 yes (9 commits, all scope-matched)
+- SE4 yes (operator PASS; "no preference" at re-gate read as PASS)
+- SE5 1 cycle (3-in-1 follow-ups; strike 1/3)
+- SE6 not triggered (1/3 strikes)
+- SE7 yes (no autonomous scope expansion; font sizes deferred to operator)
+- SE8 protected SHA verified end-to-end: all UNCHANGED
+
+### Install propagation
+
+Stage 7.25.5 fast-path semantics applied directly (Copy-Item src/customize.html -> install/). Install SHA == source SHA. PyWebView re-reads on next Customize Overlay open.
+
+### Next stage handoffs
+
+- **Stage 7.30.4** (Preset Manager UI port) -- server endpoints already exist (/list-presets, /save-preset, /load-preset, /delete-preset, /import-preset). Replace the `alert('Preset Manager: coming in v14.1.0')` stub from Stage 7.29 with the modal UI; use FLAT_TO_NESTED translator on load-preset response.
+- **Stage 7.30.5** (Advanced categorization re-org) -- the 56 entries that landed in Advanced via Option A consolidation at Stage 7.28 need sub-grouping or finer moves back to natural supercats.
+
+### Font-size deferral
+
+Operator explicitly deferred font-size reductions (labels 13 / supercat 12 / values 11). Available as a separate Stage 7.30.3.5 if wanted, or fold into Stage 7.30.4 opener. Operator decided at re-gate: "no preference" -- stage closes without font reduction.
+
+### Files touched this stage
+
+- `src/customize.html` (CSS-only; ~25 inserts / ~10 deletes net)
+- `V14_S7_30_3_LOG.md` (NEW)
+- `V14_S7_30_3_REPORT.md` (NEW)
+- `evidence/s7_30_3/` (4 NEW files: baseline / after / round_trip_smoke / se5_after)
+- `md/memory.md` (THIS APPEND)
+
+### v14.1.0 backlog (carried unchanged)
+
+All 16 items from Stage 7.30.2 still parked. This stage added zero backlog items.
+
+### Standing rules (carried unchanged)
+
+All 6 standing rules from Stage 7.30.2 still apply. No new rules this stage.
+
+### Lesson learned (file under "hard-won")
+
+Round-trip self-test caught nothing this stage because the changes were
+CSS-only -- BUT, running the self-test was still cheap and confirmed JS
+remained unaffected. The standing rule pays off even for CSS-only stages:
+~5 seconds of preview MCP eval rules out "did I accidentally break JS too?"
+for free.
