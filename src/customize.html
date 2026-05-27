@@ -331,6 +331,111 @@
         }
 
         /* ==========================================================================
+           4b. PRESET MANAGER MODAL (Stage 7.30.4 Item 1 -- legacy V1 port)
+           Backdrop overlays the whole viewport; modal centers; list grows.
+           ========================================================================== */
+        .preset-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: var(--s-4);
+        }
+        .preset-modal-backdrop[hidden] { display: none; }
+        .preset-modal {
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-lg);
+            width: 100%;
+            max-width: 440px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        }
+        .preset-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--s-3) var(--s-4);
+            border-bottom: 1px solid var(--c-border);
+        }
+        .preset-modal-header h2 {
+            margin: 0;
+            font-size: var(--f-size-lg);
+            font-weight: var(--f-weight-semibold);
+            color: var(--c-text-primary);
+        }
+        .preset-modal-close {
+            background: transparent;
+            border: none;
+            color: var(--c-text-secondary);
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 var(--s-2);
+            border-radius: var(--r-md);
+            transition: color var(--m-dur-fast) var(--m-ease-out), background var(--m-dur-fast) var(--m-ease-out);
+        }
+        .preset-modal-close:hover { color: var(--c-text-primary); background: var(--c-surface-elevated); }
+        .preset-list {
+            list-style: none;
+            margin: 0;
+            padding: var(--s-2) var(--s-3);
+            overflow-y: auto;
+            flex: 1 1 auto;
+        }
+        .preset-item {
+            display: flex;
+            align-items: center;
+            gap: var(--s-2);
+            padding: var(--s-2);
+            border-radius: var(--r-md);
+            background: var(--c-row-bg);
+            margin-bottom: 2px;
+        }
+        .preset-name {
+            flex: 1 1 auto;
+            color: var(--c-text-primary);
+            font-size: var(--f-size-md);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .preset-empty {
+            padding: var(--s-3);
+            color: var(--c-text-tertiary);
+            font-style: italic;
+            text-align: center;
+        }
+        .preset-modal-footer {
+            display: flex;
+            gap: var(--s-2);
+            padding: var(--s-3) var(--s-4);
+            border-top: 1px solid var(--c-border);
+        }
+        .preset-modal-footer input {
+            flex: 1 1 auto;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+        }
+        .preset-modal-footer input:focus { outline: none; border-color: var(--c-accent); }
+        .preset-status {
+            padding: var(--s-2) var(--s-4);
+            font-size: var(--f-size-sm);
+            border-top: 1px solid var(--c-border);
+        }
+        .preset-status[hidden] { display: none; }
+
+        /* ==========================================================================
            5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
            ========================================================================== */
         .welcome-banner {
@@ -3159,12 +3264,144 @@
             }
         }
 
+        /* ==========================================================================
+           9b. PRESET MANAGER (Stage 7.30.4 Item 1 -- legacy V1 feature port)
+           Server endpoints (already exist in src/server.js):
+             GET  /list-presets            -> array of names
+             POST /save-preset {name,config}-> persists nested config
+             POST /load-preset {name}      -> returns saved nested config
+             POST /delete-preset {name}    -> removes named preset
+           All require isProductionContext() (Stage 7.30 SE5 origin gate);
+           standalone mode shows offline status.
+           ========================================================================== */
+        function pmStatus(msg, ok) {
+            const $s = document.getElementById('preset-status');
+            if (!$s) return;
+            $s.textContent = msg;
+            $s.hidden = !msg;
+            $s.style.color = ok === false ? '#dc2626' : 'var(--c-accent)';
+        }
+
+        async function renderPresetList() {
+            const $ul = document.querySelector('#preset-modal .preset-list');
+            if (!$ul) return;
+            $ul.innerHTML = '';
+            if (!isProductionContext()) {
+                $ul.innerHTML = '<li class="preset-empty">Preset list unavailable in standalone testing.</li>';
+                return;
+            }
+            try {
+                const r = await fetch('/list-presets');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const names = await r.json();
+                if (!Array.isArray(names) || names.length === 0) {
+                    $ul.innerHTML = '<li class="preset-empty">No saved presets yet. Adjust controls and save below.</li>';
+                    return;
+                }
+                for (const name of names) {
+                    const $li = document.createElement('li');
+                    $li.className = 'preset-item';
+                    const $nameSpan = document.createElement('span');
+                    $nameSpan.className = 'preset-name';
+                    $nameSpan.textContent = name;
+                    const $load = document.createElement('button');
+                    $load.type = 'button';
+                    $load.className = 'btn btn-primary';
+                    $load.textContent = 'Load';
+                    $load.addEventListener('click', () => loadPreset(name));
+                    const $del = document.createElement('button');
+                    $del.type = 'button';
+                    $del.className = 'btn btn-danger-ghost';
+                    $del.textContent = 'Delete';
+                    $del.addEventListener('click', () => deletePreset(name));
+                    $li.appendChild($nameSpan);
+                    $li.appendChild($load);
+                    $li.appendChild($del);
+                    $ul.appendChild($li);
+                }
+            } catch (e) {
+                $ul.innerHTML = '<li class="preset-empty">Failed to load presets: ' + (e.message || e) + '</li>';
+            }
+        }
+
+        async function loadPreset(name) {
+            if (!isProductionContext()) { pmStatus('Standalone testing -- cannot reach server.', false); return; }
+            try {
+                const r = await fetch('/load-preset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const nested = await r.json();
+                State.config = nestedToFlat(nested || {});
+                State.isDirty = true;
+                refreshControlValues();
+                applyConfig();
+                if (typeof refreshAllMasterBadges === 'function') refreshAllMasterBadges();
+                previewConfig();
+                pmStatus('Loaded "' + name + '" -- click Apply to OBS to persist.', true);
+            } catch (e) {
+                pmStatus('Load failed: ' + (e.message || e), false);
+            }
+        }
+
+        async function savePreset() {
+            const $input = document.getElementById('preset-name-input');
+            if (!$input) return;
+            const name = ($input.value || '').trim();
+            if (!name) { pmStatus('Enter a name first.', false); return; }
+            if (!isProductionContext()) { pmStatus('Standalone testing -- cannot reach server.', false); return; }
+            try {
+                const nested = flatToNested(State.config);
+                const r = await fetch('/save-preset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, config: nested })
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                pmStatus('Saved "' + name + '".', true);
+                $input.value = '';
+                renderPresetList();
+            } catch (e) {
+                pmStatus('Save failed: ' + (e.message || e), false);
+            }
+        }
+
+        async function deletePreset(name) {
+            if (!confirm('Delete preset "' + name + '"? This cannot be undone.')) return;
+            if (!isProductionContext()) { pmStatus('Standalone testing -- cannot reach server.', false); return; }
+            try {
+                const r = await fetch('/delete-preset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                pmStatus('Deleted "' + name + '".', true);
+                renderPresetList();
+            } catch (e) {
+                pmStatus('Delete failed: ' + (e.message || e), false);
+            }
+        }
+
+        function openPresetManager() {
+            const $m = document.getElementById('preset-modal');
+            if (!$m) return;
+            $m.hidden = false;
+            pmStatus('', true);
+            renderPresetList();
+        }
+
+        function closePresetManager() {
+            const $m = document.getElementById('preset-modal');
+            if (!$m) return;
+            $m.hidden = true;
+        }
+
+        // Stage 7.30.4 Item 1: replace v14.1.0 alert stub with real modal.
         function onPresetManager() {
-            // Stage 7.29 polish: deferred to v14.1.0 per operator decision.
-            // The full Preset Manager modal (save / load / delete / list
-            // presets) will use the existing server endpoints already wired
-            // in customize.html Stage 7.18.
-            alert('Preset Manager: coming in v14.1.0');
+            openPresetManager();
         }
 
         /* ==========================================================================
@@ -3258,6 +3495,46 @@
         } else {
             init();
         }
+
+        // Stage 7.30.4 Item 1: wire Preset Manager modal close (button + backdrop + Esc)
+        document.addEventListener('DOMContentLoaded', () => {
+            const $m = document.getElementById('preset-modal');
+            if (!$m) return;
+            const $close = document.getElementById('preset-modal-close');
+            const $saveBtn = document.getElementById('preset-save-btn');
+            const $input = document.getElementById('preset-name-input');
+            if ($close) $close.addEventListener('click', closePresetManager);
+            if ($saveBtn) $saveBtn.addEventListener('click', savePreset);
+            if ($input) {
+                $input.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') { e.preventDefault(); savePreset(); }
+                });
+            }
+            $m.addEventListener('click', e => {
+                // close on backdrop click (not on modal content click)
+                if (e.target === $m) closePresetManager();
+            });
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Escape' && !$m.hidden) closePresetManager();
+            });
+        });
     </script>
+
+    <!-- Stage 7.30.4 Item 1: Preset Manager modal markup. Hidden by default;
+         openPresetManager() removes [hidden] + populates list via /list-presets. -->
+    <div class="preset-modal-backdrop" id="preset-modal" hidden>
+        <div class="preset-modal" role="dialog" aria-modal="true" aria-labelledby="preset-modal-title">
+            <header class="preset-modal-header">
+                <h2 id="preset-modal-title">Preset Manager</h2>
+                <button class="preset-modal-close" id="preset-modal-close" type="button" aria-label="Close">×</button>
+            </header>
+            <ul class="preset-list" role="list"></ul>
+            <footer class="preset-modal-footer">
+                <input type="text" id="preset-name-input" placeholder="Preset name" maxlength="40" autocomplete="off" />
+                <button type="button" id="preset-save-btn" class="btn btn-primary">Save current as</button>
+            </footer>
+            <div class="preset-status" id="preset-status" hidden></div>
+        </div>
+    </div>
 </body>
 </html>
