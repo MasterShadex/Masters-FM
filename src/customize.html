@@ -567,29 +567,12 @@
         .search-clear:hover { color: var(--c-text-primary); }
 
         /* ==========================================================================
-           6b. ADVANCED TOGGLE (Stage 7.30.4 Item 2 -- restores V1 visibility gate)
-           Show advanced settings checkbox below the search bar. Default OFF;
-           when ON, body.show-advanced exposes all .control-row[data-advanced]
-           rows AND the all-advanced Layout supercat.
+           6b. ADVANCED TOGGLE -- REMOVED (operator request, post 7.30.5).
+           The "Show advanced settings" checkbox + its visibility-gating CSS were
+           removed; all .control-row[data-advanced] rows AND the Layout supercat
+           are now ALWAYS visible. The data-advanced attribute is still stamped by
+           renderControl but is inert (no CSS / JS reads it now).
            ========================================================================== */
-        .advanced-toggle {
-            display: flex;
-            align-items: center;
-            gap: var(--s-2);
-            padding: var(--s-1) var(--s-2);
-            margin: 2px 0 var(--s-2) 0;
-            color: var(--c-text-secondary);
-            font-size: var(--f-size-sm);
-            cursor: pointer;
-            user-select: none;
-        }
-        .advanced-toggle input { accent-color: var(--c-accent); cursor: pointer; }
-        .advanced-toggle:hover { color: var(--c-text-primary); }
-        body:not(.show-advanced) .control-row[data-advanced] { display: none; }
-        /* Layout supercat is all-advanced (V1 was titled "Layout (advanced)").
-           Hide the whole supercat header + body when the toggle is off so users
-           don't see an empty section marker. */
-        body:not(.show-advanced) #supercat-layout { display: none; }
 
         /* ==========================================================================
            7. SUPERCATS (Stage 7.21 carry; collapse JS wired in Stage 7.29)
@@ -1040,14 +1023,9 @@
                     <button class="search-clear" id="settings-search-clear" type="button" hidden aria-label="Clear search">×</button>
                 </div>
 
-                <!-- Stage 7.30.4 Item 2: Show advanced toggle (legacy V1 behavior).
-                     Hidden by default; clicking exposes all .control-row[data-advanced]
-                     plus the entire Layout supercat (all-advanced section). Persisted
-                     in localStorage 'customize_show_advanced'. -->
-                <label class="advanced-toggle">
-                    <input type="checkbox" id="c-show-advanced">
-                    <span>Show advanced settings</span>
-                </label>
+                <!-- Show advanced toggle REMOVED (operator request, post 7.30.5):
+                     all controls + the Layout supercat are always visible now. -->
+
 
                 <!-- 6 supercats (Stage 7.30.4 Item 2 restores V1 organization).
                      Order matches legacy SUPERCATS: Start here / Look / Text /
@@ -2093,9 +2071,9 @@
             row.dataset.controlId = config.id;
             row.dataset.controlType = config.type;
             // Stage 7.30.4 Item 2: advanced rows get a data-advanced attribute.
-            // CSS hides them unless body.show-advanced is set. Replaces the
-            // Stage 7.28 Option A "route to Advanced supercat" pattern with
-            // legacy V1 visibility-toggle behavior.
+            // (Post 7.30.5 the "Show advanced" toggle + its gating CSS were removed
+            // per operator request, so this attribute is now INERT -- kept only as
+            // a marker for any future re-introduction of gating.)
             if (config.advanced) {
                 row.dataset.advanced = 'true';
             }
@@ -2269,9 +2247,9 @@
 
         // Iterate SETTINGS_CONFIG and render each control into its natural
         // supercat body. Stage 7.30.4 Item 2 reversed Stage 7.28 Option A:
-        // advanced controls now sit in their natural supercat with a
-        // data-advanced attribute (added by renderControl) so a body class
-        // toggle can hide/show them per legacy V1 behavior.
+        // advanced controls sit in their natural supercat with a data-advanced
+        // attribute (added by renderControl). Post 7.30.5 the toggle that used it
+        // was removed -- all controls are always visible; the attribute is inert.
         function renderAllControls() {
             const containers = {
                 start:    document.getElementById('supercat-start-body'),
@@ -3151,28 +3129,11 @@
         }
 
         /* ==========================================================================
-           8f. SHOW ADVANCED TOGGLE (Stage 7.30.4 Item 2 -- V1 visibility gate)
-           Reads / writes localStorage 'customize_show_advanced'. Default OFF.
-           Adds / removes body.show-advanced. The CSS rule below the toggle
-           styling gates .control-row[data-advanced] + #supercat-layout
-           visibility off the body class.
+           8f. SHOW ADVANCED TOGGLE -- REMOVED (operator request, post 7.30.5).
+           initAdvancedToggle() + the checkbox + the gating CSS were removed; all
+           controls + the Layout supercat are always visible (no body.show-advanced
+           class, no localStorage 'customize_show_advanced').
            ========================================================================== */
-        function initAdvancedToggle() {
-            const $cb = document.getElementById('c-show-advanced');
-            if (!$cb) return;
-            let stored = null;
-            try { stored = localStorage.getItem('customize_show_advanced'); }
-            catch (e) { /* localStorage unavailable */ }
-            const initial = (stored === '1');
-            $cb.checked = initial;
-            document.body.classList.toggle('show-advanced', initial);
-            $cb.addEventListener('change', () => {
-                const on = $cb.checked;
-                document.body.classList.toggle('show-advanced', on);
-                try { localStorage.setItem('customize_show_advanced', on ? '1' : '0'); }
-                catch (e) { /* localStorage unavailable */ }
-            });
-        }
 
         let _searchDebounceTimer = null;
 
@@ -3577,10 +3538,8 @@
             // Click any .supercat-header to toggle; Start here defaults open.
             initSupercatCollapse();
 
-            // Stage 7.30.4 Item 2: V1 visibility gate. Reads localStorage and
-            // toggles body.show-advanced. Must come AFTER renderAllControls so
-            // the [data-advanced] rows + #supercat-layout exist in the DOM.
-            initAdvancedToggle();
+            // Show advanced toggle REMOVED (operator request, post 7.30.5):
+            // initAdvancedToggle() call dropped; all controls always visible.
 
             // Wait for iframe to finish loading before bootstrap.
             const bootstrap = async () => {
