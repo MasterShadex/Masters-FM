@@ -3444,6 +3444,73 @@
             }
         }
 
+        // Stage 7.30.5 Item 2: import a preset from an uploaded .json file.
+        // Forgiving detection (mirrors legacy pmImport, customize_legacy.html line
+        // 5099): accepts either the Export envelope {format:'mastersfm.preset',
+        // config:{...}} OR a bare nested config object. Validation
+        // (isValidPresetShape) is MANDATORY and runs BEFORE any State.config
+        // mutation -- malformed / wrong-shape / empty input is rejected with a
+        // friendly message and ZERO state change. On a valid import we apply
+        // directly (operator /goal spec): nestedToFlat -> MERGE into State.config
+        // -> applyConfig + refreshControlValues (mirrors loadPreset's apply path;
+        // merge so a partial preset doesn't blank unset controls -- nestedToFlat
+        // skips paths absent from the import).
+        function isValidPresetShape(obj) {
+            if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+            const keys = Object.keys(obj);
+            if (keys.length === 0) return false;
+            const validTopKeys = new Set(Object.values(FLAT_TO_NESTED_MAP).map(p => p[0]));
+            return keys.some(k => validTopKeys.has(k));
+        }
+
+        function importPreset() {
+            const input = document.getElementById('preset-import-input');
+            if (!input) return;
+            input.value = '';   // reset so re-importing the SAME file still fires change
+            input.click();
+        }
+
+        function handleImportFile(event) {
+            const file = event.target && event.target.files && event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onerror = () => pmStatus('Import failed: could not read the file.', false);
+            reader.onload = () => {
+                let parsed;
+                try {
+                    parsed = JSON.parse(reader.result);
+                } catch (err) {
+                    pmStatus('Import failed: file is not valid JSON.', false);
+                    return;   // NO state change
+                }
+                // Forgiving detection: Export envelope OR bare config object.
+                let candidate = null;
+                if (parsed && typeof parsed === 'object' && parsed.format === 'mastersfm.preset' && parsed.config) {
+                    candidate = parsed.config;
+                } else if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    candidate = parsed;
+                }
+                if (!isValidPresetShape(candidate)) {
+                    pmStatus('Import failed: this does not look like a Master\'s FM preset.', false);
+                    return;   // NO state change
+                }
+                // Valid -- apply directly (mirrors loadPreset). MERGE so keys the
+                // import omits keep their current values.
+                try {
+                    State.config = Object.assign({}, State.config, nestedToFlat(candidate));
+                    State.isDirty = true;
+                    refreshControlValues();
+                    applyConfig();
+                    if (typeof refreshAllMasterBadges === 'function') refreshAllMasterBadges();
+                    previewConfig();
+                    pmStatus('Imported and applied -- click Apply to OBS to persist.', true);
+                } catch (err) {
+                    pmStatus('Import failed while applying: ' + (err.message || err), false);
+                }
+            };
+            reader.readAsText(file);
+        }
+
         function openPresetManager() {
             const $m = document.getElementById('preset-modal');
             if (!$m) return;
@@ -3567,6 +3634,11 @@
             // Stage 7.30.5 Item 1: wire Export button (current-config .json download).
             const $exportBtn = document.getElementById('preset-export-btn');
             if ($exportBtn) $exportBtn.addEventListener('click', exportPreset);
+            // Stage 7.30.5 Item 2: wire Import button (hidden file input) + change handler.
+            const $importBtn = document.getElementById('preset-import-btn');
+            const $importInput = document.getElementById('preset-import-input');
+            if ($importBtn) $importBtn.addEventListener('click', importPreset);
+            if ($importInput) $importInput.addEventListener('change', handleImportFile);
             if ($input) {
                 $input.addEventListener('keydown', e => {
                     if (e.key === 'Enter') { e.preventDefault(); savePreset(); }
@@ -3598,6 +3670,8 @@
             <!-- Stage 7.30.5: Export (current config) + Import (.json upload) action row. -->
             <div class="preset-modal-actions">
                 <button type="button" id="preset-export-btn" class="btn btn-ghost">Export</button>
+                <button type="button" id="preset-import-btn" class="btn btn-ghost">Import</button>
+                <input type="file" id="preset-import-input" accept=".json,application/json" hidden />
             </div>
             <div class="preset-status" id="preset-status" hidden></div>
         </div>
