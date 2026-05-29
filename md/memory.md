@@ -6383,3 +6383,33 @@ Carried unchanged. NOTE: the 8765 standing-test port was occupied by an unrelate
 server (chest-freezer media) this session; used 127.0.0.1:8799 (own python
 http.server on src/) for SE1 instead -- did not kill the 8765 occupant. Untracked
 debris (~194 entries, malformed-command garbage) still pending operator OK to clean.
+
+## 2026-05-29 22:08 — Checkpoint: toggle removal shipped + Stage 7.30.6 STEP 0 done
+
+### Operator ad-hoc change: removed "Show advanced" toggle (commit 7358577)
+Operator: "remove the advanced options button, keep it all visible." Removed the
+Stage 7.30.4 Show-advanced toggle from customize.html: CSS (.advanced-toggle styles
++ the 2 `body:not(.show-advanced)` hiding rules), HTML checkbox label, the
+`initAdvancedToggle()` function, and its init() call. All 56 data-advanced rows +
+the Layout supercat are now ALWAYS visible. The data-advanced attribute is still
+stamped by renderControl but is now INERT (stale comments fixed). Verified standalone
+(preview MCP @ 127.0.0.1:8799): toggle gone, 0/56 advanced rows hidden, Layout
+supercat display:block, console clean, round-trip self-test ok. Scope: customize.html
+only (+20/-61). Cold rebuild deploying (task bvhlwoah2) -- version.json restore +
+install-SHA verify PENDING that rebuild's completion.
+
+### Stage 7.30.6 (tooltip system) STEP 0 done (commit fbb792d)
+Research-first: legacy stores help as 51 positional `<p class="control-help">`
+paragraphs (concise, operator-friendly); v2 had NO help field. Extracted all 51 ->
+coverage table; locked ~40 WARRANTED tooltips (jargon / non-obvious: masters, card
+blur+opacity+angle, 5 glow sizes, marquee speed/pause, letter-spacing, the full
+spectrum cluster ~14, anim dur/slide/ease). SKIP self-explanatory (master accent
+[operator example], plain color/size pickers, on/off toggles, art position). Full
+coverage table + condensed text in V14_S7_30_6_LOG.md S0.4. Tasks #209-215. STEPs
+1-6 remain: add additive help field -> tooltip UI (info-icon button + no-clip CSS +
+tap/Esc JS) -> evidence -> cold rebuild -> operator gate -> closure. Counts must
+stay 120 / FLAT_TO_NESTED_MAP 118 / THEMES 22 (help is additive only).
+
+### customize.html SHA now: 072D9F7C (HEAD 7358577, toggle removed)
+Protected (tray.ps1/tray_native.cs/launcher.cs/server.js) + legacy 7E98377D +
+overlay 9A7CC817 all UNCHANGED. version.json 14.0.0.
