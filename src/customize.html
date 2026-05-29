@@ -428,6 +428,13 @@
             font-size: var(--f-size-md);
         }
         .preset-modal-footer input:focus { outline: none; border-color: var(--c-accent); }
+        /* Stage 7.30.5: Export / Import action row below the save footer. */
+        .preset-modal-actions {
+            display: flex;
+            gap: var(--s-2);
+            padding: 0 var(--s-4) var(--s-3);
+        }
+        .preset-modal-actions .btn { flex: 1 1 auto; }
         .preset-status {
             padding: var(--s-2) var(--s-4);
             font-size: var(--f-size-sm);
@@ -3403,6 +3410,40 @@
             }
         }
 
+        // Stage 7.30.5 Item 1: export the CURRENT live config as a .json download.
+        // Mirrors the legacy pmExport envelope (customize_legacy.html line 5068)
+        // but serializes State.config (current settings) instead of a saved preset
+        // by name -- per the operator /goal v2-adaptation spec. Pure client-side
+        // (no server call) so it also works in standalone testing.
+        function exportPreset() {
+            try {
+                const presetName = 'overlay-config';
+                const nested = flatToNested(State.config);
+                const envelope = {
+                    format:       'mastersfm.preset',
+                    version:      1,
+                    name:         presetName,
+                    exportedAt:   new Date().toISOString(),
+                    exportedFrom: 'v14.0.0',
+                    config:       nested
+                };
+                const safeName = presetName.replace(/[^a-zA-Z0-9 _\-]/g, '').trim() || 'preset';
+                const filename = 'MastersFM_' + safeName + '.json';
+                const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+                pmStatus('Exported current settings to ' + filename + '.', true);
+            } catch (e) {
+                pmStatus('Export failed: ' + (e.message || e), false);
+            }
+        }
+
         function openPresetManager() {
             const $m = document.getElementById('preset-modal');
             if (!$m) return;
@@ -3523,6 +3564,9 @@
             const $input = document.getElementById('preset-name-input');
             if ($close) $close.addEventListener('click', closePresetManager);
             if ($saveBtn) $saveBtn.addEventListener('click', savePreset);
+            // Stage 7.30.5 Item 1: wire Export button (current-config .json download).
+            const $exportBtn = document.getElementById('preset-export-btn');
+            if ($exportBtn) $exportBtn.addEventListener('click', exportPreset);
             if ($input) {
                 $input.addEventListener('keydown', e => {
                     if (e.key === 'Enter') { e.preventDefault(); savePreset(); }
@@ -3551,6 +3595,10 @@
                 <input type="text" id="preset-name-input" placeholder="Preset name" maxlength="40" autocomplete="off" />
                 <button type="button" id="preset-save-btn" class="btn btn-primary">Save current as</button>
             </footer>
+            <!-- Stage 7.30.5: Export (current config) + Import (.json upload) action row. -->
+            <div class="preset-modal-actions">
+                <button type="button" id="preset-export-btn" class="btn btn-ghost">Export</button>
+            </div>
             <div class="preset-status" id="preset-status" hidden></div>
         </div>
     </div>
