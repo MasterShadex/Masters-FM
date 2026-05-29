@@ -1,0 +1,12 @@
+{
+  "stage": "7.30.6",
+  "step": "S3 round-trip smoke + IMMUTABLE counts (preview MCP @ 127.0.0.1:8799)",
+  "round_trip_self_test_ok": true,
+  "settings_config_count": 120,
+  "flat_to_nested_map": 118,
+  "themes": 22,
+  "help_field_count": 41,
+  "bindings_spot_check": "c-spec-response slider type=range intact after the help icon was added to its label; renderControl wiring unaffected. Round-trip self-test PASS confirms the flat<->nested translator is untouched.",
+  "console": { "warn": 0, "error": 0 },
+  "note": "Tooltips are additive (help field on entries + render-time icon); they do not change config shape. IMMUTABLE counts unchanged from 7.30.5 (120 / 118 / 22)."
+}

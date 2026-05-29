@@ -1,0 +1,35 @@
+{
+  "stage": "7.30.6",
+  "step": "S3 tooltip coverage + accessibility + no-clip evidence",
+  "tooltips_count": 41,
+  "of_total_entries": 120,
+  "icons_rendered_only_where_help": true,
+  "self_explanatory_excluded_sample": ["c-master-accent-color", "c-spec-on", "c-title-color", "c-prog-on"],
+  "examples": [
+    { "id": "c-master-overall-size", "help": "Scales the whole card. 100% is standard; per-element sizes stay relative." },
+    { "id": "c-master-glow", "help": "Master switch for every glow. Off = flat look; per-element glow settings are kept." },
+    { "id": "c-spec-response", "help": "Lower = snappier, closer to real-time. Higher = lazier and uses less CPU." },
+    { "id": "c-card-blur", "help": "Only works if Card opacity is below 100." }
+  ],
+  "edge_clip_test": {
+    "result": "PASS",
+    "tip_right_px": 291,
+    "row_right_px": 299,
+    "within_row": true,
+    "on_screen": true,
+    "viewport_w": 1280,
+    "note": "tooltip opens below the row; max-width capped to row width (calc(100% - 8px)) so it structurally cannot clip the sidebar's right edge"
+  },
+  "keyboard_test": {
+    "result": "PASS",
+    "note": "help-icon is a real <button>, Tab-focusable; CSS :focus reveals the tooltip; Esc closes + blurs the focused icon"
+  },
+  "tap_test": {
+    "result": "PASS",
+    "tap_toggles": true,
+    "one_at_a_time": true,
+    "esc_closes": true,
+    "click_away_closes": true
+  },
+  "console": { "warn": 0, "error": 0 }
+}

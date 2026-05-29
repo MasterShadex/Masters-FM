@@ -1,0 +1,13 @@
+{
+  "stage": "7.30.6",
+  "step": "S3.4 open-tooltip render (textual proxy -- preview_screenshot timed out)",
+  "open_tooltip": {
+    "label": "Help: Animations",
+    "display": "block",
+    "text": "Master switch for every animation. Clock time always stays smooth.",
+    "background": "rgb(46, 46, 46)",
+    "border_top_width": "1px",
+    "box_shadow": true
+  },
+  "note": "preview_screenshot timed out (renderer capture unreliable in this env, same as 7.30.5). Rendered tooltip styling verified via preview_eval getComputedStyle: dark surface (--c-surface-elevated #2e2e2e), 1px border, drop shadow, display:block, full text shown. Operator gate (STEP 5) provides the live visual confirmation."
+}
