@@ -674,6 +674,7 @@
            --c-surface background. Hover continues to lift to --c-surface-elevated.
            ========================================================================== */
         .control-row {
+            position: relative;   /* Stage 7.30.6: anchor for .help-tip (no-clip below row) */
             display: flex;
             flex-direction: column;
             gap: var(--s-2);
@@ -694,6 +695,32 @@
             font-weight: var(--f-weight-medium);
             color: var(--c-text-primary);
         }
+
+        /* Stage 7.30.6: help-icon tooltip. Icon sits next to the label; tooltip
+           opens BELOW the row (.control-row is position:relative) with a capped
+           width so it never clips at the sidebar's right edge. Hover + keyboard
+           focus + tap (.active) all reveal it. */
+        .help-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; margin-left: 6px; padding: 0;
+            border: none; background: none; color: var(--c-text-tertiary);
+            cursor: help; vertical-align: -2px; border-radius: 50%; flex: 0 0 auto;
+        }
+        .help-icon:hover { color: var(--c-accent); }
+        .help-icon:focus-visible { color: var(--c-accent); outline: none; box-shadow: 0 0 0 2px var(--c-accent); }
+        .help-tip {
+            display: none; position: absolute; top: calc(100% + 2px); left: 0;
+            max-width: calc(100% - 8px); z-index: 50;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-surface-elevated); color: var(--c-text-primary);
+            border: 1px solid var(--c-border); border-radius: var(--r-md);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+            font-size: var(--f-size-sm); font-weight: 400; line-height: 1.45;
+            white-space: normal; text-align: left; pointer-events: none;
+        }
+        .help-icon:hover .help-tip,
+        .help-icon:focus .help-tip,
+        .help-icon.active .help-tip { display: block; }
 
         .control-input-group {
             display: flex;
@@ -2082,6 +2109,8 @@
             label.className = 'control-label';
             label.setAttribute('for', config.id);
             label.textContent = config.label;
+            // Stage 7.30.6: info-icon tooltip when this entry has help text.
+            if (config.help) label.appendChild(createHelpIcon(config));
             row.appendChild(label);
 
             const inputGroup = document.createElement('div');
@@ -2112,6 +2141,50 @@
             }
             row.appendChild(inputGroup);
             return row;
+        }
+
+        // Stage 7.30.6: build an accessible info icon + tooltip for a control's
+        // help text. Real <button> (keyboard-focusable). The tooltip span opens
+        // below the row via CSS (row is position:relative) so it never clips at
+        // the sidebar's right edge.
+        function createHelpIcon(config) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'help-icon';
+            btn.setAttribute('aria-label', 'Help: ' + config.label);
+            btn.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">' +
+                '<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"></circle>' +
+                '<circle cx="8" cy="4.6" r="0.95" fill="currentColor"></circle>' +
+                '<rect x="7.2" y="6.7" width="1.6" height="5" rx="0.8" fill="currentColor"></rect></svg>';
+            const tip = document.createElement('span');
+            tip.className = 'help-tip';
+            tip.setAttribute('role', 'tooltip');
+            tip.textContent = config.help;
+            btn.appendChild(tip);
+            return btn;
+        }
+
+        // Stage 7.30.6: tooltip tap-toggle + Esc + one-at-a-time (hover/focus are
+        // pure CSS). Delegated so it covers all rendered help icons.
+        function initHelpTooltips() {
+            document.addEventListener('click', (e) => {
+                const icon = e.target.closest ? e.target.closest('.help-icon') : null;
+                if (icon) {
+                    e.preventDefault();   // don't let the label activate its control
+                    const wasActive = icon.classList.contains('active');
+                    document.querySelectorAll('.help-icon.active').forEach(el => el.classList.remove('active'));
+                    if (!wasActive) icon.classList.add('active');
+                } else {
+                    document.querySelectorAll('.help-icon.active').forEach(el => el.classList.remove('active'));
+                }
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.help-icon.active').forEach(el => el.classList.remove('active'));
+                    const a = document.activeElement;
+                    if (a && a.classList && a.classList.contains('help-icon')) a.blur();
+                }
+            });
         }
 
         function createSliderInput(config) {
@@ -3537,6 +3610,9 @@
             // Stage 7.29: wire supercat collapse + restore localStorage state.
             // Click any .supercat-header to toggle; Start here defaults open.
             initSupercatCollapse();
+
+            // Stage 7.30.6: wire help-icon tooltip tap-toggle + Esc (delegated).
+            initHelpTooltips();
 
             // Show advanced toggle REMOVED (operator request, post 7.30.5):
             // initAdvancedToggle() call dropped; all controls always visible.
