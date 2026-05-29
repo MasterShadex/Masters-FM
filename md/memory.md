@@ -6305,3 +6305,81 @@ overlay SHA UNCHANGED end-to-end.
 
 Carried unchanged. Round-trip self-test standing rule (7.30.1) applied: PASS.
 v14.1.0 backlog unchanged (Export/Import now also a near-term candidate).
+
+## 2026-05-29 21:43 — Stage 7.30.5 closed (PASS, 0 strikes): preset Export + Import -- FULL legacy preset parity
+
+Stage 7.30.5 (preset Export + Import -- the last 2 legacy preset features missing
+from v2) PASSED operator gate on a clean 0-strike run. customize.html is the only
+source file touched. **v2 Preset Manager now has FULL legacy parity.**
+
+### Items delivered
+
+1. **Export** (Item 1) -- "Export" button in the Preset Manager modal. Serializes
+   CURRENT State.config -> flatToNested -> legacy envelope {format:'mastersfm.preset',
+   version:1, name:'overlay-config', exportedAt, exportedFrom:'v14.0.0', config} ->
+   Blob/anchor download MastersFM_overlay-config.json. Client-side (no server call).
+   Mirrors legacy pmExport (line 5068) format; v2 exports CURRENT config (operator
+   spec) vs legacy's saved-preset-by-name.
+2. **Import** (Item 2) -- "Import" button + hidden file input (accept .json).
+   FileReader -> JSON.parse(catch) -> forgiving envelope-or-bare detect (mirrors
+   legacy pmImport line 5099) -> MANDATORY isValidPresetShape -> apply DIRECTLY
+   (nestedToFlat -> MERGE into State.config -> applyConfig + refreshControlValues +
+   previewConfig). v2 applies directly (operator spec) vs legacy's save-then-load.
+
+### Validation (import = the risk; all 5 paths verified)
+
+isValidPresetShape: non-null obj, not array, >=1 top-level key in
+FLAT_TO_NESTED_MAP values. Runs BEFORE any State.config mutation. Matrix 5/5 (real
+handleImportFile, preview MCP): valid applies / malformed graceful / wrong-shape
+rejected / empty graceful / re-import works twice. Export->import lossless
+(c-border-colors comma<->array survives). Round-trip self-test ok. Console 0/0.
+
+### Legacy vs v2 divergence (research-first finding -- important)
+
+Legacy export = SAVED preset by name (fetches /load-preset, server round-trip);
+legacy import = SAVES to /save-preset then "click Load." v2 (operator /goal spec
++ gate) = export CURRENT config + import APPLIES directly. Legacy was source of
+truth for FORMAT (envelope, filename, forgiving detect); operator spec for
+MECHANISM. Documented in V14_S7_30_5_LOG.md S0.3-S0.5.
+
+### Closure SHA256
+
+- src/customize.html: 8695B992A949B9FA... (Stage 7.30.5 closure)
+- src/customize_legacy.html: 7E98377DC97F83B3... UNCHANGED (LEGACY_SHA)
+- src/overlay.html: 9A7CC817515FFCC0... UNCHANGED
+- protected (tray.ps1 / tray_native.cs / launcher.cs / server.js): UNCHANGED
+- version.json: 14.0.0 (no bump; cold-rebuild msi_sha256 churn restored via git)
+
+### Constraints honored (SE1-SE8)
+
+SE1 yes (export capture + 5-path import matrix + round-trip + lossless via preview
+MCP) / SE2 yes (cold rebuild log 0 error/warn) / SE3 yes (6 commits, scope-matched)
+/ SE4 yes (operator PASS) / SE5 0 cycles (clean) / SE6 n/a / SE7 yes (no scope
+expansion; export/import client-side, no new endpoints) / SE8 protected + legacy +
+overlay SHA UNCHANGED end-to-end.
+
+### Deployment lesson re-applied
+
+Used COLD rebuild (not fast-path) for the operator gate -- per the 7.30.4 WebView2
+cache lesson. Operator saw Export/Import + tested import in a fresh WebView2 first try.
+
+### Files touched this stage
+
+- src/customize.html (Export + Import; +122 lines; 6 commits 99d839d..closure)
+- V14_S7_30_5_LOG.md (NEW), V14_S7_30_5_REPORT.md (NEW)
+- evidence/s7_30_5/ (round_trip.json, import_validation_matrix.json, modal_state.json)
+- md/memory.md (THIS APPEND)
+
+### customize.html rebuild cycle status
+
+Preset Manager: COMPLETE (list/save/load/delete/overwrite/export/import = full
+legacy parity). Remaining v14.1.0 items (per 7.30.5 brief): tooltip system,
+install hygiene (legacy bundling / stale file cleanup), build hygiene, friend
+feedback. Stage 7.30.5 added zero new backlog.
+
+### Standing rules / notes
+
+Carried unchanged. NOTE: the 8765 standing-test port was occupied by an unrelated
+server (chest-freezer media) this session; used 127.0.0.1:8799 (own python
+http.server on src/) for SE1 instead -- did not kill the 8765 occupant. Untracked
+debris (~194 entries, malformed-command garbage) still pending operator OK to clean.
