@@ -6221,3 +6221,87 @@ CSS-only -- BUT, running the self-test was still cheap and confirmed JS
 remained unaffected. The standing rule pays off even for CSS-only stages:
 ~5 seconds of preview MCP eval rules out "did I accidentally break JS too?"
 for free.
+
+## 2026-05-29 21:03 — Stage 7.30.4 closed (PASS via SE5 1/3): customize MEGA stage (5 items)
+
+Stage 7.30.4 (5 items bundled: Preset Manager + V1 organization + section
+separation + label renames + supercat polish) PASSED operator re-gate after
+1 SE5 cycle. `src/customize.html` is the only source file touched.
+
+### Items delivered
+
+1. **Preset Manager** (Item 1) -- modal UI (list/save/load/delete) wired to the
+   existing server endpoints; replaces the v14.1.0 alert stub. Overwrite-on-
+   existing-name confirm. Export/Import DEFERRED (operator).
+2. **V1 organization** (Item 2) -- Advanced supercat REMOVED; back to legacy 6
+   supercats (start/look/text/effects/audio/layout). 56 advanced rows gated by
+   `data-advanced` attr + `body.show-advanced` class + "Show advanced" toggle +
+   localStorage `customize_show_advanced` (default off).
+3. **Section separation** (Item 3) -- `.supercat` margin-bottom 8 -> 12px
+   (var(--s-3)); Stage 7.30.3 density preserved.
+4. **Label renames** (Item 4, 4 of 12 proposed) -- c-spec-response "Reaction
+   time", c-spec-fps "Animation frame rate", c-border-spd "Border spin speed",
+   c-border-colors "Border colors". JARGON_MAP synced. Config keys unchanged.
+5. **Supercat polish** (Item 5) -- border-left 3 -> 2px (pad 9 -> 10px comp);
+   collapsed accent stripe opacity 0.6; box-shadow only when expanded.
+
+### SE5 strike 1/3 -- preset HTTP method (gate-1 FAIL)
+
+Gate 1: Save worked, Load + Delete returned HTTP 405. Root cause: client guessed
+POST. Fix (research-first from customize_legacy.html + server.js): load ->
+`GET /load-preset?name=`, delete -> `DELETE /delete-preset?name=`, save POST
+unchanged. +OVERWRITE confirm folded in (legacy pmOverwrite). Commit `f2133fa`.
+Server-side probe confirmed: GET /load-preset 404 (not 405), DELETE
+/delete-preset 200 (not 405). Operator GUI re-test PASS in fresh WebView2.
+
+### Deployment lesson (file under "hard-won")
+
+Fast-path file copy of customize.html to the install dir does NOT reliably
+surface in PyWebView -- **WebView2 caches the served page**. Operator saw "no
+change" after the SE5-fix fast-path copy. A **cold rebuild**
+(`_full_rebuild.ps1 -FullRebuild`) is required to force a fresh WebView2 for
+operator-visible verification of a customize.html BEHAVIOR change. (CSS-only
+stages sometimes got away with fast-path because the window wasn't reopened or
+the cached layout was close enough -- but for a JS/behavior change you MUST
+cold-rebuild before asking the operator to verify.)
+
+### Closure SHA256
+
+- `src/customize.html`: `5E59A262AC485537...` (Stage 7.30.4 closure)
+- `src/customize_legacy.html`: `7E98377DC97F83B3...` UNCHANGED (LEGACY_SHA held)
+- `src/overlay.html`: `9A7CC817515FFCC0...` UNCHANGED
+- All protected files: UNCHANGED
+- `version.json`: 14.0.0 (no bump; cold-rebuild msi_sha256 churn restored via `git restore`)
+
+### Constraints honored (SE1-SE8)
+
+SE1 yes (round-trip smoke + server-side probe + operator GUI) / SE2 yes (cold
+rebuild log 0 error/warning) / SE3 yes (6 commits 6a76c0c..f2133fa) / SE4 yes
+(operator PASS) / SE5 1 cycle (strike 1/3) / SE6 not triggered / SE7 yes
+(Export/Import deferred, no autonomous expansion) / SE8 protected + legacy +
+overlay SHA UNCHANGED end-to-end.
+
+### Files touched this stage
+
+- `src/customize.html` (5 items + SE5 fix; committed across 6 commits)
+- `V14_S7_30_4_LOG.md` (NEW), `V14_S7_30_4_REPORT.md` (NEW)
+- `evidence/s7_30_4/smoke.json`
+- `md/memory.md` (THIS APPEND)
+
+### Next stage handoffs
+
+- **Preset Export / Import** -- legacy had both (.json download line 5068,
+  upload line 5099). Only OVERWRITE folded in this cycle. Operator asked at the
+  gate whether to fold these into a follow-up stage, then replied "pass" without
+  ruling -- **DECISION PENDING**.
+- **Stage 7.30.5** (Advanced re-org of the 56 entries) -- still parked from the
+  7.30.3 handoff.
+- **Untracked debris cleanup** -- ~194 git-untracked entries, many
+  malformed-command garbage (filenames `,`, `{`, `return`, `JsonNode.Parse`,
+  `$($f`, etc.). NOT from this stage (only customize.html touched, committed).
+  Pending operator OK to clean; nothing deleted.
+
+### Standing rules + v14.1.0 backlog
+
+Carried unchanged. Round-trip self-test standing rule (7.30.1) applied: PASS.
+v14.1.0 backlog unchanged (Export/Import now also a near-term candidate).
