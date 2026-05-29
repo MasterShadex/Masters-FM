@@ -1,0 +1,34 @@
+{
+  "stage": "7.30.5",
+  "step": "S2/S3 import validation matrix -- 5 paths through the real handleImportFile (synchronous FileReader stub; baseline State.config = {c-card-top:#000000} re-seeded before each path)",
+  "valid_file": {
+    "result": "applied correctly",
+    "status": "Imported and applied -- click Apply to OBS to persist.",
+    "state_after": { "c-card-top": "#ff0000" }
+  },
+  "malformed_json": {
+    "result": "graceful error, no crash, no state change",
+    "input": "{not valid json",
+    "status": "Import failed: file is not valid JSON.",
+    "state_after": { "c-card-top": "#000000" }
+  },
+  "wrong_shape_json": {
+    "result": "rejected, no state change",
+    "input": "{\"foo\":\"bar\"}",
+    "status": "Import failed: this does not look like a Master's FM preset.",
+    "state_after": { "c-card-top": "#000000" }
+  },
+  "empty_file": {
+    "result": "graceful failure",
+    "input": "",
+    "status": "Import failed: file is not valid JSON.",
+    "state_after": { "c-card-top": "#000000" }
+  },
+  "reimport_same_file": {
+    "result": "works both times",
+    "first": { "status": "Imported and applied -- click Apply to OBS to persist.", "c-card-top": "#00ff00" },
+    "second": { "status": "Imported and applied -- click Apply to OBS to persist.", "c-card-top": "#00ff00" }
+  },
+  "validation_gate": "isValidPresetShape runs BEFORE any State.config mutation -- malformed / wrong-shape / empty never mutate state (c-card-top stayed #000000)",
+  "console": { "warn": 0, "error": 0 }
+}
