@@ -116,6 +116,8 @@ GUID_COMP61  = "{11111111-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.
 GUID_COMP62  = "{22222222-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.dll
 GUID_COMP63  = "{33333333-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.runtimeconfig.json
 GUID_COMP64  = "{44444444-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.deps.json
+# Stage 7.30.7: customize_legacy.html bundled into the MSI (instant-revert safety net; LEGACY_SHA 7E98377D).
+GUID_COMP65  = "{55555555-DDDD-8888-9999-AAAAAAAAAAAA}"  # customize_legacy.html
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
@@ -126,6 +128,7 @@ FILES = [
     ("src/config_default.json",            "config_default.json",                GUID_COMP6),
     ("src/overlay.html",                   "overlay.html",                       GUID_COMP7),
     ("src/customize.html",                 "customize.html",                     GUID_COMP8),
+    ("src/customize_legacy.html",          "customize_legacy.html",              GUID_COMP65),  # Stage 7.30.7: instant-revert safety net (LEGACY_SHA 7E98377D)
     ("src/discord_rpc.js",                 "discord_rpc.js",                     GUID_COMP9),
     ("customize.exe",                      "customize.exe",                      GUID_COMP10),  # WebView2-hosted customize window
     ("Microsoft.Web.WebView2.Core.dll",    "Microsoft.Web.WebView2.Core.dll",    GUID_COMP11),
