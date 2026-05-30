@@ -106,3 +106,18 @@ CLAUDE_CODE_INSTRUCTIONS.md
 prompts.txt
 _scan_catches.csv
 _v9_gauntlet_picks.json
+
+# === STAGE 7.30.7: .NET publish artifacts + local runtime state ===
+# dotnet publish leftovers copied to the repo root by _full_rebuild.ps1 (regenerated each build)
+*.deps.json
+*.runtimeconfig.json
+*.pdb
+*.gcdump
+/server.staticwebassets.endpoints.json
+/web.config
+# obs_cleanup publish output under src/ (build output, NOT source)
+src/obs_cleanup/cleanup_pub_tmp/
+src/obs_configured.flag
+# Local runtime databases (machine-specific, regenerated)
+ruvector.db
+.swarm/
