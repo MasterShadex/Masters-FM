@@ -6413,3 +6413,81 @@ stay 120 / FLAT_TO_NESTED_MAP 118 / THEMES 22 (help is additive only).
 ### customize.html SHA now: 072D9F7C (HEAD 7358577, toggle removed)
 Protected (tray.ps1/tray_native.cs/launcher.cs/server.js) + legacy 7E98377D +
 overlay 9A7CC817 all UNCHANGED. version.json 14.0.0.
+
+## 2026-05-30 13:03 — Stage 7.30.6 closed (PASS, 0 strikes): tooltip system (41 info-icon help tooltips)
+
+Stage 7.30.6 (tooltip system) PASSED operator gate on a clean 0-strike run.
+Operator: "41 tooltips work, read well, no clipping, no regression." customize.html
+is the only source file touched.
+
+### What shipped
+
+Hover/focus/tap help tooltips (info ⓘ icons) next to the 41 controls that warrant
+explanation, replacing legacy's always-visible inline help (operator "less text"
+goal). 3 items:
+1. **Help source (research-first)**: legacy stored help as 51 positional
+   `<p class="control-help">` paragraphs. Extracted all 51 -> coverage table (in
+   V14_S7_30_6_LOG.md S0.4) -> locked 41 WARRANTED (jargon/non-obvious: masters,
+   card blur+opacity+angle, 5 glow sizes, marquee, letter-spacing, full spectrum
+   cluster ~14, anim). Self-explanatory excluded (master accent, plain
+   colors/sizes, on/off toggles, art position).
+2. **Help field**: additive `help: '...'` string on 41 existing SETTINGS_CONFIG
+   entries (inserted between id and type). NO new entries, NO key changes,
+   FLAT_TO_NESTED_MAP + THEMES untouched. (ID corrections vs draft: c-overlay-opacity,
+   c-master-animations, c-spec-sensitivity, c-anim-easing; dropped c-border-w.)
+3. **Tooltip UI**: renderControl adds an accessible `<button class="help-icon">`
+   (inline SVG, aria-label "Help: <label>") next to the label only when
+   `config.help`. CSS tooltip opens BELOW the row (`.control-row` position:relative)
+   with `max-width: calc(100% - 8px)` so it CANNOT clip the sidebar right edge.
+   Hover + keyboard :focus + tap (`.active`) reveal; `initHelpTooltips()` delegated
+   tap-toggle + one-at-a-time + Esc(+blur) + click-away. Dependency-free, v2 tokens
+   (--c-surface-elevated dark surface + border + shadow).
+
+### Verification (preview MCP @ 127.0.0.1:8799)
+
+41 icons render ONLY where help (count matches); self-explanatory excluded
+(verified). No-clip: activated tip right 291 <= row right 299, on-screen. Keyboard
++ tap + Esc + one-at-a-time + click-away all PASS. Round-trip self-test ok;
+c-spec-response slider binding intact; console 0/0. Counts 120/118/22 unchanged.
+
+### Closure SHA256
+
+- src/customize.html: `88F380F68D260254...` (Stage 7.30.6 closure)
+- src/customize_legacy.html: `7E98377DC97F83B3...` UNCHANGED (LEGACY_SHA)
+- src/overlay.html: `9A7CC817515FFCC0...` UNCHANGED
+- protected (tray.ps1/tray_native.cs/launcher.cs/server.js): UNCHANGED
+- version.json: 14.0.0 (no bump; cold-rebuild msi_sha256 restored via git restore)
+
+### Constraints honored (SE1-SE8)
+
+SE1 yes / SE2 yes (cold rebuild 0 err/warn) / SE3 yes (6 commits fbb792d..closure)
+/ SE4 yes (operator PASS) / SE5 0 cycles (clean) / SE6 n/a / SE7 yes (additive help
+field, no scope expansion) / SE8 protected + legacy + overlay SHA UNCHANGED.
+
+### Implementation note (for next session)
+
+Followed the brief's locked design: `help` field ON each warranted SETTINGS_CONFIG
+entry (41 per-entry edits), NOT a separate HELP_MAP. renderControl reads
+`config.help`. To EXPAND coverage (operator's next-stage plan): just add more
+`help: '...'` strings to additional SETTINGS_CONFIG entries -- the icon + tooltip
+infra renders automatically for any entry with a help field.
+
+### Files touched this stage
+
+- src/customize.html (41 help fields + tooltip UI; +~158 net; 6 commits)
+- V14_S7_30_6_LOG.md (NEW), V14_S7_30_6_REPORT.md (NEW)
+- evidence/s7_30_6/ (round_trip.json, tooltip_coverage.json, tooltip_open_render.json)
+- md/memory.md (THIS APPEND)
+
+### Next stage handoffs
+
+- **EXPAND tooltip coverage** (operator stated at gate): add `help` to more
+  controls beyond the 41. Infra ready.
+- **Stage 7.30.7 install/build hygiene** (per brief): legacy bundling decision,
+  stale customize_v2.html cleanup, _full_rebuild.ps1 hardening, junk-file cleanup
+  (~194 untracked debris still pending operator OK).
+
+### customize.html rebuild-cycle status
+
+Full legacy preset parity (7.30.5) + tooltip system (7.30.6) + toggle removed.
+customize.html SHA now `88F380F6` (HEAD will be the 7.30.6 closure commit).
