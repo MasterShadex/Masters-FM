@@ -6556,3 +6556,53 @@ coverage (7.30.6.1) + toggle removed. customize.html SHA now `33D09CDF`.
 Only **Stage 7.30.7 install/build hygiene** remains in the customize cycle: legacy
 bundling decision, stale customize_v2.html cleanup, _full_rebuild.ps1 hardening,
 ~194 untracked junk-file cleanup (still pending operator OK).
+
+## 2026-05-30 23:xx -- INTERIM CHECKPOINT (Stage 7.30.7 at gate + album-art bug fix pending verify)
+
+NOT a closure entry -- mid-run state capture (long autonomous run, two threads parked
+on operator input). Two independent workstreams in flight:
+
+### Thread 1: Stage 7.30.7 (install/build hygiene) -- STEP 0-3 DONE, at STEP 4 gate (OPEN)
+Committed (4 commits on main, base 8fc091e):
+- `d99d54e` STEP 0 -- full inventory. Stale customize_v2.html exists ONLY in install dir
+  (`%LOCALAPPDATA%\MastersFM\customize_v2.html`, 65904 B); NOT in src/, NOT in any build
+  script/route (the 2 "v2" grep hits are harmless comments inside customize.html). Untracked
+  recount: 462 total (brief's "~194" stale) -> 72 zero-byte / 390 non-empty.
+- `8e8c72c` STEP 1 -- _full_rebuild.ps1 hardened: VBCSCompiler pre-kill after REBUILD START
+  + WPF publish HARD ERROR (exit 11) on BOTH the exit!=0 and exit=0-but-no-exe branches.
+  Success path byte-identical; PS parse 0 errors. (File has a pre-existing UTF-8 BOM --
+  preserved, edits pure-ASCII.)
+- `0d28ae5` STEP 2 -- build_tools/build_msi.py bundles src/customize_legacy.html (new
+  GUID_COMP65 `{55555555-DDDD-8888-9999-AAAAAAAAAAAA}`, unique vs all 67 component GUIDs);
+  py_compile clean; zero customize_v2 refs. (build_msi.py has NO BOM -- preserved.)
+- `df8f942` STEP 3 -- cold rebuild with hardened scripts: SE2 CLEAN (REBUILD DONE OK,
+  VBCSCompiler pre-killed, server.exe + WPF publish OK, 0 err/warn). Install verified:
+  customize.html SHA == source 33D09CDF; customize_legacy.html now PRESENT (was ABSENT)
+  = Item 2 proven; stale customize_v2.html persists as an install-dir orphan (MSI correctly
+  does not carry it) -> gated removal at STEP 5. version.json restored (no bump).
+STEP 4 gate PRESENTED + OPEN -- awaiting operator: PASS+delete / PASS+no-delete /
+PASS+delete+commit-reports / FAIL. STEP 5 (approved deletions: 71 zero-byte; src/InstallFiles
+HELD as it is under src/) + STEP 6 (closure: final SHA, V14_S7_30_7_REPORT.md cycle arc,
+memory APPEND CUSTOMIZE CYCLE COMPLETE) NOT yet done -- blocked on gate verdict.
+7.30.7 log = V14_S7_30_7_LOG.md (force-added). Strikes 0/3.
+
+### Thread 2: ALBUM-ART BUG (operator-reported mid-7.30.7) -- fix applied, deployed, AWAITING live verify, UNCOMMITTED
+Symptom: YouTube overlay album art stuck on the Chrome app-icon while the TRAY shows the
+real thumbnail. Operator: "fetches too fast." Root cause (server_dotnet, live pipeline;
+server.js is RETIRED legacy): WebhookHandler same-track path freezes trackArt -- the early
+transient SMTC thumbnail (Chrome icon) is stored at track-start (ArtResolved=true), and B11
+art-retry only fires when curArt is empty, so the later real SMTC thumbnail (which the tray
+re-extracts on MediaPropertiesChanged and the 50 ms heartbeat re-sends) is IGNORED. Overlay
+bestArt = trackArtHttps || trackArt; httpsArt was "" (YouTube search source unreliable for
+DJ mixes) so it fell back to the frozen icon data-URI. ArtCascade LRU (no TTL) compounds it.
+FIX (src/server_dotnet/WebhookHandler.cs, same-track branch, ~24 lines, Stage 7.30.7.1 tag):
+if incoming webhookArt is a valid data:image/ URI that differs from stored trackArt AND
+stored is data:/empty (never clobber a resolved HTTPS cover), adopt the fresher thumbnail +
+ct2Dirty -> existing BroadcastIfChanged pushes it. Compiles (0 warn/err); deployed via cold
+rebuild (artfix_cold_rebuild.log, SE2 clean); server.exe rebuilt 23:36, server+tray running.
+Backup: _BACKUPS_2026-05-30_23-35_ARTFIX_PRE/WebhookHandler.cs (pre-fix SHA DC6A54D9).
+STATUS: working-tree change UNCOMMITTED, awaiting operator live-verify (play YouTube ->
+overlay art should switch off the icon). If confirmed: commit + memory note. If not: pull
+live src/server.log and trace whether "Live SMTC thumbnail refresh" log line fires.
+NOTE: the 4 protected + 3 source HTML SHAs are UNCHANGED by both threads (WebhookHandler.cs
+is server_dotnet, not a protected file and not source HTML); version.json 14.0.0.
