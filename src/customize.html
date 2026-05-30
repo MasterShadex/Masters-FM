@@ -1506,14 +1506,14 @@
               min: 0.05, max: 1, step: 0.05, unit: '', transform: 'identity' },
 
             // ===== THEME (supercat: look) -- Stage 7.29 special-case via bindThemeControl =====
-            { id: 'c-theme', type: 'select', supercat: 'look', label: 'Theme',
+            { id: 'c-theme', help: 'Apply a ready-made color scheme. You can still tweak any setting afterward.', type: 'select', supercat: 'look', label: 'Theme',
               cssTarget: null, default: 'Rainbow (Default)',
               // Stage 7.29: options computed from THEMES const at render time.
               // Each theme key serves as both option value AND label.
               options: Object.keys(THEMES).map(k => ({ value: k, label: k })) },
 
             // ===== FONT (supercat: look) =====
-            { id: 'c-font', type: 'select', supercat: 'look', label: 'Font',
+            { id: 'c-font', help: 'Typeface for all overlay text.', type: 'select', supercat: 'look', label: 'Font',
               cssTarget: null, default: 'Inter',
               options: [
                   { value: 'Inter', label: 'Inter' },
@@ -1528,13 +1528,13 @@
             // ===== CARD (supercat: look; blur+opacity are advanced) =====
             { id: 'c-card-radius', help: 'How rounded the card corners are. 0 = sharp.', type: 'slider', supercat: 'look', label: 'Card corner radius',
               cssTarget: null, default: 56, min: 0, max: 120, step: 2, unit: 'px' },
-            { id: 'c-card-thick', type: 'slider', supercat: 'look', label: 'Card border thickness',
+            { id: 'c-card-thick', help: 'Thickness of the card outer border. 0 hides it.', type: 'slider', supercat: 'look', label: 'Card border thickness',
               cssTarget: null, default: 5, min: 0, max: 20, step: 1, unit: 'px' },
             { id: 'c-card-angle', help: 'Direction of the color blend across the card.', type: 'slider', supercat: 'look', label: 'Card background angle',
               cssTarget: null, default: 148, min: 0, max: 360, step: 5, unit: 'deg' },
-            { id: 'c-card-top', type: 'colorPair', supercat: 'look', label: 'Card background top',
+            { id: 'c-card-top', help: 'Top color of the card background gradient.', type: 'colorPair', supercat: 'look', label: 'Card background top',
               pickerId: 'c-card-top-p', cssTarget: null, default: 'rgba(18,6,36,0.99)' },
-            { id: 'c-card-bot', type: 'colorPair', supercat: 'look', label: 'Card background bottom',
+            { id: 'c-card-bot', help: 'Bottom color of the card background gradient.', type: 'colorPair', supercat: 'look', label: 'Card background bottom',
               pickerId: 'c-card-bot-p', cssTarget: null, default: 'rgba(12,4,24,0.99)' },
             { id: 'c-card-blur', help: 'Only works if Card opacity is below 100.', type: 'slider', supercat: 'look', advanced: true, label: 'Blur behind the card',
               cssTarget: null, default: 0, min: 0, max: 20, step: 1, unit: 'px' },
@@ -1543,7 +1543,7 @@
 
             // ===== ALBUM ART (supercat: look) =====
             { id: 'c-art-on', type: 'toggle', supercat: 'look', label: 'Album art enabled', cssTarget: null, default: true },
-            { id: 'c-art-position', type: 'select', supercat: 'look', label: 'Album art position',
+            { id: 'c-art-position', help: 'Where the album art sits on the card.', type: 'select', supercat: 'look', label: 'Album art position',
               cssTarget: null, default: 'left',
               options: [
                   { value: 'left', label: 'Left' },
@@ -1551,23 +1551,23 @@
                   { value: 'top', label: 'Top' },
                   { value: 'bottom', label: 'Bottom' }
               ] },
-            { id: 'c-art-w', type: 'slider', supercat: 'look', label: 'Album art width',
+            { id: 'c-art-w', help: 'Size of the album art in pixels.', type: 'slider', supercat: 'look', label: 'Album art width',
               cssTarget: null, default: 310, min: 80, max: 500, step: 10, unit: 'px' },
-            { id: 'c-art-fade', type: 'slider', supercat: 'look', label: 'Album art fade width',
+            { id: 'c-art-fade', help: 'Width of the soft fade at the art edge. 0 = hard edge.', type: 'slider', supercat: 'look', label: 'Album art fade width',
               cssTarget: null, default: 130, min: 0, max: 300, step: 10, unit: 'px' },
 
             // ===== NOW PLAYING (supercat: text) =====
             { id: 'c-np-text', help: 'The label text. Common: Now Playing, On Air, or anything you like.', type: 'text', supercat: 'text', label: '"Now Playing" text',
               cssTarget: null, default: 'Now Playing', placeholder: 'Now Playing' },
-            { id: 'c-np-size', type: 'slider', supercat: 'text', label: '"Now Playing" size',
+            { id: 'c-np-size', help: 'Font size of the Now Playing label.', type: 'slider', supercat: 'text', label: '"Now Playing" size',
               cssTarget: null, default: 44, min: 20, max: 80, step: 2, unit: 'px' },
             { id: 'c-np-color', type: 'colorPair', supercat: 'text', label: '"Now Playing" color',
               pickerId: 'c-np-color-p', cssVar: '--np-color', cssTarget: 'overlay', default: 'var(--accent-master)' },
-            { id: 'c-np-spacing', type: 'slider', supercat: 'text', label: '"Now Playing" letter spacing',
+            { id: 'c-np-spacing', help: 'Extra space between letters in the Now Playing label.', type: 'slider', supercat: 'text', label: '"Now Playing" letter spacing',
               cssTarget: null, default: 5, min: 0, max: 20, step: 1, unit: 'px' },
 
             // ===== TITLE (supercat: text; letter spacing + scroll pause are advanced) =====
-            { id: 'c-title-size', type: 'slider', supercat: 'text', label: 'Title size',
+            { id: 'c-title-size', help: 'Font size of the track title.', type: 'slider', supercat: 'text', label: 'Title size',
               cssTarget: null, default: 68, min: 30, max: 120, step: 2, unit: 'px' },
             { id: 'c-title-weight', help: 'Heavier = thicker letters.', type: 'select', supercat: 'text', label: 'Title weight',
               cssTarget: null, default: '800',
@@ -1589,7 +1589,7 @@
               cssTarget: null, default: 0, min: -5, max: 20, step: 1, unit: 'px' },
 
             // ===== ARTIST (supercat: text; letter spacing + scroll pause are advanced) =====
-            { id: 'c-artist-size', type: 'slider', supercat: 'text', label: 'Artist size',
+            { id: 'c-artist-size', help: 'Font size of the artist name.', type: 'slider', supercat: 'text', label: 'Artist size',
               cssTarget: null, default: 44, min: 20, max: 80, step: 2, unit: 'px' },
             { id: 'c-artist-weight', help: 'Heavier = thicker letters.', type: 'select', supercat: 'text', label: 'Artist weight',
               cssTarget: null, default: '500',
@@ -1610,32 +1610,32 @@
 
             // ===== PROGRESS BAR + TIMESTAMPS (supercat: text) =====
             { id: 'c-prog-on', type: 'toggle', supercat: 'text', label: 'Progress bar enabled', cssTarget: null, default: true },
-            { id: 'c-prog-h', type: 'slider', supercat: 'text', label: 'Progress bar height',
+            { id: 'c-prog-h', help: 'Thickness of the progress bar in pixels.', type: 'slider', supercat: 'text', label: 'Progress bar height',
               cssTarget: null, default: 9, min: 2, max: 30, step: 1, unit: 'px' },
-            { id: 'c-prog-radius', type: 'slider', supercat: 'text', label: 'Progress bar radius',
+            { id: 'c-prog-radius', help: 'How rounded the progress bar ends are. 0 = square.', type: 'slider', supercat: 'text', label: 'Progress bar radius',
               cssTarget: null, default: 6, min: 0, max: 15, step: 1, unit: 'px' },
-            { id: 'c-prog-track', type: 'colorPair', supercat: 'text', label: 'Progress track color',
+            { id: 'c-prog-track', help: 'Color of the unfilled part of the progress bar.', type: 'colorPair', supercat: 'text', label: 'Progress track color',
               pickerId: 'c-prog-track-p', cssTarget: null, default: 'rgba(160,70,255,0.10)' },
-            { id: 'c-prog-f0', type: 'colorPair', supercat: 'text', label: 'Progress fill color 1',
+            { id: 'c-prog-f0', help: 'First color of the progress fill gradient.', type: 'colorPair', supercat: 'text', label: 'Progress fill color 1',
               pickerId: 'c-prog-f0-p', cssTarget: null, default: '#8020c0' },
-            { id: 'c-prog-f1', type: 'colorPair', supercat: 'text', label: 'Progress fill color 2',
+            { id: 'c-prog-f1', help: 'Second color of the progress fill gradient.', type: 'colorPair', supercat: 'text', label: 'Progress fill color 2',
               pickerId: 'c-prog-f1-p', cssTarget: null, default: '#ff60c8' },
-            { id: 'c-prog-f2', type: 'colorPair', supercat: 'text', label: 'Progress fill color 3',
+            { id: 'c-prog-f2', help: 'Third color of the progress fill gradient.', type: 'colorPair', supercat: 'text', label: 'Progress fill color 3',
               pickerId: 'c-prog-f2-p', cssTarget: null, default: '#c040ff' },
-            { id: 'c-ts-size', type: 'slider', supercat: 'text', label: 'Timestamp size',
+            { id: 'c-ts-size', help: 'Font size of the time text.', type: 'slider', supercat: 'text', label: 'Timestamp size',
               cssTarget: null, default: 46, min: 20, max: 80, step: 2, unit: 'px' },
             { id: 'c-ts-color', type: 'colorPair', supercat: 'text', label: 'Timestamp color',
               pickerId: 'c-ts-color-p', cssTarget: null, default: 'var(--accent-master)' },
 
             // ===== OUTER GLOW (supercat: effects; first/second color are advanced) =====
             { id: 'c-glow-on', type: 'toggle', supercat: 'effects', label: 'Outer glow enabled', cssTarget: null, default: true },
-            { id: 'c-glow-c1', type: 'colorPair', supercat: 'effects', advanced: true, label: 'First color',
+            { id: 'c-glow-c1', help: 'First color of the outer glow.', type: 'colorPair', supercat: 'effects', advanced: true, label: 'First color',
               pickerId: 'c-glow-c1-p', cssTarget: null, default: '#e632b4' },
-            { id: 'c-glow-c2', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Second color',
+            { id: 'c-glow-c2', help: 'Second color of the outer glow.', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Second color',
               pickerId: 'c-glow-c2-p', cssTarget: null, default: '#961ee6' },
-            { id: 'c-glow-int', type: 'slider', supercat: 'effects', label: 'Glow intensity',
+            { id: 'c-glow-int', help: 'How strong the outer glow is.', type: 'slider', supercat: 'effects', label: 'Glow intensity',
               cssTarget: null, default: 1.0, min: 0, max: 3, step: 0.1, unit: 'x' },
-            { id: 'c-glow-pulse', type: 'slider', supercat: 'effects', label: 'Glow pulse duration',
+            { id: 'c-glow-pulse', help: 'How long one glow pulse takes. Higher = slower pulsing.', type: 'slider', supercat: 'effects', label: 'Glow pulse duration',
               cssTarget: null, default: 3, min: 0.5, max: 10, step: 0.5, unit: 's' },
 
             // ===== TEXT GLOW (supercat: effects; per-element overrides go to Advanced) =====
@@ -1669,33 +1669,33 @@
 
             // ===== DYNAMIC COLORS / AUTO-COLOR FROM ALBUM ART (supercat: effects;
             //       per-element overrides go to Advanced; master enabled stays here) =====
-            { id: 'c-dynamic-colors', type: 'toggle', supercat: 'effects', label: 'Auto-color from album art',
+            { id: 'c-dynamic-colors', help: 'Pull colors from the current album art. The Auto: toggles below pick which elements follow.', type: 'toggle', supercat: 'effects', label: 'Auto-color from album art',
               cssTarget: null, default: false },
-            { id: 'c-dyn-bg', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: card background', cssTarget: null, default: true },
-            { id: 'c-dyn-glow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: outer glow', cssTarget: null, default: true },
-            { id: 'c-dyn-title', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title text', cssTarget: null, default: true },
-            { id: 'c-dyn-titleglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title glow', cssTarget: null, default: true },
-            { id: 'c-dyn-artist', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist text', cssTarget: null, default: true },
-            { id: 'c-dyn-artistglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist glow', cssTarget: null, default: true },
-            { id: 'c-dyn-np', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: "Now Playing" text', cssTarget: null, default: true },
-            { id: 'c-dyn-platform', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform badge', cssTarget: null, default: true },
-            { id: 'c-dyn-npglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: NP glow', cssTarget: null, default: true },
-            { id: 'c-dyn-platformglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform glow', cssTarget: null, default: true },
-            { id: 'c-dyn-spectrum', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spectrum', cssTarget: null, default: true },
-            { id: 'c-dyn-timestamps', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps', cssTarget: null, default: true },
-            { id: 'c-dyn-tsglow', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps glow', cssTarget: null, default: true },
-            { id: 'c-dyn-progressbar', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: progress bar', cssTarget: null, default: true },
-            { id: 'c-dyn-border', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spinning border', cssTarget: null, default: true },
+            { id: 'c-dyn-bg', help: 'Tint the card background from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: card background', cssTarget: null, default: true },
+            { id: 'c-dyn-glow', help: 'Tint the outer glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: outer glow', cssTarget: null, default: true },
+            { id: 'c-dyn-title', help: 'Tint the title text from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title text', cssTarget: null, default: true },
+            { id: 'c-dyn-titleglow', help: 'Tint the title glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: title glow', cssTarget: null, default: true },
+            { id: 'c-dyn-artist', help: 'Tint the artist text from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist text', cssTarget: null, default: true },
+            { id: 'c-dyn-artistglow', help: 'Tint the artist glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: artist glow', cssTarget: null, default: true },
+            { id: 'c-dyn-np', help: 'Tint the Now Playing text from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: "Now Playing" text', cssTarget: null, default: true },
+            { id: 'c-dyn-platform', help: 'Tint the platform badge from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform badge', cssTarget: null, default: true },
+            { id: 'c-dyn-npglow', help: 'Tint the Now Playing glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: NP glow', cssTarget: null, default: true },
+            { id: 'c-dyn-platformglow', help: 'Tint the platform glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: platform glow', cssTarget: null, default: true },
+            { id: 'c-dyn-spectrum', help: 'Tint the spectrum from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spectrum', cssTarget: null, default: true },
+            { id: 'c-dyn-timestamps', help: 'Tint the time text from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps', cssTarget: null, default: true },
+            { id: 'c-dyn-tsglow', help: 'Tint the timestamps glow from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: timestamps glow', cssTarget: null, default: true },
+            { id: 'c-dyn-progressbar', help: 'Tint the progress bar from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: progress bar', cssTarget: null, default: true },
+            { id: 'c-dyn-border', help: 'Tint the spinning border from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spinning border', cssTarget: null, default: true },
 
             // ===== AUDIO BARS (supercat: audio) =====
             { id: 'c-bars-on', type: 'toggle', supercat: 'audio', label: 'Audio bars enabled', cssTarget: null, default: true },
             { id: 'c-bars-color', type: 'colorPair', supercat: 'audio', label: 'Audio bars color',
               pickerId: 'c-bars-color-p', cssTarget: null, default: 'var(--accent-master)' },
-            { id: 'c-bars-count', type: 'slider', supercat: 'audio', label: 'Audio bar count',
+            { id: 'c-bars-count', help: 'How many decorative bars to show.', type: 'slider', supercat: 'audio', label: 'Audio bar count',
               cssTarget: null, default: 4, min: 1, max: 12, step: 1, unit: '' },
-            { id: 'c-bars-speed', type: 'slider', supercat: 'audio', label: 'Audio bars speed',
+            { id: 'c-bars-speed', help: 'How fast the decorative bars animate.', type: 'slider', supercat: 'audio', label: 'Audio bars speed',
               cssTarget: null, default: 0.85, min: 0.2, max: 3, step: 0.05, unit: 'x' },
-            { id: 'c-keep-on-pause', type: 'toggle', supercat: 'audio', label: 'Keep visible when paused', cssTarget: null, default: false },
+            { id: 'c-keep-on-pause', help: 'Keep the bars showing even when playback is paused.', type: 'toggle', supercat: 'audio', label: 'Keep visible when paused', cssTarget: null, default: false },
 
             // ===== SPECTRUM (supercat: audio; reactivity sub-controls are advanced) =====
             { id: 'c-spec-on', type: 'toggle', supercat: 'audio', label: 'Spectrum enabled', cssTarget: null, default: true },
@@ -1739,11 +1739,11 @@
               cssTarget: null, default: 'SoundCloud', placeholder: 'SoundCloud' },
             { id: 'c-platform-color', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform color',
               pickerId: 'c-platform-color-p', cssTarget: null, default: 'var(--accent-master)' },
-            { id: 'c-platform-dot', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform dot color',
+            { id: 'c-platform-dot', help: 'Color of the small status dot on the platform badge.', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform dot color',
               pickerId: 'c-platform-dot-p', cssTarget: null, default: 'var(--accent-master)' },
-            { id: 'c-platform-size', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform size',
+            { id: 'c-platform-size', help: 'Font size of the platform badge.', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform size',
               cssTarget: null, default: 30, min: 14, max: 60, step: 1, unit: 'px' },
-            { id: 'c-platform-weight', type: 'select', supercat: 'layout', advanced: true, label: 'Platform weight',
+            { id: 'c-platform-weight', help: 'Heavier = thicker badge text.', type: 'select', supercat: 'layout', advanced: true, label: 'Platform weight',
               cssTarget: null, default: '600',
               options: [
                   { value: '400', label: '400 Regular' },
@@ -1751,19 +1751,19 @@
                   { value: '600', label: '600 SemiBold' },
                   { value: '700', label: '700 Bold' }
               ] },
-            { id: 'c-platform-spacing', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform letter spacing',
+            { id: 'c-platform-spacing', help: 'Extra space between letters in the platform badge.', type: 'slider', supercat: 'layout', advanced: true, label: 'Platform letter spacing',
               cssTarget: null, default: 2, min: 0, max: 10, step: 1, unit: 'px' },
 
             // ===== SPINNING BORDER (entire section is advanced) =====
             { id: 'c-border-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Spinning border enabled', cssTarget: null, default: true },
-            { id: 'c-border-spd', type: 'slider', supercat: 'layout', advanced: true, label: 'Border spin speed',
+            { id: 'c-border-spd', help: 'How fast the border ring spins.', type: 'slider', supercat: 'layout', advanced: true, label: 'Border spin speed',
               cssTarget: null, default: 4, min: 0.5, max: 20, step: 0.5, unit: 's' },
-            { id: 'c-border-colors', type: 'colorList', supercat: 'layout', advanced: true, label: 'Border colors',
+            { id: 'c-border-colors', help: 'Colors the spinning border cycles through.', type: 'colorList', supercat: 'layout', advanced: true, label: 'Border colors',
               cssTarget: null, default: ['#ff1085','#ff60c8','#d040ff','#8020e0','#4a0ab8'] },
 
             // ===== LAYOUT (entire section is advanced) =====
-            { id: 'c-layout-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout editor enabled', cssTarget: null, default: false },
-            { id: 'c-layout-grid', type: 'select', supercat: 'layout', advanced: true, label: 'Layout grid size',
+            { id: 'c-layout-on', help: 'Enables drag-to-move positioning of each overlay element.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout editor enabled', cssTarget: null, default: false },
+            { id: 'c-layout-grid', help: 'Snap-to-grid spacing for the layout editor.', type: 'select', supercat: 'layout', advanced: true, label: 'Layout grid size',
               cssTarget: null, default: '8',
               options: [
                   { value: '0', label: 'Off' },
@@ -1777,15 +1777,15 @@
             // the layout.nodes config). Stage 7.28 SETTINGS_CONFIG mirrors the
             // static-HTML reality; Stage 7.29 can later wire the dynamic layout
             // node generation if needed.
-            { id: 'c-layout-vis-spectrum', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum visible', cssTarget: null, default: true },
-            { id: 'c-layout-lock-spectrum', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-spectrum', help: 'Show or hide the spectrum in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-spectrum', help: 'Lock the spectrum so it cannot be dragged.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum locked', cssTarget: null, default: false },
 
             // ===== SLIDE-IN ANIMATION (entire section is advanced) =====
             { id: 'c-anim-dur', help: 'How long the slide-in animation lasts.', type: 'slider', supercat: 'layout', advanced: true, label: 'Slide-in duration',
               cssTarget: null, default: 0.5, min: 0.1, max: 2, step: 0.1, unit: 's' },
             { id: 'c-anim-slide', help: 'How far the card travels before landing.', type: 'slider', supercat: 'layout', advanced: true, label: 'Slide-in distance',
               cssTarget: null, default: 28, min: 0, max: 100, step: 2, unit: 'px' },
-            { id: 'c-anim-dir', type: 'select', supercat: 'layout', advanced: true, label: 'Slide-in direction',
+            { id: 'c-anim-dir', help: 'Which side the card slides in from.', type: 'select', supercat: 'layout', advanced: true, label: 'Slide-in direction',
               cssTarget: null, default: 'up',
               options: [
                   { value: 'up', label: 'Up' },
@@ -1801,7 +1801,7 @@
                   { value: 'ease-in-out', label: 'Ease in-out' },
                   { value: 'spring', label: 'Spring' }
               ] },
-            { id: 'c-anim-crossfade', type: 'toggle', supercat: 'layout', advanced: true, label: 'Crossfade on track skip',
+            { id: 'c-anim-crossfade', help: 'Title, artist and art fade to the new song without the card moving.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Crossfade on track skip',
               cssTarget: null, default: false }
         ];
 
