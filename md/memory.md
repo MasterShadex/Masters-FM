@@ -6491,3 +6491,68 @@ infra renders automatically for any entry with a help field.
 
 Full legacy preset parity (7.30.5) + tooltip system (7.30.6) + toggle removed.
 customize.html SHA now `88F380F6` (HEAD will be the 7.30.6 closure commit).
+
+## 2026-05-30 22:50 — Stage 7.30.6.1 closed (PASS, 0 strikes): blanket tooltip coverage (95/120)
+
+Stage 7.30.6.1 (tooltip coverage expansion) PASSED operator gate on a clean
+0-strike run. DATA-ONLY: additive `help` strings; the 7.30.6 tooltip engine renders
+them automatically. customize.html is the only source file touched.
+
+### What shipped
+
+Added 54 fresh concise help tooltips to the remaining warranted controls. Coverage
+now BLANKET: 95 of 120 controls have an info icon (41 from 7.30.6 + 54 fresh here).
+~25 trivially self-explanatory controls stay iconless (on/off enable toggles,
+obvious color pickers like Master Accent / Title color, sensitivity-reset button).
+
+- Inventory: 79 entries without help -> 54 WARRANTED (any unit/tradeoff/dependency/
+  non-obvious effect) + ~25 SELF-EXPLANATORY. Inclusive per operator "everything".
+- 54 help strings: look 8 / text 11 / effects 20 (incl 15 "Auto:" dyn-* toggles,
+  each noting "needs Auto-color on") / audio 3 / layout 12. Apostrophe-free,
+  em-dash-free, same voice as the 41.
+- Render path SKIP: 7.30.6 icon attaches to the label for ALL control types;
+  confirmed colorPair (c-card-top) + colorList (c-border-colors) now show icons.
+
+### Verification (preview MCP @ 8799)
+
+95 icons render; self-explanatory iconless confirmed; new tooltips correct text;
+all control types covered; no right-edge clip (within row); tap/one-at-a-time/Esc
+work; round-trip self-test ok; console 0/0. Counts 120/118/22 unchanged.
+
+### Closure SHA256
+
+- src/customize.html: `33D09CDFF76547D4...` (Stage 7.30.6.1 closure)
+- src/customize_legacy.html: `7E98377DC97F83B3...` UNCHANGED (LEGACY_SHA)
+- src/overlay.html: `9A7CC817515FFCC0...` UNCHANGED
+- protected (tray.ps1/tray_native.cs/launcher.cs/server.js): UNCHANGED
+- version.json: 14.0.0 (no bump; cold-rebuild msi_sha256 restored via git)
+
+### Constraints (SE1-SE8)
+
+SE1 yes / SE2 yes (cold rebuild 0 err/warn) / SE3 yes (5 commits) / SE4 yes
+(operator PASS) / SE5 0 cycles / SE6 n/a / SE7 yes (additive only) / SE8 protected
++ legacy + overlay UNCHANGED.
+
+### Implementation note
+
+Help is a per-entry `help` field on SETTINGS_CONFIG (now 95 entries carry it),
+NOT a separate map. To expand further: add `help` to more entries. renderControl
+reads `config.help` and the icon/tooltip render automatically.
+
+### Files touched this stage
+
+- src/customize.html (54 help fields; +~108 net; 5 commits dfa854b..closure)
+- V14_S7_30_6_1_LOG.md (NEW), V14_S7_30_6_1_REPORT.md (NEW)
+- evidence/s7_30_6_1/coverage.json
+- md/memory.md (THIS APPEND)
+
+### customize.html rebuild-cycle status
+
+Full legacy preset parity (7.30.5) + tooltip system (7.30.6) + blanket tooltip
+coverage (7.30.6.1) + toggle removed. customize.html SHA now `33D09CDF`.
+
+### Next stage handoff
+
+Only **Stage 7.30.7 install/build hygiene** remains in the customize cycle: legacy
+bundling decision, stale customize_v2.html cleanup, _full_rebuild.ps1 hardening,
+~194 untracked junk-file cleanup (still pending operator OK).
