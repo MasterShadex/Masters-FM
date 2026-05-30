@@ -6606,3 +6606,44 @@ overlay art should switch off the icon). If confirmed: commit + memory note. If 
 live src/server.log and trace whether "Live SMTC thumbnail refresh" log line fires.
 NOTE: the 4 protected + 3 source HTML SHAs are UNCHANGED by both threads (WebhookHandler.cs
 is server_dotnet, not a protected file and not source HTML); version.json 14.0.0.
+
+## 2026-05-31 -- Stage 7.30.7 CLOSED (PASS, 0 strikes) -- CUSTOMIZE CYCLE COMPLETE + album-art fix shipped
+
+Operator verdict on both parked threads: **"PASS, delete the zero-byte files"** + **"art bug is fixed."**
+
+### Stage 7.30.7 (install/build hygiene) -- CLOSED, customize cycle complete
+- Item 1: stale customize_v2.html is an install-dir orphan only; build does NOT carry it (proven).
+  The non-empty install orphan was NOT deleted (absolute rule + operator approved only zero-byte) --
+  removal flagged for a separate one-line approval. Build side done.
+- Item 2: build_msi.py bundles customize_legacy.html (GUID_COMP65); cold rebuild installed it
+  (ABSENT -> PRESENT 7E98377D). Revert net now survives clean installs. STANDING FACT.
+- Item 3: _full_rebuild.ps1 hardened -- VBCSCompiler pre-kill in preflight + WPF publish HARD ERROR
+  (exit 11) on both failure branches; success path byte-identical. STANDING FACT (future rebuilds
+  fail loudly on a broken WPF publish + are flake-resistant).
+- Item 4: deleted 71 zero-byte debris (approved); src/InstallFiles held (under src/); .gitignore
+  extended for .NET publish artifacts (*.deps.json/*.runtimeconfig.json/*.pdb/*.gcdump/web.config/
+  staticwebassets/obs_cleanup publish/ruvector.db/.swarm/). Untracked 462 -> 367. Stage reports
+  left untracked (operator chose plain delete).
+- Final: 4 protected + 3 source HTML SHA UNCHANGED end-to-end (customize.html 33D09CDF, legacy
+  7E98377D, overlay 9A7CC817). version.json 14.0.0 (no bump). Report: V14_S7_30_7_REPORT.md.
+- Commits since 8fc091e: d99d54e/8e8c72c/0d28ae5/df8f942/14a67cb/1f24d45/0972bd7 + closure.
+
+### Album-art live-refresh (Stage 7.30.7.1) -- SHIPPED, operator-verified
+- Bug: YouTube overlay art stuck on the Chrome app-icon while the tray showed the real thumbnail.
+- Root cause (server_dotnet/WebhookHandler.cs same-track path): the early transient SMTC thumbnail
+  (app icon) is stored as trackArt at track-start with ArtResolved=true; B11 art-retry only fires
+  when art is empty, so the later real SMTC thumbnail (tray re-extracts on MediaPropertiesChanged;
+  50 ms heartbeat re-sends it) was IGNORED. overlay bestArt = trackArtHttps||trackArt; httpsArt was
+  "" (YouTube-search source unreliable for DJ mixes) so it fell back to the frozen icon.
+- Fix: on same-track heartbeats, adopt a newer valid SMTC data-URI when it differs from stored art
+  AND stored is data:/empty (never clobber a resolved HTTPS cover); existing BroadcastIfChanged
+  pushes it. Commit 1f24d45. Operator confirmed live. server.js is RETIRED legacy -- the live
+  pipeline is server_dotnet (C#).
+- STANDING FACT: SMTC thumbnails are volatile during a track; the server now tracks the latest one
+  on the same track (matching the tray). The ArtCascade LRU (no TTL) still caches remote results --
+  fine, but a future "real web cover when SMTC has none" improvement remains optional backlog.
+
+### What remains (optional v14.1.0 polish)
+Install-orphan customize_v2.html removal (needs 1-line OK); 13 unmapped theme leaves; 8 dynamic
+layout vis/lock pairs; Mica/Acrylic review; version-string consolidation; server log rotation;
+album-art web-cover fallback; real friend feedback. v14.0.0 stable.
