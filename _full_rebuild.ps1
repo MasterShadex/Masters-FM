@@ -126,6 +126,13 @@ if (-not $FullRebuild -and (Test-IsHtmlOnlyChange)) {
 
 L "=== REBUILD START ==="
 
+# Stage 7.30.7: preflight -- kill any lingering VBCSCompiler (Roslyn build server).
+# It can hold file locks on obj/bin between builds and cause flaky/failed dotnet publishes.
+# Safe no-op when none are running. The HTML-only fast-path branch above never builds, so
+# placing this after REBUILD START keeps the fast path unaffected.
+Get-Process VBCSCompiler -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+L "  preflight: VBCSCompiler pre-killed (if any were running)"
+
 # Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
 L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
 $svOut = Join-Path $root 'dist\server_dotnet_release'
@@ -282,10 +289,13 @@ if ($trayCsExit -eq 0) {
         L "=== WPF tray built: $trayCsExe ($trayCsSize KB exe; $trayCsTotalKB KB total in dist) ==="
     } else {
         L "  WARN: WPF tray dotnet publish exit=0 but MastersFM_Tray_v14.exe not found at expected path"
+        L "  FAIL: WPF tray build produced no exe -- aborting (Stage 7.30.7 hard error)"
+        exit 11
     }
 } else {
     Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue
-    L "  WARN: WPF tray dotnet publish failed (exit $trayCsExit) -- continuing"
+    L "  FAIL: WPF tray dotnet publish failed (exit $trayCsExit) -- aborting (Stage 7.30.7 hard error)"
+    exit 11
 }
 
 # Stage 7.8C STEP 4: MastersFM_ObsCleanup.exe -- MSI-uninstall OBS cleanup helper.
