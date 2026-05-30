@@ -434,6 +434,30 @@ internal static class WebhookHandler
                     }
                 }
 
+                // Stage 7.30.7.1 (album-art live-refresh): the SMTC thumbnail (a data: URI in
+                // webhookArt) can change mid-track -- a browser source (YouTube via Chrome) first
+                // reports the app icon, then publishes the real media-session artwork a beat or
+                // two later. The tray re-extracts it and the heartbeat re-sends it, but the early
+                // placeholder was already stored as trackArt and B11 will not re-fire
+                // (ArtResolved=true, curArt non-empty), so the overlay froze on the icon while the
+                // tray showed the real art. If the incoming SMTC data: URI differs from the stored
+                // art AND the stored art is itself a data: URI or empty (never clobber a resolved
+                // HTTPS cover from the cascade), adopt the fresher thumbnail and broadcast.
+                if (IsValidArt(webhookArt)
+                    && webhookArt.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var storedArt = (string?)ct2["trackArt"] ?? string.Empty;
+                    bool storedIsDataOrEmpty = storedArt.Length == 0
+                        || storedArt.StartsWith("data:", StringComparison.OrdinalIgnoreCase);
+                    if (storedIsDataOrEmpty
+                        && !string.Equals(storedArt, webhookArt, StringComparison.Ordinal))
+                    {
+                        ct2["trackArt"] = JsonValue.Create(webhookArt);
+                        ct2Dirty = true;
+                        logger.LogInformation("Live SMTC thumbnail refresh -- trackArt updated from newer SMTC data URI");
+                    }
+                }
+
                 // Write back only when ct2 was actually mutated --
                 // skips DeepClone + ToJsonString on every same-track heartbeat where nothing changed
                 if (ct2Dirty) state.CurrentTrack = ct2;
