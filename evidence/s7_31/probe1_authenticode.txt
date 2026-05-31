@@ -1,0 +1,42 @@
+Stage 7.31 -- PROBE 1 (operator-approved "just Probe 1 first")
+Authenticode chain-trust check, replicating UpdateCheckService.VerifyAuthenticode exactly.
+Date: 2026-05-31. READ-ONLY. No GitHub. No protected edits. version.json stayed 14.0.0.
+
+ARTIFACT TESTED: Master's FM Install\MastersFM_Setup.msi
+  (12,029,952 bytes, built 5/30 23:36 -- the current v14.0.0 release candidate, freshly signed)
+  Cross-check artifact: Masters-FM-V12.0.1.msi (a past real release) -- identical behavior.
+
+SIGNATURE FACTS:
+  Windows Get-AuthenticodeSignature.Status = Valid
+  Signer subject = CN=MasterShadex, O=MasterShadex
+  Issuer = CN=MasterShadex, O=MasterShadex  ->  SELF-SIGNED (Issuer == Subject)
+
+CHAIN.BUILD (RevocationMode=NoCheck, exactly as the updater does):
+  [machine-trust]      chain.Build = True   ChainStatus = (clean)
+       ^ ONLY because CN=MasterShadex is installed in this machine's Trusted Root:
+         CurrentUser\Root  : PRESENT (1)
+         LocalMachine\Root : PRESENT (1)
+         CurrentUser\My    : PRESENT (1)
+  [friend-sim no-root] chain.Build = False  ChainStatus = UntrustedRoot
+       ^ net8.0 X509ChainTrustMode.CustomRootTrust with an EMPTY custom trust store
+         (ignores the machine root store) = a friend's clean machine.
+  => friend VerifyAuthenticode verdict = False  (chain.Build False; CN match irrelevant once Build fails)
+
+VERDICT: HARDEN-FIRST.
+  A friend's tray REJECTS every legitimately-signed MSI: VerifyAuthenticode requires chain.Build
+  to succeed; a self-signed cert only builds when present in the verifier's Trusted Root; friends
+  do not have CN=MasterShadex in Root (the bootstrapper that installed it is DISABLED; the MSI has
+  no Root-cert-install custom action). On reject, the updater deletes the .partial and reverts --
+  so it does NOT brick, but the update silently never installs for friends.
+  The operator's box is a FALSE POSITIVE (cert manually/historically trusted there).
+
+  Therefore: pushing a release would NOT brick friends, but it would also NOT update them via the
+  auto-updater. Trusting/using the auto-update path requires a fix first (Stage 7.31.1), e.g.:
+    (a) pin the expected publisher cert (thumbprint or bundled .cer as CustomRootTrust root) instead
+        of requiring machine-root chain.Build -- cleanest; no admin, no system trust-store change; OR
+    (b) install MastersFM_publisher.cer into the friend's Trusted Root at first install (re-enable the
+        disabled bootstrapper's cert step; needs admin for LocalMachine\Root); OR
+    (c) obtain a real CA-issued code-signing cert (Certum pending) -- proper fix, also helps SmartScreen.
+
+NOTE: this probe did NOT run msiexec, did NOT touch GitHub, did NOT bump version, did NOT edit any
+protected/source file. The throwaway net8.0 probe lived in %TEMP%\s731_authprobe and was torn down.
