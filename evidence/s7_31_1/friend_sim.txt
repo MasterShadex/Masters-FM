@@ -1,0 +1,27 @@
+Stage 7.31.1 -- STEP 3 two-sided friend-sim (cert-pinning fix verification)
+Date: 2026-05-31. Throwaway net8.0 harness in %TEMP%\s731_1_friendsim (replicates OLD chain.Build
+empty-root logic AND the NEW pinned logic). Negative-test cert throwaway+local+cleaned up.
+Tested against the freshly-rebuilt signed MSI (Master's FM Install\MastersFM_Setup.msi).
+
+MATRIX (NEW pinned = the shipped 7.31.1 VerifyAuthenticode; OLD = the pre-fix 7.31 logic):
+
+  CASE                 OLD chain.Build(friend-sim)     NEW pinned verify        VERDICT
+  our signed MSI       False (UntrustedRoot)           TRUE (thumbprint+pubkey+CN)   ACCEPT  <-- THE FIX
+  wrong-cert (throwaway 41941372752FC654C54E8C37A8E12E76480D9481, signtool-signed copy)
+                       False (UntrustedRoot)           False (thumbprint mismatch)   REJECT
+  unsigned (dummy)     False (exception)               False (exception/no signature) REJECT
+  tampered/SHA-mismatch (byte flipped)  -- caught by the UNCHANGED SHA256 gate in DownloadAsync:
+                       expected 9ca38c15bac65500... != actual d283746410158d54...  -> REJECT (delete+revert)
+
+PROOF: the cert-pin makes the auto-updater ACCEPT our legitimately-signed MSI on a clean/empty-root
+machine (NEW=True) where the OLD chain.Build logic REJECTED it (False/UntrustedRoot -- the 7.31
+HARDEN-FIRST bug). At the same time it stays STRICT: a different cert (wrong-cert), an unsigned file,
+and a tampered/SHA-mismatched file are ALL rejected. NOT loosened to "any valid signature".
+
+WHY ACCEPT works without machine-root trust: the pin compares the signer's thumbprint + RSA public
+key to the hardcoded MasterShadex values; it never calls chain.Build and never consults the machine
+Trusted Root store -> works identically on every friend's machine.
+
+CLEANUP: throwaway cert removed from CurrentUser\My (0 remaining); MasterShadex signing cert intact
+(1); temp work + harness dirs removed. No GitHub interaction; version.json stayed 14.0.0; only
+UpdateCheckService.cs changed.
