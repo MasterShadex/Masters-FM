@@ -19,6 +19,16 @@ public sealed class UpdateCheckService : IUpdateCheckService
 {
     private const string ManifestUrl = "https://raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json";
     private const string ExpectedCertCn = "MasterShadex";
+    // Stage 7.31.1: cert PIN. The auto-updater pins to OUR exact self-signed publisher cert
+    // (thumbprint + RSA public key) instead of requiring the verifier machine to trust it as a
+    // root. Fixes 7.31 HARDEN-FIRST: chain.Build returned UntrustedRoot on any machine without the
+    // cert in Trusted Root (i.e. every friend), so legit MSIs were rejected and auto-update never
+    // reached anyone but the operator. Pinning is machine-trust-independent yet strict -- a
+    // different / forged / unsigned signer is still rejected. MAINTENANCE: if the signing cert is
+    // ever regenerated (expiry 2031-04-21, or deleted so _sign_msi.ps1 mints a new one), update
+    // BOTH constants below or auto-update will reject the newly-signed MSIs.
+    private const string PinnedThumbprint   = "4B1660FC0B77F55C7D47B3B9010C873E5CC2B2BF";
+    private const string PinnedPublicKeyHex = "3082010A0282010100B3FD3ABD461E3EF30E94471C628120BB5D30B12A7B95083A9FC345F7C916F54E3CCA509ABE95BFE940CC65213426994883B1462C847BEF4144EE9CCDC85B952728DE71D401F9ED6BBB258174B70BCEDAB0D2549BAB54D1B472E11D655B7E30DF9A3519E89ACDDCF850DF8B31589514BE01D8101CA280034A90D6765770FD0591BF3C1F497AE949629254212E2B66B0739502F885753C3B9213207CF46B214A392F8EC0CF84EA34FF9036C850A40DD7512CC41412BC0E2E76AFA5617D26D0AE5B1439DE98F566434CDA3B6B2265403256498BA3BC8B6F4DA6F468E9C8849035127F3DD223FF3155F00128DACE654653BA1D8B7EF00ABE723D2ED3B27F0F368B010203010001";
     private const string LastCheckedConfigKey = "update.lastChecked";
     private const string Component = "Update";
     private static readonly TimeSpan StartupCheckCadence = TimeSpan.FromHours(6);
@@ -377,10 +387,10 @@ public sealed class UpdateCheckService : IUpdateCheckService
     }
 
     /// <summary>
-    /// Verifies Authenticode signature on the MSI. Stricter than PS S12:
-    /// chain validation REQUIRED (PS accepted UnknownError = self-signed
-    /// with broken chain); CN exact match (PS accepted any subject
-    /// containing 'MasterShadex').
+    /// Verifies the MSI is signed by OUR exact publisher cert. Stage 7.31.1: PINNED to the
+    /// MasterShadex cert by thumbprint + public key (no machine-root chain.Build dependency, so
+    /// it verifies on friends' machines too); CN guard kept. A different / forged / unsigned
+    /// signer is rejected. File integrity is anchored separately by the SHA256 gate in DownloadAsync.
     /// </summary>
     private bool VerifyAuthenticode(string msiPath, out string error)
     {
@@ -390,19 +400,23 @@ public sealed class UpdateCheckService : IUpdateCheckService
 #pragma warning disable SYSLIB0057  // X509Certificate.CreateFromSignedFile is appropriate for our use
             using var cert = new X509Certificate2(X509Certificate.CreateFromSignedFile(msiPath));
 #pragma warning restore SYSLIB0057
-            using var chain = new X509Chain
+            // Stage 7.31.1: PIN to our exact publisher cert instead of requiring machine-root trust.
+            // CreateFromSignedFile above already threw if the file is unsigned. Require the signer to
+            // be EXACTLY our MasterShadex cert by thumbprint AND public key -- machine-trust
+            // independent (no chain.Build / Trusted-Root dependency, so it works on every friend's
+            // machine) yet strict (a different / forged signer is rejected). File integrity stays
+            // anchored by the SHA256 gate in DownloadAsync, which runs before this.
+            if (!string.Equals(cert.Thumbprint, PinnedThumbprint, StringComparison.OrdinalIgnoreCase))
             {
-                ChainPolicy = { RevocationMode = X509RevocationMode.NoCheck }
-            };
-            // We accept self-signed certs (project ships with CN=MasterShadex self-signed),
-            // but the chain MUST build to that root.
-            if (!chain.Build(cert))
-            {
-                var statuses = string.Join(", ", chain.ChainStatus.Select(s => s.Status.ToString()));
-                error = $"chain build failed: {statuses}";
+                error = $"signer thumbprint '{cert.Thumbprint}' != pinned '{PinnedThumbprint}'";
                 return false;
             }
-            // CN exact match
+            if (!string.Equals(cert.GetPublicKeyString(), PinnedPublicKeyHex, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "signer public key does not match the pinned MasterShadex key";
+                return false;
+            }
+            // CN exact match (defense-in-depth alongside the pin)
             var subject = cert.Subject;
             if (!subject.Contains($"CN={ExpectedCertCn}", StringComparison.Ordinal))
             {
