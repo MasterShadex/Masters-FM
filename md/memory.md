@@ -6684,3 +6684,33 @@ revert). Auto-update has likely never worked end-to-end for anyone but the opera
   Authenticode gate is the blocker for friend-side auto-update until 7.31.1 lands.
 NOT done (descoped after Probe 1): Probes 2 (manifest decision logic) + 3 (download/SHA fail-safe) --
 fold into 7.31.1 verification.
+
+## 2026-05-31 -- Stage 7.31.1 CLOSED (PASS, 0 strikes) -- cert-pinning fix: AUTO-UPDATE NOW WORKS FOR FRIENDS
+
+Fixes 7.31 HARDEN-FIRST. ONLY src/tray_csharp/Update/UpdateCheckService.cs changed. NO GitHub, NO
+version bump (14.0.0). Report V14_S7_31_1_REPORT.md; evidence evidence/s7_31_1/friend_sim.txt.
+Commits ba3875a/08fc516/f5b056e (+ closure).
+
+### The fix (STANDING FACT)
+VerifyAuthenticode now PINS to our exact MasterShadex publisher cert by THUMBPRINT
+(4B1660FC0B77F55C7D47B3B9010C873E5CC2B2BF) + RSA PUBLIC KEY (540-hex SPKI) instead of requiring
+chain.Build against the machine Trusted Root. Machine-trust-independent -> verifies on every friend's
+machine. CN guard kept. SHA256 gate + failure-delete-revert + downgrade/pre-release ALL UNCHANGED.
+NOT loosened: wrong-cert/unsigned rejected by the pin; tampered/SHA-mismatch rejected by the
+(unchanged) SHA256 gate.
+- Two-sided friend-sim (empty-root .NET 8) PROVED: our signed MSI OLD chain.Build=False (the bug) ->
+  NEW pinned=TRUE (ACCEPT); wrong-cert/unsigned/tampered all REJECT. Throwaway negative cert cleaned up.
+- UpdateCheckService.cs new SHA E4B653DE...; 4 protected + 3 source HTML UNCHANGED (33D09CDF/7E98377D/
+  9A7CC817); cold rebuild SE2 clean; pinned tray runs healthy.
+
+### MAINTENANCE (critical, durable)
+The pin is tied to the CURRENT signing cert (valid to 2031-04-21). If the cert is ever regenerated
+(expiry, or deleted from CurrentUser\My so _sign_msi.ps1 mints a new one), BOTH PinnedThumbprint and
+PinnedPublicKeyHex in UpdateCheckService.cs MUST be updated or auto-update will reject the new MSIs.
+
+### Release = operator-only (NEVER Ruflo)
+Build (_full_rebuild.ps1) -> create GitHub Release tag v<ver> + upload MSI -> _push_update.ps1
+(commits version.json + git push origin main). Ruflo never pushes to the real GitHub.
+OPTIONAL before trusting a real release: a live SECOND-machine auto-update test (fresh VM / friend PC
+without the cert in any store) -- the empty-root friend-sim is a faithful proxy and passed, but a real
+second machine is gold-standard. v14.0.0 stable; local main ahead 344 of origin (operator pushes when ready).
