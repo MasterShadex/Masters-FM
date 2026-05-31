@@ -6647,3 +6647,40 @@ Operator verdict on both parked threads: **"PASS, delete the zero-byte files"** 
 Install-orphan customize_v2.html removal (needs 1-line OK); 13 unmapped theme leaves; 8 dynamic
 layout vis/lock pairs; Mica/Acrylic review; version-string consolidation; server log rotation;
 album-art web-cover fallback; real friend feedback. v14.0.0 stable.
+
+## 2026-05-31 -- Stage 7.31 CLOSED (operator "Close 7.31") -- UPDATE MECHANISM documented + VERDICT: HARDEN-FIRST
+
+READ-ONLY audit + Probe 1. No source/protected/HTML change, no version bump (14.0.0), NO GitHub push
+(origin untouched; local ahead 340). Report: V14_S7_31_REPORT.md. Evidence: evidence/s7_31/probe1_authenticode.txt.
+
+### THE UPDATE MECHANISM (durable -- operator did not previously know this)
+Custom auto-updater; engine = WPF tray `src/tray_csharp/Update/UpdateCheckService.cs` (7-state machine).
+server.js RETIRED; launcher.cs = process host; server_dotnet /update,/update-status,/version = UI only.
+- PUBLISH: bump version.json -> `_full_rebuild.ps1` (signs MSI self-signed CN=MasterShadex via
+  build_tools/signing/_sign_msi.ps1 + stamps version.json {version, msi_url=GH releases, msi_sha256, autoInstall=false})
+  -> operator MANUALLY makes a GitHub Release tag v<ver> + uploads MSI -> `_push_update.ps1` (flips
+  autoInstall=true unless -NoAutoInstall, commits version.json, **git push origin main**). _push_update.ps1
+  is the ONLY `git push` -- the single action that triggers everyone. NEVER auto-run it.
+- CLIENT (friend tray, 6h cadence + on-demand): GET raw.githubusercontent.com/.../main/version.json ->
+  SemVer newer-stable-only (downgrade + pre-release refused) -> download msi_url to
+  %LOCALAPPDATA%\MastersFM\downloads\*.partial -> 3-gate verify [SHA256==manifest, Authenticode
+  chain.Build+CN=MasterShadex, atomic rename] -> msiexec /i /quiet /norestart + tray shutdown. Any
+  failure deletes partial + reverts (never bricks). version.json on `main` = the update manifest;
+  local version.json = build metadata (NOT the updater's local-version source = assembly attr).
+
+### VERDICT: HARDEN-FIRST (do NOT trust auto-update for friends yet)
+Probe 1 (replicated VerifyAuthenticode vs the real signed MSI): signer is SELF-SIGNED CN=MasterShadex.
+chain.Build = True on THIS box ONLY because the cert is in its Trusted Root (false positive);
+friend-sim (net8.0 CustomRootTrust empty store) = False/UntrustedRoot. => a friend's tray REJECTS
+every legit MSI -> auto-update SILENTLY never installs for friends (it does NOT brick -- reject/delete/
+revert). Auto-update has likely never worked end-to-end for anyone but the operator.
+- TO SHIP v14 NOW: pushing is safe-but-useless for friends; send them the MSI to reinstall manually,
+  OR do 7.31.1 first.
+- 7.31.1 fix (recommended): pin the publisher cert in UpdateCheckService.VerifyAuthenticode (validate
+  signer by thumbprint / bundled-.cer CustomRootTrust root) instead of machine-root chain.Build.
+  UpdateCheckService.cs is editable WPF-tray code (NOT protected). Alts: install cert to friend Root
+  at first install (re-enable disabled bootstrapper step, needs admin); or real CA cert (Certum pending).
+- STANDING FACT: the released MSI is self-signed CN=MasterShadex; the updater's strict chain.Build
+  Authenticode gate is the blocker for friend-side auto-update until 7.31.1 lands.
+NOT done (descoped after Probe 1): Probes 2 (manifest decision logic) + 3 (download/SHA fail-safe) --
+fold into 7.31.1 verification.
