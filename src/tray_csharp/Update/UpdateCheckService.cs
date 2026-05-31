@@ -17,7 +17,14 @@ namespace MastersFM.Tray.Update;
 
 public sealed class UpdateCheckService : IUpdateCheckService
 {
-    private const string ManifestUrl = "https://raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json";
+    // Stage 7.31.2: the manifest base repo is resolved via a DEFAULT-SAFE opt-in override
+    // (see ResolveBaseRepo). With NO override present, this is byte-identical to production
+    // (raw.githubusercontent.com/MasterShadex/Masters-FM/main/version.json). The production
+    // default string is unchanged; the override only exists for end-to-end testing against a
+    // throwaway repo and its VALUES live outside the build so they can never ship.
+    private const string DefaultBaseRepo = "MasterShadex/Masters-FM";
+    private static string ManifestUrl =>
+        $"https://raw.githubusercontent.com/{ResolveBaseRepo()}/main/version.json";
     private const string ExpectedCertCn = "MasterShadex";
     // Stage 7.31.1: cert PIN. The auto-updater pins to OUR exact self-signed publisher cert
     // (thumbprint + RSA public key) instead of requiring the verifier machine to trust it as a
@@ -430,6 +437,42 @@ public sealed class UpdateCheckService : IUpdateCheckService
             error = $"exception: {ex.Message}";
             return false;
         }
+    }
+
+    // Stage 7.31.2: DEFAULT-SAFE opt-in base-repo override for end-to-end update testing.
+    // Resolution order: env var MASTERSFM_UPDATE_BASE_REPO, then %LOCALAPPDATA%\MastersFM\
+    // updater_override.json {"baseRepo":"owner/repo"}, else DefaultBaseRepo (production). Absent any
+    // override -> production (identical to before). Override VALUES live on the dev machine only and
+    // are never shipped. The cert PIN + SHA256 gate still apply regardless of base repo, so a
+    // redirect cannot install a non-MasterShadex MSI. Validated owner/repo only (else default).
+    private static bool IsValidBaseRepo(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var parts = s.Split('/');
+        if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0) return false;
+        foreach (var ch in s)
+            if (!(char.IsLetterOrDigit(ch) || ch == '.' || ch == '_' || ch == '-' || ch == '/'))
+                return false;
+        return true;
+    }
+
+    private static string ResolveBaseRepo()
+    {
+        try
+        {
+            var env = Environment.GetEnvironmentVariable("MASTERSFM_UPDATE_BASE_REPO");
+            if (env != null && IsValidBaseRepo(env.Trim())) return env.Trim();
+            var ovr = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MastersFM", "updater_override.json");
+            if (File.Exists(ovr))
+            {
+                var repo = JsonNode.Parse(File.ReadAllText(ovr))?["baseRepo"]?.GetValue<string>();
+                if (repo != null && IsValidBaseRepo(repo.Trim())) return repo.Trim();
+            }
+        }
+        catch { /* any error -> fall through to the safe production default */ }
+        return DefaultBaseRepo;
     }
 
     private static string GetLocalVersion()
