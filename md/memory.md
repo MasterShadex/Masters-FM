@@ -6714,3 +6714,24 @@ Build (_full_rebuild.ps1) -> create GitHub Release tag v<ver> + upload MSI -> _p
 OPTIONAL before trusting a real release: a live SECOND-machine auto-update test (fresh VM / friend PC
 without the cert in any store) -- the empty-root friend-sim is a faithful proxy and passed, but a real
 second machine is gold-standard. v14.0.0 stable; local main ahead 344 of origin (operator pushes when ready).
+
+## 2026-05-31 -- INTERIM CHECKPOINT: Stage 7.31.2 at STEP 3 HALT (awaiting operator test-fm publish)
+
+End-to-end auto-update test vs throwaway PUBLIC repo MasterShadex/test-fm (real HTTPS, no auth).
+NOT a closure -- mid-stage. Commits ab843c8/9ab5c65/f497dd1/a88c91b. Real Masters-FM remote UNTOUCHED
+(ahead 349). version.json 14.0.0 (no bump). Only UpdateCheckService.cs changed.
+- STEP 0-2 done: DEFAULT-SAFE opt-in base-repo override added to UpdateCheckService.cs (ResolveBaseRepo:
+  env MASTERSFM_UPDATE_BASE_REPO -> %LOCALAPPDATA%\MastersFM\updater_override.json baseRepo ->
+  DefaultBaseRepo "MasterShadex/Masters-FM"). ManifestUrl now computed from it. Absent override =
+  identical to production (confirmed: override file absent + env unset). Pin/SHA/downgrade untouched;
+  tray compiles 0/0; cold rebuild SE2 clean; tray (PID 13852) running. test-fm confirmed PUBLIC
+  (api200/raw404, no auth wall).
+- STEP 3 done (prep): staged `_test_fm_publish\Masters-FM-V14.0.1.msi` (copy of signed MSI, signer
+  thumbprint 4B1660FC = pin, sha 4240fc47...) + `_test_fm_publish\version.json` {14.0.1, msi_url=test-fm
+  asset, autoInstall:false}. HALT -- operator publishes to test-fm (Release v14.0.1 + push version.json
+  to main) then replies "published". Ruflo NEVER pushes (even to test-fm).
+- REMAINING: STEP 4 triggers (override->test-fm; on-boot/cadence headless via aging
+  %APPDATA%\MastersFM\config.json update.lastChecked + restart MastersFM.exe; manual = operator menu
+  click; negatives reject; stop at Ready) + STEP 5 GATED REVERT of override (resolves real repo,
+  14.0.0, real remote untouched) + STEP 6 gate + STEP 7 closure. Trigger fires at app STARTUP if
+  >6h since update.lastChecked (App.xaml.cs:245-256 CheckNowAsync); no separate periodic timer.
