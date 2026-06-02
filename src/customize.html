@@ -1895,7 +1895,13 @@
            fire normally.
            ========================================================================== */
         const State = {
-            config: {},        // nested DEFAULTS-shape; loadConfig populates, bindings mutate
+            config: {},        // FLAT (c-* id keyed); loadConfig populates via nestedToFlat, bindings mutate
+            // Stage 7.32: last full NESTED config (from the server load OR an import). Holds the keys
+            // the flat control model does NOT represent -- above all layout.canvas + layout.nodes
+            // geometry, plus lastPresetName / liveAudioVisualizer / etc. export, save, and preview
+            // deep-merge flatToNested(config) ON TOP of this, so the COMPLETE config is carried and
+            // layout round-trips losslessly (the bug from the broken MastersFM_Layout import).
+            nested: {},
             isDirty: false     // true if any control changed since last Apply to OBS
         };
 
@@ -1936,6 +1942,10 @@
                 // Stage 7.30.1 transforms: server returns NESTED; SETTINGS_CONFIG
                 // bind handlers read State.config[c-*-id] (FLAT). nestedToFlat
                 // walks FLAT_TO_NESTED_MAP and pulls each path out.
+                // Stage 7.32: also retain the FULL nested config (clone) so keys
+                // the flat model doesn't expose (layout geometry, lastPresetName,
+                // ...) survive and re-save/export/preview carry them.
+                State.nested = deepMerge({}, nested || {});
                 State.config = nestedToFlat(nested || {});
                 return State.config;
             } catch (e) {
@@ -1953,7 +1963,11 @@
                 // Stage 7.30.1: overlay.html expects NESTED config. saveConfig
                 // POSTs the flatToNested(State.config) shape so the persisted
                 // disk JSON matches the overlay's applyConfig contract.
-                const nested = flatToNested(State.config);
+                // Stage 7.32: deep-merge the live control values ON TOP of the
+                // full nested passthrough (State.nested) so the persisted config
+                // keeps layout.canvas/nodes geometry + any other keys the flat
+                // model doesn't represent (was: flat-only -> layout truncated).
+                const nested = deepMerge(State.nested, flatToNested(State.config));
                 const r = await fetch('/save-overlay-config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1997,7 +2011,9 @@
                 // verbatim to overlay.html; if it stays flat, overlay can't
                 // dereference cfg.card.backgroundTop etc. and silently falls
                 // back to its own DEFAULTS (the Stage 7.30 SE5 strike 2/3 bug).
-                const nested = flatToNested(State.config);
+                // Stage 7.32: merge over State.nested (same as saveConfig) so the
+                // preview also reflects layout geometry + unmapped keys.
+                const nested = deepMerge(State.nested, flatToNested(State.config));
                 await fetch('/preview-config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2876,6 +2892,29 @@
             //   c-spec-sensitivity-reset   -- button; dispatches event on c-spec-sensitivity slider; no own state
         };
 
+        // Stage 7.32: deep-merge `over` onto a deep CLONE of `base`, returning a
+        // NEW object (neither input is mutated). Plain objects recurse; arrays +
+        // primitives from `over` REPLACE wholesale (so border.colors /
+        // progressBar.fillColors arrays from flatToNested overwrite, never merge
+        // element-wise). Used to layer current control values (flatToNested) on
+        // top of the full nested passthrough (State.nested) for export / save /
+        // preview, and to fold an imported config into State.nested -- the key to
+        // lossless layout round-trip. Config is JSON-safe so structuredClone via
+        // JSON is sufficient.
+        function deepMerge(base, over) {
+            const isPlain = v => v && typeof v === 'object' && !Array.isArray(v);
+            const clone = v => (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+            if (!isPlain(base)) return isPlain(over) ? deepMerge({}, over) : clone(over !== undefined ? over : base);
+            const out = {};
+            for (const k of Object.keys(base)) out[k] = clone(base[k]);
+            if (isPlain(over)) {
+                for (const k of Object.keys(over)) {
+                    out[k] = (isPlain(base[k]) && isPlain(over[k])) ? deepMerge(base[k], over[k]) : clone(over[k]);
+                }
+            }
+            return out;
+        }
+
         // Walk a FLAT_TO_NESTED_MAP entry to produce nested config. Each path
         // is an array; the LEAF (last segment) gets assigned the value. Number
         // segments (e.g. ['progressBar','fillColors',0]) create / index into
@@ -3509,7 +3548,13 @@
         function exportPreset() {
             try {
                 const presetName = 'overlay-config';
-                const nested = flatToNested(State.config);
+                // Stage 7.32: export the FULL config -- current control values
+                // (flatToNested) deep-merged ON TOP of the nested passthrough
+                // (State.nested) -> layout.canvas/nodes geometry + every unmapped
+                // key are included. Matches V1's envelope (full config), so a
+                // new-panel export round-trips losslessly AND stays interchangeable
+                // with a friend's V1/v12 export.
+                const nested = deepMerge(State.nested, flatToNested(State.config));
                 const envelope = {
                     format:       'mastersfm.preset',
                     version:      1,
@@ -3588,6 +3633,14 @@
                 // Valid -- apply directly (mirrors loadPreset). MERGE so keys the
                 // import omits keep their current values.
                 try {
+                    // Stage 7.32: fold the FULL imported nested config into the
+                    // passthrough FIRST -> captures layout.canvas/nodes geometry +
+                    // any key the flat model doesn't expose (the lossless-layout
+                    // fix; this is what a friend's V1/v12 export carries). THEN
+                    // update the flat controls the panel renders. saveConfig /
+                    // previewConfig now emit deepMerge(State.nested, flat) so the
+                    // overlay receives the imported layout, not just the flats.
+                    State.nested = deepMerge(State.nested, candidate);
                     State.config = Object.assign({}, State.config, nestedToFlat(candidate));
                     State.isDirty = true;
                     refreshControlValues();
