@@ -442,67 +442,7 @@
         }
         .preset-status[hidden] { display: none; }
 
-        /* ==========================================================================
-           5. WELCOME BANNER (Stage 7.21 carry; functional this stage)
-           ========================================================================== */
-        .welcome-banner {
-            display: flex;
-            align-items: flex-start;
-            gap: var(--s-3);
-            background: var(--c-surface-elevated);
-            border: 1px solid var(--c-accent);
-            border-radius: var(--r-lg);
-            padding: var(--s-4);
-            margin-bottom: var(--s-3);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
-        }
-
-        .welcome-banner[hidden] { display: none; }
-
-        .welcome-icon {
-            font-size: 24px;
-            line-height: 1;
-            flex-shrink: 0;
-        }
-
-        .welcome-body {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .welcome-body h3 {
-            margin: 0 0 var(--s-1) 0;
-            font-size: var(--f-size-md);
-            font-weight: var(--f-weight-semibold);
-            color: var(--c-text-primary);
-        }
-
-        .welcome-body p {
-            margin: 0;
-            font-size: var(--f-size-sm);
-            color: var(--c-text-secondary);
-            line-height: var(--f-leading-tight);
-        }
-
-        .welcome-dismiss {
-            background: transparent;
-            border: 1px solid var(--c-border);
-            color: var(--c-text-secondary);
-            padding: var(--s-1) var(--s-3);
-            border-radius: var(--r-md);
-            font-size: var(--f-size-sm);
-            cursor: pointer;
-            white-space: nowrap;
-            flex-shrink: 0;
-            transition: background var(--m-dur-fast) var(--m-ease-out),
-                        color var(--m-dur-fast) var(--m-ease-out),
-                        border-color var(--m-dur-fast) var(--m-ease-out);
-        }
-        .welcome-dismiss:hover {
-            background: var(--c-surface);
-            color: var(--c-text-primary);
-            border-color: var(--c-border-strong);
-        }
+        /* Stage 7.32: welcome banner CSS removed (big text -> tooltips-only help). */
 
         /* ==========================================================================
            6. SEARCH BAR (Stage 7.20 carry; wired in Stage 7.29 via initSearchFilter)
@@ -1041,16 +981,7 @@
              ==================================================================== -->
         <aside class="sidebar">
             <div class="sidebar-scroll">
-                <!-- Welcome banner: Stage 7.21 carry, dismiss + reshow functional this stage -->
-                <div class="welcome-banner" id="welcome-banner" hidden>
-                    <div class="welcome-icon" aria-hidden="true">👋</div>
-                    <div class="welcome-body">
-                        <h3>New to Master's FM customize?</h3>
-                        <p>Pick a theme below, or use Quick Settings to change the main color, size, and text size.</p>
-                    </div>
-                    <button class="welcome-dismiss" id="welcome-dismiss" type="button">Got it, hide this</button>
-                </div>
-
+                <!-- Stage 7.32: welcome banner removed (big text -> tooltips-only help). -->
                 <!-- Search bar: wired in Stage 7.29 via initSearchFilter (JARGON_MAP + Ctrl+F) -->
                 <div class="search-bar">
                     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1075,9 +1006,8 @@
                 <div id="categories-root"></div>
 
             </div>
-            <div class="sidebar-footer">
-                <a href="#" id="show-welcome-again" class="footer-link">Show welcome message</a>
-            </div>
+            <!-- Stage 7.32: sidebar-footer removed (its only child was the welcome
+                 reshow link; an empty bordered footer would leave a stray bar). -->
         </aside>
 
         <!-- ====================================================================
@@ -1107,10 +1037,7 @@
     </main>
 
     <script>
-        /* ==========================================================================
-           1. CONSTANTS
-           ========================================================================== */
-        const WELCOME_SEEN_KEY = 'customize_welcome_seen';
+        /* Stage 7.32: WELCOME_SEEN_KEY removed with the welcome banner (tooltips-only). */
 
         /* ==========================================================================
            1a. THEMES (Stage 7.29 -- 22 themes ported verbatim from current
@@ -1827,57 +1754,12 @@
 
         /* ==========================================================================
            2. DOM REFS (cached at init)
-           Stage 7.26 caches only the welcome banner + footer link refs needed by
-           the welcome banner JS. Later stages will extend this with more refs
-           (control inputs, theme grid, supercat bodies, etc.).
+           Stage 7.32: the welcome-banner refs + the welcome banner JS (showWelcome /
+           hideWelcome / initWelcome) were removed with the banner (big text ->
+           tooltips-only help). cacheElements() stays as an empty stub for the
+           init() call site + any future refs.
            ========================================================================== */
-        let $welcomeBanner = null;
-        let $welcomeDismiss = null;
-        let $showWelcomeAgain = null;
-
         function cacheElements() {
-            $welcomeBanner = document.getElementById('welcome-banner');
-            $welcomeDismiss = document.getElementById('welcome-dismiss');
-            $showWelcomeAgain = document.getElementById('show-welcome-again');
-        }
-
-        /* ==========================================================================
-           3. WELCOME BANNER (Stage 7.26 -- only feature this stage)
-           First-time users see the banner; "Got it, hide this" dismisses + persists.
-           Footer "Show welcome message" link reshows it (clears the persistence flag).
-           localStorage access is defensive (try/catch) because the page may be
-           opened from file:// where some browsers restrict localStorage on some
-           protocols, and PyWebView contexts can have intermittent access.
-           ========================================================================== */
-        function showWelcome() {
-            if ($welcomeBanner) $welcomeBanner.removeAttribute('hidden');
-        }
-
-        function hideWelcome(persist) {
-            if ($welcomeBanner) $welcomeBanner.setAttribute('hidden', '');
-            if (persist) {
-                try { localStorage.setItem(WELCOME_SEEN_KEY, '1'); }
-                catch (e) { /* localStorage unavailable; non-fatal */ }
-            }
-        }
-
-        function initWelcome() {
-            let seen = false;
-            try { seen = localStorage.getItem(WELCOME_SEEN_KEY) === '1'; }
-            catch (e) { /* localStorage unavailable; treat as not-seen */ }
-            if (!seen) showWelcome();
-
-            if ($welcomeDismiss) {
-                $welcomeDismiss.addEventListener('click', function () { hideWelcome(true); });
-            }
-            if ($showWelcomeAgain) {
-                $showWelcomeAgain.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    try { localStorage.removeItem(WELCOME_SEEN_KEY); }
-                    catch (err) { /* non-fatal */ }
-                    showWelcome();
-                });
-            }
         }
 
         /* ==========================================================================
@@ -3683,7 +3565,6 @@
            ========================================================================== */
         function init() {
             cacheElements();
-            initWelcome();
 
             // Wire top bar buttons (independent of iframe / config)
             const $btnApply = document.getElementById('btn-apply-obs');
