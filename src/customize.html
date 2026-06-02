@@ -895,12 +895,31 @@
         /* Stage 7.27: iframe preview pane.
            Fills the .preview-frame container exactly; no border; transparent
            background so the preview-frame's padding shows through. */
+        /* Stage 7.32: the preview renders a FIXED 1000x200 overlay (Master's FM
+           standard OBS source size) scaled to fit the pane via transform:scale
+           (set by scalePreview()), capped at 1.0 so maximizing the window never
+           balloons it -- a faithful 1000x200 representation instead of a stretchy
+           fill. Ports V1's scaleIframe; GPU hints keep the live spectrum at full
+           fps in WebView2 (V1 perf note: contain + will-change promote the iframe
+           to its own GPU texture). */
+        .preview-stage {
+            position: relative;
+            overflow: hidden;
+            contain: paint layout size;
+            will-change: transform;
+            transform: translate3d(0, 0, 0);
+            /* width + height set by scalePreview() to the scaled box (1000*sc x 200*sc) */
+        }
         .preview-frame-iframe {
-            width: 100%;
-            height: 100%;
+            width: 1000px;
+            height: 200px;
             border: none;
             background: transparent;
             display: block;
+            transform-origin: top left;
+            transform: scale(var(--preview-scale, 1));
+            will-change: transform;
+            backface-visibility: hidden;
         }
 
         .preview-hint {
@@ -1025,10 +1044,15 @@
                      listing for /?preview=1 regardless of query string). On the
                      real server.js (port 4242 -- the canonical host) the JS sets
                      src='/?preview=1' which renders the live overlay preview. -->
-                <iframe id="preview-iframe"
-                        class="preview-frame-iframe"
-                        title="Live overlay preview"
-                        scrolling="no"></iframe>
+                <!-- Stage 7.32: fixed 1000x200 stage + transform:scale to fit (ports V1's
+                     scaleIframe). Keeps the preview a faithful 1000x200 overlay representation
+                     that scales DOWN to fit the pane and never balloons when the window grows. -->
+                <div class="preview-stage" id="preview-stage">
+                    <iframe id="preview-iframe"
+                            class="preview-frame-iframe"
+                            title="Live overlay preview"
+                            scrolling="no"></iframe>
+                </div>
             </div>
             <div class="preview-hint">
                 Adjust controls on the left -- preview updates live. Click <strong>Apply to OBS</strong> to save permanently.
@@ -3557,6 +3581,31 @@
         }
 
         /* ==========================================================================
+           9b. PREVIEW SCALING (Stage 7.32 -- ports V1's scaleIframe)
+           The preview renders a FIXED 1000x200 overlay (Master's FM standard OBS
+           source size). scalePreview() scales it via transform:scale to fit the
+           preview pane, capped at 1.0 so the preview never balloons when the
+           window is maximized/resized (operator gate FAIL: "scales with the window
+           which is bad"). Re-run on window resize + after the iframe loads.
+           ========================================================================== */
+        const PREVIEW_W = 1000, PREVIEW_H = 200;
+        function scalePreview() {
+            const frame  = document.getElementById('preview-frame');
+            const stage  = document.getElementById('preview-stage');
+            const iframe = document.getElementById('preview-iframe');
+            if (!frame || !stage || !iframe) return;
+            const cs = getComputedStyle(frame);
+            const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+            const padY = (parseFloat(cs.paddingTop)  || 0) + (parseFloat(cs.paddingBottom) || 0);
+            const avW = Math.max(120, frame.clientWidth  - padX);
+            const avH = Math.max(40,  frame.clientHeight - padY);
+            const sc  = Math.min(avW / PREVIEW_W, avH / PREVIEW_H, 1.0);
+            iframe.style.setProperty('--preview-scale', sc);
+            stage.style.width  = Math.round(PREVIEW_W * sc) + 'px';
+            stage.style.height = Math.round(PREVIEW_H * sc) + 'px';
+        }
+
+        /* ==========================================================================
            10. INIT
            Cache elements, wire top bar buttons, wait for iframe to load, then
            load config from server, apply CSS variables, and attach control
@@ -3593,6 +3642,13 @@
             // independent of the iframe; it can happen as soon as init() runs.
             renderAllControls();
 
+            // Stage 7.32: size the preview to a faithful 1000x200 (scaled to fit
+            // the pane, capped at 1.0). Re-run on window resize so the preview
+            // never balloons/stretches with the window (operator gate FAIL fix).
+            scalePreview();
+            window.addEventListener('resize', scalePreview);
+            setTimeout(scalePreview, 0);
+
             // Stage 7.29: wire search filter + Ctrl+F shortcut. Filter operates
             // on the rendered .control-row elements, so this must come AFTER
             // renderAllControls (but doesn't depend on bindings/state).
@@ -3618,6 +3674,8 @@
                 // by renderAllControls above) and State.config has been
                 // restored (loadConfig populated it).
                 refreshAllMasterBadges();
+                // Stage 7.32: re-scale once the preview iframe has loaded + layout settled.
+                scalePreview();
             };
             if ($iframe) {
                 // If iframe already loaded (cached), fire bootstrap immediately;
