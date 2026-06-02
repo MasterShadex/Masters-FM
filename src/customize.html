@@ -630,6 +630,17 @@
             color: currentColor;
         }
 
+        /* Stage 7.32: V1's 17 categories use emoji icons (V1 is the spec for the
+           category identity); the V2 supercat card + collapse styling is kept.
+           Render the emoji centered inside the same 18px icon box. */
+        .supercat-icon.is-emoji {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            line-height: 1;
+        }
+
         .supercat-label {
             flex: 1;
             min-width: 0;
@@ -1054,106 +1065,14 @@
                      all controls + the Layout supercat are always visible now. -->
 
 
-                <!-- 6 supercats (Stage 7.30.4 Item 2 restores V1 organization).
-                     Order matches legacy SUPERCATS: Start here / Look / Text /
-                     Effects / Audio / Layout. Collapse via initSupercatCollapse. -->
-
-                <div class="supercat" id="supercat-start">
-                    <button class="supercat-header" data-supercat="start" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                        </svg>
-                        <span class="supercat-label">Start here</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-start-body">
-                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
-                    </div>
-                </div>
-
-                <div class="supercat" id="supercat-look">
-                    <button class="supercat-header" data-supercat="look" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M2 12 C 5 7 9 5 12 5 C 15 5 19 7 22 12 C 19 17 15 19 12 19 C 9 19 5 17 2 12 Z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                        <span class="supercat-label">Look</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-look-body">
-                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
-                    </div>
-                </div>
-
-                <div class="supercat" id="supercat-text">
-                    <button class="supercat-header" data-supercat="text" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
-                            <line x1="9" y1="20" x2="15" y2="20"></line>
-                            <line x1="12" y1="4" x2="12" y2="20"></line>
-                        </svg>
-                        <span class="supercat-label">Text</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-text-body">
-                        <!-- Stage 7.28: rendered by renderAllControls() at init from SETTINGS_CONFIG -->
-                    </div>
-                </div>
-
-                <div class="supercat" id="supercat-effects">
-                    <button class="supercat-header" data-supercat="effects" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 3 L 13.5 8.5 L 19 10 L 13.5 11.5 L 12 17 L 10.5 11.5 L 5 10 L 10.5 8.5 Z"></path>
-                            <path d="M19 16 L 19.7 18 L 21.5 18.7 L 19.7 19.3 L 19 21 L 18.3 19.3 L 16.5 18.7 L 18.3 18 Z"></path>
-                            <path d="M5 4 L 5.6 5.5 L 7 6 L 5.6 6.4 L 5 8 L 4.4 6.4 L 3 6 L 4.4 5.5 Z"></path>
-                        </svg>
-                        <span class="supercat-label">Effects</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-effects-body"></div>
-                </div>
-
-                <div class="supercat" id="supercat-audio">
-                    <button class="supercat-header" data-supercat="audio" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <path d="M16 9 C 18 10 18 14 16 15"></path>
-                            <path d="M19 6 C 23 8 23 16 19 18"></path>
-                        </svg>
-                        <span class="supercat-label">Audio</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-audio-body"></div>
-                </div>
-
-                <div class="supercat" id="supercat-layout">
-                    <button class="supercat-header" data-supercat="layout" type="button">
-                        <svg class="supercat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                        </svg>
-                        <span class="supercat-label">Layout</span>
-                        <svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <div class="supercat-body" id="supercat-layout-body"></div>
-                </div>
-                <!-- Stage 7.30.4 Item 2: Advanced supercat removed; advanced
-                     controls now live in their natural supercat with
-                     data-advanced="true" attr + body.show-advanced toggle. -->
+                <!-- Stage 7.32 PATH A: V1's 17 categories (was 6 supercats).
+                     The category .supercat shells are built at init by
+                     renderAllControls() from the CATEGORIES array (names + order
+                     + emoji icons sourced from customize_legacy.html). V2 look
+                     (the .supercat card + collapse styling) is kept; only the
+                     grouping + headers change. initSupercatCollapse() and
+                     initSearchFilter() bind to the generated .supercat elements. -->
+                <div id="categories-root"></div>
 
             </div>
             <div class="sidebar-footer">
@@ -1806,6 +1725,107 @@
         ];
 
         /* ==========================================================================
+           1b. V1 CATEGORIES (Stage 7.32 -- PATH A)
+           V2's 6 supercats are re-grouped into V1's 17 collapsible categories.
+           Names + order + icons are SOURCED VERBATIM from customize_legacy.html
+           (the V1 reference): `.sec-header[data-sec]` blocks, legacy lines
+           1125-2196. The V2 visual design/tokens (.supercat card + collapse) are
+           kept; only the grouping + headers change. SETTINGS_CONFIG tokens are
+           UNCHANGED (the inert `supercat:` field is left in place; grouping now
+           comes from CAT_OF below). NO setting is dropped (GAP=none, log 1C).
+           ========================================================================== */
+        const CATEGORIES = [
+            { key: 'quick-settings', icon: '⚡',       label: 'Quick Settings' },
+            { key: 'themes',         icon: '🎨', label: 'Themes' },
+            { key: 'general',        icon: '⚙️', label: 'General' },
+            { key: 'layout',         icon: '📐', label: 'Layout (advanced)' },
+            { key: 'font',           icon: '🔤', label: 'Font' },
+            { key: 'card',           icon: '🎴', label: 'Card appearance' },
+            { key: 'dyncolors',      icon: '🎨', label: 'Auto-color from album art' },
+            { key: 'border',         icon: '✨',       label: 'Spinning border (advanced)' },
+            { key: 'glow',           icon: '💫', label: 'Outer glow' },
+            { key: 'textglow',       icon: '🌟', label: 'Text glow' },
+            { key: 'art',            icon: '🖼️', label: 'Album art' },
+            { key: 'np',             icon: '🎵', label: '"Now Playing" label' },
+            { key: 'platform',       icon: '🏷️', label: 'Platform badge (SoundCloud, Spotify, etc.)' },
+            { key: 'text',           icon: '✍️', label: 'Track and artist text' },
+            { key: 'spectrum',       icon: '📊', label: 'Audio bars' },
+            { key: 'progress',       icon: '⏱️', label: 'Progress bar and time' },
+            { key: 'anim',           icon: '🎬', label: 'Slide-in animation (advanced)' }
+        ];
+
+        // Maps every SETTINGS_CONFIG control id -> its V1 category key. Sourced
+        // id-by-id from the legacy section bodies (log 1B). This is the single
+        // authority for grouping; renderAllControls() uses it instead of the
+        // legacy `supercat` field. (c-theme replaces V1's theme grid; placed in
+        // 'themes'. c-spec-sensitivity-reset lives with the spectrum controls.)
+        const CAT_OF = {
+            // quick-settings (5 masters)
+            'c-master-accent-color':'quick-settings', 'c-master-overall-size':'quick-settings',
+            'c-master-text-size':'quick-settings', 'c-master-glow':'quick-settings',
+            'c-master-animations':'quick-settings',
+            // themes
+            'c-theme':'themes',
+            // general
+            'c-overlay-opacity':'general',
+            // layout
+            'c-layout-on':'layout', 'c-layout-grid':'layout',
+            'c-layout-vis-spectrum':'layout', 'c-layout-lock-spectrum':'layout',
+            // font
+            'c-font':'font',
+            // card
+            'c-card-radius':'card', 'c-card-thick':'card', 'c-card-angle':'card',
+            'c-card-top':'card', 'c-card-bot':'card', 'c-card-blur':'card', 'c-card-opacity':'card',
+            // dyncolors
+            'c-dynamic-colors':'dyncolors', 'c-dyn-bg':'dyncolors', 'c-dyn-glow':'dyncolors',
+            'c-dyn-title':'dyncolors', 'c-dyn-titleglow':'dyncolors', 'c-dyn-artist':'dyncolors',
+            'c-dyn-artistglow':'dyncolors', 'c-dyn-np':'dyncolors', 'c-dyn-platform':'dyncolors',
+            'c-dyn-npglow':'dyncolors', 'c-dyn-platformglow':'dyncolors', 'c-dyn-spectrum':'dyncolors',
+            'c-dyn-timestamps':'dyncolors', 'c-dyn-tsglow':'dyncolors', 'c-dyn-progressbar':'dyncolors',
+            'c-dyn-border':'dyncolors',
+            // border
+            'c-border-on':'border', 'c-border-spd':'border', 'c-border-colors':'border',
+            // glow
+            'c-glow-on':'glow', 'c-glow-c1':'glow', 'c-glow-c2':'glow', 'c-glow-int':'glow',
+            'c-glow-pulse':'glow',
+            // textglow (5 element groups: NP / Platform / Title / Artist / Timestamps)
+            'c-np-glow-on':'textglow', 'c-np-glow-color':'textglow', 'c-np-glow-size':'textglow',
+            'c-platform-glow-on':'textglow', 'c-platform-glow-color':'textglow', 'c-platform-glow-size':'textglow',
+            'c-title-glow-on':'textglow', 'c-title-glow-color':'textglow', 'c-title-glow-size':'textglow',
+            'c-artist-glow-on':'textglow', 'c-artist-glow-color':'textglow', 'c-artist-glow-size':'textglow',
+            'c-ts-glow-on':'textglow', 'c-ts-glow-color':'textglow', 'c-ts-glow-size':'textglow',
+            // art
+            'c-art-on':'art', 'c-art-position':'art', 'c-art-w':'art', 'c-art-fade':'art',
+            // np (label text + decorative bars + keep-on-pause)
+            'c-np-text':'np', 'c-np-size':'np', 'c-np-color':'np', 'c-np-spacing':'np',
+            'c-bars-on':'np', 'c-bars-color':'np', 'c-bars-count':'np', 'c-bars-speed':'np',
+            'c-keep-on-pause':'np',
+            // platform badge
+            'c-platform-on':'platform', 'c-platform-sc-label':'platform', 'c-platform-color':'platform',
+            'c-platform-dot':'platform', 'c-platform-size':'platform', 'c-platform-weight':'platform',
+            'c-platform-spacing':'platform',
+            // text (title + artist)
+            'c-title-size':'text', 'c-title-weight':'text', 'c-title-color':'text',
+            'c-title-mspd':'text', 'c-title-mpause':'text', 'c-title-spacing':'text',
+            'c-artist-size':'text', 'c-artist-weight':'text', 'c-artist-color':'text',
+            'c-artist-spacing':'text', 'c-artist-mspd':'text', 'c-artist-mpause':'text',
+            // spectrum (Audio bars)
+            'c-spec-on':'spectrum', 'c-spec-autogain':'spectrum', 'c-spec-sensitivity':'spectrum',
+            'c-spec-sensitivity-reset':'spectrum', 'c-spec-mode':'spectrum', 'c-spec-color':'spectrum',
+            'c-spec-mirror':'spectrum', 'c-spec-opacity':'spectrum', 'c-spec-bars':'spectrum',
+            'c-spec-gap':'spectrum', 'c-spec-radius':'spectrum', 'c-spec-min':'spectrum',
+            'c-spec-height':'spectrum', 'c-spec-response':'spectrum', 'c-spec-smooth':'spectrum',
+            'c-spec-fps':'spectrum',
+            // progress bar + time
+            'c-prog-on':'progress', 'c-prog-h':'progress', 'c-prog-radius':'progress',
+            'c-prog-track':'progress', 'c-prog-f0':'progress', 'c-prog-f1':'progress',
+            'c-prog-f2':'progress', 'c-ts-size':'progress', 'c-ts-color':'progress',
+            // anim
+            'c-anim-dur':'anim', 'c-anim-slide':'anim', 'c-anim-dir':'anim',
+            'c-anim-easing':'anim', 'c-anim-crossfade':'anim'
+        };
+
+        /* ==========================================================================
            2. DOM REFS (cached at init)
            Stage 7.26 caches only the welcome banner + footer link refs needed by
            the welcome banner JS. Later stages will extend this with more refs
@@ -2323,19 +2343,51 @@
         // advanced controls sit in their natural supercat with a data-advanced
         // attribute (added by renderControl). Post 7.30.5 the toggle that used it
         // was removed -- all controls are always visible; the attribute is inert.
+        // Stage 7.32: build V1's 17 categories (CATEGORIES, order/icons from
+        // legacy) as .supercat shells (V2 look kept), then group each control
+        // into its category body via CAT_OF. The chevron SVG is byte-identical to
+        // the previous static supercats; the icon is the V1 emoji. initSupercat-
+        // Collapse() + initSearchFilter() run AFTER this and operate on
+        // .supercat / .supercat-header[data-supercat] / .control-row generically.
         function renderAllControls() {
-            const containers = {
-                start:    document.getElementById('supercat-start-body'),
-                look:     document.getElementById('supercat-look-body'),
-                text:     document.getElementById('supercat-text-body'),
-                effects:  document.getElementById('supercat-effects-body'),
-                audio:    document.getElementById('supercat-audio-body'),
-                layout:   document.getElementById('supercat-layout-body')
-            };
+            const root = document.getElementById('categories-root');
+            if (!root) {
+                console.warn('[Stage 7.32] #categories-root missing');
+                return;
+            }
+            root.innerHTML = '';
+            const bodies = {};
+            for (const cat of CATEGORIES) {
+                const sc = document.createElement('div');
+                sc.className = 'supercat';
+                sc.id = 'supercat-' + cat.key;
+
+                const header = document.createElement('button');
+                header.className = 'supercat-header';
+                header.type = 'button';
+                header.dataset.supercat = cat.key;
+                header.innerHTML =
+                    '<span class="supercat-icon is-emoji" aria-hidden="true"></span>' +
+                    '<span class="supercat-label"></span>' +
+                    '<svg class="supercat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+                // textContent (not innerHTML) for icon + label -> no HTML injection.
+                header.querySelector('.supercat-icon').textContent = cat.icon;
+                header.querySelector('.supercat-label').textContent = cat.label;
+
+                const body = document.createElement('div');
+                body.className = 'supercat-body';
+                body.id = 'supercat-' + cat.key + '-body';
+
+                sc.appendChild(header);
+                sc.appendChild(body);
+                root.appendChild(sc);
+                bodies[cat.key] = body;
+            }
             for (const cfg of SETTINGS_CONFIG) {
-                const target = containers[cfg.supercat];
+                const cat = CAT_OF[cfg.id];
+                const target = bodies[cat];
                 if (!target) {
-                    console.warn('[Stage 7.30.4] no container for supercat:', cfg.supercat, cfg.id);
+                    console.warn('[Stage 7.32] no category for control:', cfg.id, '(cat=' + cat + ')');
                     continue;
                 }
                 const row = renderControl(cfg);
@@ -3186,11 +3238,16 @@
 
                 if (stored === '1') {
                     supercat.classList.add('collapsed');
+                } else if (stored === null && key !== 'quick-settings') {
+                    // Stage 7.32: with V1's 17 categories, default-collapse all
+                    // EXCEPT Quick Settings on first load -- mirrors V1's tidy
+                    // sidebar (legacy default-collapsed sections) and avoids a
+                    // very long all-expanded scroll. A saved '0' (user-expanded)
+                    // or '1' (user-collapsed) still takes effect above.
+                    supercat.classList.add('collapsed');
                 }
-                // First-load (stored === null): START HERE stays expanded
-                // explicitly so first-time users see Quick Settings + General
-                // immediately. Other supercats also default expanded (no class
-                // added). Saved '1' or '0' values still take effect above.
+                // Quick Settings stays expanded on first load so users see the
+                // masters immediately (V1 default-OPEN, legacy line 1126).
 
                 header.addEventListener('click', () => {
                     supercat.classList.toggle('collapsed');
