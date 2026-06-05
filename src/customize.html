@@ -1676,102 +1676,92 @@
         ];
 
         /* ==========================================================================
-           1b. V1 CATEGORIES (Stage 7.32 -- PATH A)
-           V2's 6 supercats are re-grouped into V1's 17 collapsible categories.
-           Names + order + icons are SOURCED VERBATIM from customize_legacy.html
-           (the V1 reference): `.sec-header[data-sec]` blocks, legacy lines
-           1125-2196. The V2 visual design/tokens (.supercat card + collapse) are
-           kept; only the grouping + headers change. SETTINGS_CONFIG tokens are
-           UNCHANGED (the inert `supercat:` field is left in place; grouping now
-           comes from CAT_OF below). NO setting is dropped (GAP=none, log 1C).
+           1b. CATEGORIES (Stage 7.32 PATH A -> 7.32.1 operator simplification)
+           V2's 6 supercats render as collapsible categories (V2 .supercat look +
+           collapse kept; only grouping + headers change). 7.32.1 (operator
+           request): simpler names, more logical order, and 17 -> 13 categories --
+           Quick Settings + Themes + Font folded into General; Outer glow + Text
+           glow fused into one "Glow". SETTINGS_CONFIG tokens UNCHANGED (inert
+           `supercat:` left in place; grouping authority = CAT_OF). NO setting is
+           dropped (still 120 controls). Icons kept from the V1 set.
            ========================================================================== */
         const CATEGORIES = [
-            { key: 'quick-settings', icon: '⚡',       label: 'Quick Settings' },
-            { key: 'themes',         icon: '🎨', label: 'Themes' },
-            { key: 'general',        icon: '⚙️', label: 'General' },
-            { key: 'layout',         icon: '📐', label: 'Layout (advanced)' },
-            { key: 'font',           icon: '🔤', label: 'Font' },
-            { key: 'card',           icon: '🎴', label: 'Card appearance' },
-            { key: 'dyncolors',      icon: '🎨', label: 'Auto-color from album art' },
-            { key: 'border',         icon: '✨',       label: 'Spinning border (advanced)' },
-            { key: 'glow',           icon: '💫', label: 'Outer glow' },
-            { key: 'textglow',       icon: '🌟', label: 'Text glow' },
-            { key: 'art',            icon: '🖼️', label: 'Album art' },
-            { key: 'np',             icon: '🎵', label: '"Now Playing" label' },
-            { key: 'platform',       icon: '🏷️', label: 'Platform badge (SoundCloud, Spotify, etc.)' },
-            { key: 'text',           icon: '✍️', label: 'Track and artist text' },
-            { key: 'spectrum',       icon: '📊', label: 'Audio bars' },
-            { key: 'progress',       icon: '⏱️', label: 'Progress bar and time' },
-            { key: 'anim',           icon: '🎬', label: 'Slide-in animation (advanced)' }
+            { key: 'general',   icon: '⚙️', label: 'General' },
+            { key: 'card',      icon: '🎴', label: 'Card' },
+            { key: 'art',       icon: '🖼️', label: 'Album art' },
+            { key: 'np',        icon: '🎵', label: '"Now Playing" label' },
+            { key: 'platform',  icon: '🏷️', label: 'Platform badge' },
+            { key: 'text',      icon: '✍️', label: 'Track & artist text' },
+            { key: 'spectrum',  icon: '📊', label: 'Audio bars' },
+            { key: 'progress',  icon: '⏱️', label: 'Progress bar & time' },
+            { key: 'glow',      icon: '💫', label: 'Glow' },
+            { key: 'dyncolors', icon: '🎨', label: 'Auto-color from album art' },
+            { key: 'border',    icon: '✨',       label: 'Spinning border' },
+            { key: 'layout',    icon: '📐', label: 'Layout' },
+            { key: 'anim',      icon: '🎬', label: 'Slide-in animation' }
         ];
 
-        // Maps every SETTINGS_CONFIG control id -> its V1 category key. Sourced
-        // id-by-id from the legacy section bodies (log 1B). This is the single
-        // authority for grouping; renderAllControls() uses it instead of the
-        // legacy `supercat` field. (c-theme replaces V1's theme grid; placed in
-        // 'themes'. c-spec-sensitivity-reset lives with the spectrum controls.)
+        // Maps every SETTINGS_CONFIG control id -> its category key. Single
+        // authority for grouping (renderAllControls uses it, not the inert
+        // `supercat` field). Control ORDER within a category follows SETTINGS_CONFIG
+        // order. 7.32.1: general = masters + theme + font + overlay opacity;
+        // glow = outer glow + per-element text glows (the text-glow controls are
+        // self-labeled, e.g. "Title glow"). All 120 controls mapped.
         const CAT_OF = {
-            // quick-settings (5 masters)
-            'c-master-accent-color':'quick-settings', 'c-master-overall-size':'quick-settings',
-            'c-master-text-size':'quick-settings', 'c-master-glow':'quick-settings',
-            'c-master-animations':'quick-settings',
-            // themes
-            'c-theme':'themes',
-            // general
-            'c-overlay-opacity':'general',
-            // layout
-            'c-layout-on':'layout', 'c-layout-grid':'layout',
-            'c-layout-vis-spectrum':'layout', 'c-layout-lock-spectrum':'layout',
-            // font
-            'c-font':'font',
-            // card
+            // General (quick settings masters + theme + font + overlay opacity)
+            'c-master-accent-color':'general', 'c-master-overall-size':'general',
+            'c-master-text-size':'general', 'c-master-glow':'general', 'c-master-animations':'general',
+            'c-overlay-opacity':'general', 'c-theme':'general', 'c-font':'general',
+            // Card
             'c-card-radius':'card', 'c-card-thick':'card', 'c-card-angle':'card',
             'c-card-top':'card', 'c-card-bot':'card', 'c-card-blur':'card', 'c-card-opacity':'card',
-            // dyncolors
-            'c-dynamic-colors':'dyncolors', 'c-dyn-bg':'dyncolors', 'c-dyn-glow':'dyncolors',
-            'c-dyn-title':'dyncolors', 'c-dyn-titleglow':'dyncolors', 'c-dyn-artist':'dyncolors',
-            'c-dyn-artistglow':'dyncolors', 'c-dyn-np':'dyncolors', 'c-dyn-platform':'dyncolors',
-            'c-dyn-npglow':'dyncolors', 'c-dyn-platformglow':'dyncolors', 'c-dyn-spectrum':'dyncolors',
-            'c-dyn-timestamps':'dyncolors', 'c-dyn-tsglow':'dyncolors', 'c-dyn-progressbar':'dyncolors',
-            'c-dyn-border':'dyncolors',
-            // border
-            'c-border-on':'border', 'c-border-spd':'border', 'c-border-colors':'border',
-            // glow
-            'c-glow-on':'glow', 'c-glow-c1':'glow', 'c-glow-c2':'glow', 'c-glow-int':'glow',
-            'c-glow-pulse':'glow',
-            // textglow (5 element groups: NP / Platform / Title / Artist / Timestamps)
-            'c-np-glow-on':'textglow', 'c-np-glow-color':'textglow', 'c-np-glow-size':'textglow',
-            'c-platform-glow-on':'textglow', 'c-platform-glow-color':'textglow', 'c-platform-glow-size':'textglow',
-            'c-title-glow-on':'textglow', 'c-title-glow-color':'textglow', 'c-title-glow-size':'textglow',
-            'c-artist-glow-on':'textglow', 'c-artist-glow-color':'textglow', 'c-artist-glow-size':'textglow',
-            'c-ts-glow-on':'textglow', 'c-ts-glow-color':'textglow', 'c-ts-glow-size':'textglow',
-            // art
+            // Album art
             'c-art-on':'art', 'c-art-position':'art', 'c-art-w':'art', 'c-art-fade':'art',
-            // np (label text + decorative bars + keep-on-pause)
+            // "Now Playing" label (label text + decorative bars + keep-on-pause)
             'c-np-text':'np', 'c-np-size':'np', 'c-np-color':'np', 'c-np-spacing':'np',
             'c-bars-on':'np', 'c-bars-color':'np', 'c-bars-count':'np', 'c-bars-speed':'np',
             'c-keep-on-pause':'np',
-            // platform badge
+            // Platform badge
             'c-platform-on':'platform', 'c-platform-sc-label':'platform', 'c-platform-color':'platform',
             'c-platform-dot':'platform', 'c-platform-size':'platform', 'c-platform-weight':'platform',
             'c-platform-spacing':'platform',
-            // text (title + artist)
+            // Track & artist text
             'c-title-size':'text', 'c-title-weight':'text', 'c-title-color':'text',
             'c-title-mspd':'text', 'c-title-mpause':'text', 'c-title-spacing':'text',
             'c-artist-size':'text', 'c-artist-weight':'text', 'c-artist-color':'text',
             'c-artist-spacing':'text', 'c-artist-mspd':'text', 'c-artist-mpause':'text',
-            // spectrum (Audio bars)
+            // Audio bars (spectrum)
             'c-spec-on':'spectrum', 'c-spec-autogain':'spectrum', 'c-spec-sensitivity':'spectrum',
             'c-spec-sensitivity-reset':'spectrum', 'c-spec-mode':'spectrum', 'c-spec-color':'spectrum',
             'c-spec-mirror':'spectrum', 'c-spec-opacity':'spectrum', 'c-spec-bars':'spectrum',
             'c-spec-gap':'spectrum', 'c-spec-radius':'spectrum', 'c-spec-min':'spectrum',
             'c-spec-height':'spectrum', 'c-spec-response':'spectrum', 'c-spec-smooth':'spectrum',
             'c-spec-fps':'spectrum',
-            // progress bar + time
+            // Progress bar & time
             'c-prog-on':'progress', 'c-prog-h':'progress', 'c-prog-radius':'progress',
             'c-prog-track':'progress', 'c-prog-f0':'progress', 'c-prog-f1':'progress',
             'c-prog-f2':'progress', 'c-ts-size':'progress', 'c-ts-color':'progress',
-            // anim
+            // Glow (outer glow + per-element text glows, fused)
+            'c-glow-on':'glow', 'c-glow-c1':'glow', 'c-glow-c2':'glow', 'c-glow-int':'glow',
+            'c-glow-pulse':'glow',
+            'c-np-glow-on':'glow', 'c-np-glow-color':'glow', 'c-np-glow-size':'glow',
+            'c-platform-glow-on':'glow', 'c-platform-glow-color':'glow', 'c-platform-glow-size':'glow',
+            'c-title-glow-on':'glow', 'c-title-glow-color':'glow', 'c-title-glow-size':'glow',
+            'c-artist-glow-on':'glow', 'c-artist-glow-color':'glow', 'c-artist-glow-size':'glow',
+            'c-ts-glow-on':'glow', 'c-ts-glow-color':'glow', 'c-ts-glow-size':'glow',
+            // Auto-color from album art
+            'c-dynamic-colors':'dyncolors', 'c-dyn-bg':'dyncolors', 'c-dyn-glow':'dyncolors',
+            'c-dyn-title':'dyncolors', 'c-dyn-titleglow':'dyncolors', 'c-dyn-artist':'dyncolors',
+            'c-dyn-artistglow':'dyncolors', 'c-dyn-np':'dyncolors', 'c-dyn-platform':'dyncolors',
+            'c-dyn-npglow':'dyncolors', 'c-dyn-platformglow':'dyncolors', 'c-dyn-spectrum':'dyncolors',
+            'c-dyn-timestamps':'dyncolors', 'c-dyn-tsglow':'dyncolors', 'c-dyn-progressbar':'dyncolors',
+            'c-dyn-border':'dyncolors',
+            // Spinning border
+            'c-border-on':'border', 'c-border-spd':'border', 'c-border-colors':'border',
+            // Layout
+            'c-layout-on':'layout', 'c-layout-grid':'layout',
+            'c-layout-vis-spectrum':'layout', 'c-layout-lock-spectrum':'layout',
+            // Slide-in animation
             'c-anim-dur':'anim', 'c-anim-slide':'anim', 'c-anim-dir':'anim',
             'c-anim-easing':'anim', 'c-anim-crossfade':'anim'
         };
@@ -3183,16 +3173,15 @@
 
                 if (stored === '1') {
                     supercat.classList.add('collapsed');
-                } else if (stored === null && key !== 'quick-settings') {
-                    // Stage 7.32: with V1's 17 categories, default-collapse all
-                    // EXCEPT Quick Settings on first load -- mirrors V1's tidy
-                    // sidebar (legacy default-collapsed sections) and avoids a
-                    // very long all-expanded scroll. A saved '0' (user-expanded)
-                    // or '1' (user-collapsed) still takes effect above.
+                } else if (stored === null && key !== 'general') {
+                    // Stage 7.32 / 7.32.1: default-collapse all categories EXCEPT
+                    // General on first load -- a tidy sidebar that avoids a very
+                    // long all-expanded scroll. A saved '0' (user-expanded) or
+                    // '1' (user-collapsed) still takes effect above.
                     supercat.classList.add('collapsed');
                 }
-                // Quick Settings stays expanded on first load so users see the
-                // masters immediately (V1 default-OPEN, legacy line 1126).
+                // General stays expanded on first load so users see the masters /
+                // theme / font immediately (it is the merged "start here" section).
 
                 header.addEventListener('click', () => {
                     supercat.classList.toggle('collapsed');

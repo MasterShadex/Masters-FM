@@ -41,7 +41,7 @@ const idSet = new Set(ids);
 
 must(ids.length === 120, `SETTINGS_CONFIG has 120 controls (got ${ids.length})`);
 must(idSet.size === 120, `SETTINGS_CONFIG ids all unique (got ${idSet.size})`);
-must(CATEGORIES.length === 17, `CATEGORIES has 17 entries (got ${CATEGORIES.length})`);
+must(CATEGORIES.length === 13, `CATEGORIES has 13 entries (got ${CATEGORIES.length})`);
 must(Object.keys(CAT_OF).length === 120, `CAT_OF maps 120 ids (got ${Object.keys(CAT_OF).length})`);
 
 const catKeys = new Set(CATEGORIES.map(c => c.key));
