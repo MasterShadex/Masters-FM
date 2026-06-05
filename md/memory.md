@@ -6735,3 +6735,15 @@ NOT a closure -- mid-stage. Commits ab843c8/9ab5c65/f497dd1/a88c91b. Real Master
   click; negatives reject; stop at Ready) + STEP 5 GATED REVERT of override (resolves real repo,
   14.0.0, real remote untouched) + STEP 6 gate + STEP 7 closure. Trigger fires at app STARTUP if
   >6h since update.lastChecked (App.xaml.cs:245-256 CheckNowAsync); no separate periodic timer.
+
+## 2026-06-02 22:10 -- Stage 7.32 CLOSED (PASS): customize = V2 look + V1 categories/settings + V1-lossless import/export + tooltips-only
+- **PATH A done.** Only `src/customize.html` changed (33D09CDF -> **7E1ECEF3**). No version bump (14.0.0). Real GitHub untouched. 4 protected + customize_legacy (7E98377D) + overlay (9A7CC817) UNCHANGED. Strikes 1/3.
+- **Categories:** 6 supercats -> V1's **17** categories (data-driven `CATEGORIES` + `CAT_OF` map; emoji icons + names/order sourced from `customize_legacy.html`). V2 `.supercat` look kept. First-load: Quick Settings open, rest collapsed.
+- **GAP = none** (1C): V2's 120 controls were already a strict superset of V1's 119 c-* (+ c-theme dropdown). Item 3 SKIPPED. Counts unchanged 120/118/22.
+- **Import/export crux:** was flat-only -> dropped `layout.canvas`/nodes geometry + all unmapped keys. Fix = `State.nested` full-nested passthrough + `deepMerge()`; load/save/preview/export/import now carry the COMPLETE nested config -> **layout round-trips losslessly**; a friend's V1/v12 envelope imports + applies; malformed rejected. Envelope/forgiving-import already V1-shaped (unchanged). Evidence: evidence/s7_32/import_export_compat.json.
+- **Big text:** welcome banner (only big text in V2) + CSS/JS + footer reshow link removed. Tooltips (95/120) are the only help surface.
+- **SE5 fix (strike 1, gate FAIL "card is the entire display"):** it was the **Customize PREVIEW pane**, not OBS. V2 rebuild had dropped V1's `scaleIframe`; V2 iframe was width/height:100% so the overlay stretched with the window. Restored V1: FIXED 1000x200 preview iframe + `transform:scale` to fit, **capped at 1.0** (never balloons), re-run on resize/load (`scalePreview()`, PREVIEW_W/H consts, `#preview-stage` wrapper). overlay.html fills its OBS source by design (unchanged) -- OBS render was never the cause.
+- **GOTCHA (customize V2 preview):** the V2 customize rebuild dropped V1's scaleIframe -> preview iframe was 100%/100% and stretched/ballooned with the window. Fix lives in customize.html (`scalePreview` + `.preview-stage` + fixed-1000x200 iframe + `--preview-scale`). overlay.html is the read-only renderer that fills the OBS Browser Source 100% by design.
+- **Verification:** DOM-free node harnesses (build_tools/_s732_verify.js + _s732_roundtrip.js) -- compile + 17-cat/120-control invariants + decisive round-trips all PASS. Cold rebuild SE2 clean x2. Operator PASS on re-test.
+- Commits: 1fc8804 / 751265e / b481d30 / d43fe51 / 6f79784 / 808344c / 7c2f5be / 6b61525 / 0ed4813 / +closure. Report: V14_S7_32_REPORT.md.
+- **7.31.2 still PARKED** at its STEP 3 operator-publish HALT (auto-update end-to-end vs test-fm; superseded by 7.32, not closed).
