@@ -842,6 +842,48 @@
             color: var(--c-text-primary);
         }
 
+        /* Stage 7.32.1 (audit fix): text/number inputs + the reset action button
+           were referenced (createTextInput/createNumberInput/createButtonInput)
+           but had no CSS, so they rendered as raw browser controls. Style them to
+           match the panel's .control-select tokens. */
+        .control-text,
+        .control-number {
+            flex: 1;
+            min-width: 0;
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-primary);
+            font-family: inherit;
+            font-size: var(--f-size-md);
+            transition: border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-text:focus,
+        .control-number:focus {
+            outline: none;
+            border-color: var(--c-accent);
+        }
+        .control-action-btn {
+            padding: var(--s-2) var(--s-3);
+            background: var(--c-surface-elevated);
+            border: 1px solid var(--c-border);
+            border-radius: var(--r-md);
+            color: var(--c-text-secondary);
+            font-family: inherit;
+            font-size: var(--f-size-sm);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background var(--m-dur-fast) var(--m-ease-out),
+                        color var(--m-dur-fast) var(--m-ease-out),
+                        border-color var(--m-dur-fast) var(--m-ease-out);
+        }
+        .control-action-btn:hover {
+            background: var(--c-surface);
+            color: var(--c-text-primary);
+            border-color: var(--c-border-strong);
+        }
+
         /* ==========================================================================
            9. PREVIEW PANE (Stage 7.27 wires the live render)
            Vertical flex layout: status bar at top + preview content fluid in
@@ -1357,7 +1399,7 @@
            ========================================================================== */
         const SETTINGS_CONFIG = [
             // ===== 5 MASTERS (supercat: start) =====
-            { id: 'c-master-accent-color', type: 'colorPair', supercat: 'start', label: 'Master Accent Color',
+            { id: 'c-master-accent-color', help: 'The base color the whole card uses. Any element still set to its default follows this.', type: 'colorPair', supercat: 'start', label: 'Master Accent Color',
               pickerId: 'c-master-accent-color-p', cssVar: '--accent-master', cssTarget: 'master', default: '#c060ff' },
             { id: 'c-master-overall-size', help: 'Scales the whole card. 100% is standard; per-element sizes stay relative.', type: 'slider', supercat: 'start', label: 'Overall size',
               cssVar: '--overall-scale', cssTarget: 'master', default: 100,
@@ -1558,7 +1600,7 @@
             { id: 'c-dyn-border', help: 'Tint the spinning border from album art (needs Auto-color on).', type: 'toggle', supercat: 'effects', advanced: true, label: 'Auto: spinning border', cssTarget: null, default: true },
 
             // ===== AUDIO BARS (supercat: audio) =====
-            { id: 'c-bars-on', type: 'toggle', supercat: 'audio', label: 'Audio bars enabled', cssTarget: null, default: true },
+            { id: 'c-bars-on', help: 'The small decorative bars next to the Now Playing label -- not the reactive Spectrum (that is its own category).', type: 'toggle', supercat: 'audio', label: 'Audio bars enabled', cssTarget: null, default: true },
             { id: 'c-bars-color', type: 'colorPair', supercat: 'audio', label: 'Audio bars color',
               pickerId: 'c-bars-color-p', cssTarget: null, default: 'var(--accent-master)' },
             { id: 'c-bars-count', help: 'How many decorative bars to show.', type: 'slider', supercat: 'audio', label: 'Audio bar count',
@@ -1568,7 +1610,7 @@
             { id: 'c-keep-on-pause', help: 'Keep the bars showing even when playback is paused.', type: 'toggle', supercat: 'audio', label: 'Keep visible when paused', cssTarget: null, default: false },
 
             // ===== SPECTRUM (supercat: audio; reactivity sub-controls are advanced) =====
-            { id: 'c-spec-on', type: 'toggle', supercat: 'audio', label: 'Spectrum enabled', cssTarget: null, default: true },
+            { id: 'c-spec-on', help: 'The audio-reactive frequency visualizer. The small bars by the Now Playing label are set separately.', type: 'toggle', supercat: 'audio', label: 'Spectrum enabled', cssTarget: null, default: true },
             { id: 'c-spec-autogain', help: 'Normalizes loud and quiet music to similar bar heights.', type: 'toggle', supercat: 'audio', advanced: true, label: 'Make quiet sounds louder', cssTarget: null, default: false },
             { id: 'c-spec-sensitivity', help: 'Boosts quiet music. 1.0x = no boost.', type: 'slider', supercat: 'audio', label: 'Spectrum sensitivity',
               cssTarget: null, default: 1.0, min: 0.5, max: 100, step: 0.5, unit: 'x' },
@@ -1692,7 +1734,7 @@
             { key: 'np',        icon: '🎵', label: '"Now Playing" label' },
             { key: 'platform',  icon: '🏷️', label: 'Platform badge' },
             { key: 'text',      icon: '✍️', label: 'Track & artist text' },
-            { key: 'spectrum',  icon: '📊', label: 'Audio bars' },
+            { key: 'spectrum',  icon: '📊', label: 'Spectrum' },
             { key: 'progress',  icon: '⏱️', label: 'Progress bar & time' },
             { key: 'glow',      icon: '💫', label: 'Glow' },
             { key: 'dyncolors', icon: '🎨', label: 'Auto-color from album art' },
