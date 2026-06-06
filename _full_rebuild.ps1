@@ -133,6 +133,36 @@ L "=== REBUILD START ==="
 Get-Process VBCSCompiler -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 L "  preflight: VBCSCompiler pre-killed (if any were running)"
 
+# v14: clean stale framework-dependent build outputs (satellite DLLs / *.deps.json /
+# *.runtimeconfig.json) left at ROOT + dist by a PREVIOUS framework-dependent build.
+# Under self-contained single-file publish these are bundled INTO each exe and are NOT
+# regenerated, so the leftovers would otherwise be picked up by the MSI (build_msi bundles
+# whatever exists). Removing them keeps the self-contained MSI clean + small. Only build
+# artifacts are deleted -- tray_native.dll is rebuilt by dotnet build, *.exe are re-published,
+# and src/*.html|*.ps1|*.ico|*.json are never touched.
+$staleRoot = @(
+  'server.dll','server.deps.json','server.runtimeconfig.json','server.staticwebassets.endpoints.json','web.config',
+  'DiscordRPC.dll','Newtonsoft.Json.dll',
+  'MastersFM.dll','MastersFM.deps.json','MastersFM.runtimeconfig.json',
+  'customize.dll','customize.deps.json','customize.runtimeconfig.json',
+  'Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','Microsoft.Web.WebView2.Wpf.dll','WebView2Loader.dll',
+  'audio_spectrum.dll','audio_spectrum.deps.json','audio_spectrum.runtimeconfig.json',
+  'NAudio.Core.dll','NAudio.Wasapi.dll','NAudio.WinMM.dll','NAudio.Asio.dll',
+  'Microsoft.Win32.Registry.dll','System.Buffers.dll','System.Memory.dll','System.Numerics.Vectors.dll',
+  'System.Runtime.CompilerServices.Unsafe.dll','System.Security.AccessControl.dll','System.Security.Principal.Windows.dll',
+  'MastersFM_Tray_v14.dll','MastersFM_Tray_v14.deps.json','MastersFM_Tray_v14.runtimeconfig.json',
+  'CommunityToolkit.Mvvm.dll','H.GeneratedIcons.System.Drawing.dll','H.NotifyIcon.dll','H.NotifyIcon.Wpf.dll',
+  'Microsoft.Extensions.DependencyInjection.Abstractions.dll','Microsoft.Extensions.DependencyInjection.dll',
+  'Microsoft.Win32.SystemEvents.dll','Microsoft.Windows.SDK.NET.dll','System.Drawing.Common.dll',
+  'System.Private.Windows.Core.dll','WinRT.Runtime.dll','Wpf.Ui.Abstractions.dll','Wpf.Ui.dll'
+)
+$staleCleaned = 0
+foreach ($sf in $staleRoot) { $p = Join-Path $root $sf; if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue; $staleCleaned++ } }
+foreach ($dd in @('dist\server_dotnet_release','dist\launcher_net8','dist\customize_net8','dist\audio_spectrum_net8','dist\tray_csharp_release','dist\obs_cleanup_release')) {
+  $dp = Join-Path $root $dd; if (Test-Path $dp) { Remove-Item "$dp\*" -Recurse -Force -ErrorAction SilentlyContinue }
+}
+L "  preflight: cleaned $staleCleaned stale ROOT build-outputs + cleared dist\*_release (keeps self-contained MSI clean)"
+
 # Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
 L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
 $svOut = Join-Path $root 'dist\server_dotnet_release'

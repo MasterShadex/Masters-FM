@@ -22,6 +22,13 @@ public sealed record TrackUpdate
     // when position drift exceeds 3000ms relative to expected wall-clock advance.
     public bool IsSeek { get; init; } = false;
 
+    // v14 run-ahead fix: raw SMTC snapshot position + the time it was current, so
+    // HeartbeatService can interpolate a LIVE position between sparse SMTC events
+    // (YouTube/Chrome emit TimelineProperties only on play/pause/seek; between them
+    // the cached Position is frozen, which made the overlay clock drift ahead).
+    public long? AnchorPositionMs { get; init; }
+    public DateTime? AnchorUpdatedUtc { get; init; }
+
     /// <summary>Stable identity key for dedup + caching: source|||artist|||track.</summary>
     public string IdentityKey => string.Format("{0}|||{1}|||{2}",
         Source ?? string.Empty,

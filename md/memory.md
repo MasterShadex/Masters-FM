@@ -6969,3 +6969,18 @@ KNOWN (cosmetic, harmless): 35 stale loose framework-dependent files (~7.6MB: se
 CAVEAT for Gabby: customize.exe (Customize window) still needs the Edge WebView2 RUNTIME (a separate OS Evergreen component, present on Win10/11 generally) -- self-contained does NOT bundle it. The overlay + server + tray do NOT need it, so her blank-OBS (server) IS fixed; only the customize window would fail if she lacks the WebView2 runtime.
 
 STILL DEFERRED: tray live-SMTC-interpolation root fix for the YouTube progress-bar RUN-AHEAD (the overlay freeze itself is fixed + shipped; run-ahead is a separate, lower-priority accuracy fix for a later validated build).
+## 2026-06-06 16:23 -- FIX-EVERYTHING for Gabby: staging-clean + tray run-ahead Fix A + overlay offline hint. All validated; clean self-contained bundle ready.
+
+Operator: "fix everything first, then i send it to gabby." DONE + live-validated.
+  1. BUILD HYGIENE (staging-clean): _full_rebuild.ps1 now deletes stale framework-dependent ROOT build-outputs + clears dist\*_release before publishing, so the self-contained MSI stops bundling leftovers. RESULT: CAB 64 files -> 15; install-dir stale files 35 -> 0; bundle MSI 331.5MB -> 320.7MB. build_msi printed "dropped 14 missing source(s)" = exactly WebView2 x3 + NAudio x4 + System.* x7 (nothing critical).
+  2. TRAY RUN-AHEAD FIX A (the deep YouTube fix): TrackUpdate.cs gained AnchorPositionMs + AnchorUpdatedUtc; SmtcEventBridge sets them (raw snap.PositionMs + LastUpdatedTime); HeartbeatService.OnTick interpolates a LIVE position (anchor + (now-anchorUpd), capped at duration) when playing, so the reported position advances between sparse SMTC events instead of being frozen. LIVE-VALIDATED on Master PC: baseline reported=42s overlay=1223s drift=+1207s (frozen, climbing) -> after: reported & overlay advance in lockstep, drift = -0s. Run-ahead ELIMINATED. No false-seek spam.
+  3. OVERLAY OFFLINE HINT: overlay.html shows a lazy, pointer-events:none "waiting for server" pill only after ~4s of SSE failure, hidden on any data. Parses clean (verified, helpers present, hint absent when server up).
+  4. launcher crash-surfacing SKIPPED: self-contained removes the missing-runtime silent crash it was for, and redirecting stderr without continuous draining risks a pipe-fill on the long-running server.
+
+REBUILD: cold, SE2 CLEAN, exit 0. All 6 signed Valid CN=MasterShadex. version.json restored to baseline msi_sha256 7dcd4e34. Bundle (Desktop\MastersFM_Installer): "Master's FM V14.0.0-RC.1.msi" 320.7MB self-contained + CRLF INSTALL.bat + cert. READY TO SEND TO GABBY.
+
+COMMIT NOTE: this commit of SmtcEventBridge.cs also captures the long-standing PRE-EXISTING uncommitted diff (was working-tree/shipping state 137A42EF, predates this session) -- the anchor-field edit sits on top of it. That shipping state is what every recent build compiled, so committing it is correct.
+
+OPEN -- BUILD SPEED (operator directive "rebuild should be ~2s not 10min"): root caused = server.exe self-contained R2R publish took 10:02 (R2R-compiling the entire ASP.NET Core runtime); all OTHER components published in <1min each. The 2s path is HTML-only (fast-path, used for the freeze fix). NEXT: remove PublishReadyToRun from the self-contained publishes (R2R of the bundled runtime is the 10-min cost; modest startup gain not worth it) + add incremental per-component builds (only republish changed components) so future .NET rebuilds are ~1-3min and local code-test iterations ~30s.
+
+Session commits: a23f166 overlay-freeze, cd990a1 INSTALL.bat-CRLF, 050fd3a OBS-fps_custom, b20591a self-contained, + this fix-everything.

@@ -105,6 +105,24 @@ public sealed class HeartbeatService : IHeartbeatService
                 return;
             }
 
+            // v14 run-ahead fix: interpolate a LIVE position from the last SMTC snapshot anchor
+            // so the reported position advances smoothly between sparse SMTC events (YouTube/Chrome
+            // emit TimelineProperties only on play/pause/seek). Without this the tray re-ships a
+            // FROZEN cached position, the server free-runs startedAt, and the overlay clock drifts
+            // AHEAD of reality. Only while playing; never past the track duration. A fresh SMTC
+            // event resets the anchor, so a real seek still produces a genuine position jump.
+            if (track.IsPlaying && track.AnchorPositionMs.HasValue && track.AnchorUpdatedUtc.HasValue)
+            {
+                double anchorElapsedMs = (now - track.AnchorUpdatedUtc.Value).TotalMilliseconds;
+                if (anchorElapsedMs > 0)
+                {
+                    long liveMs = track.AnchorPositionMs.Value + (long)anchorElapsedMs;
+                    if (track.Duration.HasValue && liveMs > track.Duration.Value.TotalMilliseconds)
+                        liveMs = (long)track.Duration.Value.TotalMilliseconds;
+                    track = track with { Position = TimeSpan.FromMilliseconds(liveMs) };
+                }
+            }
+
             // Seek detection: compare position advance to wall-clock advance.
             bool isSeek = false;
             if (_lastPosition.HasValue && track.Position.HasValue)

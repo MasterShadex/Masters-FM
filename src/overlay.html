@@ -2747,6 +2747,26 @@ function applyServerUpdate(d) {
   }
 }
 
+// v14: unobtrusive "waiting for server" hint, shown only after the SSE has been
+// unreachable for ~4s (2 retries), hidden the instant any data flows. Created lazily so
+// it adds nothing to the normal transparent overlay; pointer-events:none so it never
+// affects OBS interaction or transparency.
+let _sseFailCount = 0;
+let _mfmWaitEl = null;
+function _mfmShowWaiting() {
+  if (!_mfmWaitEl) {
+    _mfmWaitEl = document.createElement('div');
+    _mfmWaitEl.id = 'mfm-waiting';
+    _mfmWaitEl.style.cssText = 'position:fixed;left:12px;bottom:10px;z-index:9999;pointer-events:none;'
+      + "font:12px/1.3 'Segoe UI',system-ui,sans-serif;color:rgba(255,255,255,.78);"
+      + 'background:rgba(0,0,0,.45);padding:4px 9px;border-radius:6px;text-shadow:0 1px 2px rgba(0,0,0,.6);';
+    _mfmWaitEl.textContent = "Master's FM: waiting for server...";
+    (document.body || document.documentElement).appendChild(_mfmWaitEl);
+  }
+  _mfmWaitEl.style.display = 'block';
+}
+function _mfmHideWaiting() { _sseFailCount = 0; if (_mfmWaitEl) _mfmWaitEl.style.display = 'none'; }
+
 let _sse = null;
 // Flag set whenever we (re)connect to SSE — tells applyServerUpdate that the
 // next payload should force-refresh the album art even if the URL is the same
@@ -2759,12 +2779,14 @@ function connectSSE() {
   try { if (_sse) _sse.close(); } catch {}
   _sse = new EventSource('/events');
   _sse.onopen = () => {
+    _mfmHideWaiting();   // v14: server reachable -> hide the waiting hint
     // Mark for force-refresh on next payload (covers initial connect and
     // reconnects after server restart / network blip).
     _sseNeedsArtRefresh = true;
     overlayLog('INFO', 'SSE connected — art will force-refresh on next update');
   };
   _sse.onmessage = e => {
+    _mfmHideWaiting();   // v14: any payload means the server is up
     try { applyServerUpdate(e.data ? JSON.parse(e.data) : null); }
     catch (err) { overlayLog('ERROR', `SSE onmessage parse/apply failed: ${err.message} (${e.data ? e.data.slice(0,120) : 'empty'})`); }
   };
@@ -2849,6 +2871,8 @@ function connectSSE() {
   });
   _sse.onerror = () => {
     // Browser auto-reconnects by default; on permanent failure force a new connection after 2 s.
+    // v14: after ~2 consecutive failures (~4s) show a small hint instead of a blank overlay.
+    if (++_sseFailCount >= 2) _mfmShowWaiting();
     try { _sse.close(); } catch {}
     setTimeout(connectSSE, 2000);
   };

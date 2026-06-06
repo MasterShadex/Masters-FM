@@ -364,7 +364,13 @@ public sealed class SmtcEventBridge : IDisposable
             IsSeek = isSeek,
             ArtUri = artUri,
             PlatformIdentity = saumid,
-            ObservedUtc = ev.UtcTime
+            ObservedUtc = ev.UtcTime,
+            // v14 run-ahead fix: carry the RAW snapshot position + its LastUpdatedTime so the
+            // heartbeat can interpolate a live position between sparse SMTC events.
+            AnchorPositionMs = snap.PositionMs,
+            AnchorUpdatedUtc = (snap.HasTimeline && snap.LastUpdatedTimeUtcTicks > 0)
+                ? new DateTime(snap.LastUpdatedTimeUtcTicks, DateTimeKind.Utc)
+                : (DateTime?)ev.UtcTime
         };
 
         _resolver.OnTrackChanged(update);
