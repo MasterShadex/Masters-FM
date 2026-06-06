@@ -2257,12 +2257,18 @@ const tick = () => {
 // for the rare case where the spectrum is disabled in config.
 let _timerActive = false;
 const startTimer = () => {
-  stopTimer();
+  // v14 Phase 7 fix: idempotent. Previously this did stopTimer() (clearInterval the
+  // 250ms watchdog) then setInterval again on EVERY call. Phase-4 #4 calls startTimer()
+  // on every non-paused server push, and the tray heartbeat fires ~16-20/s, so the
+  // watchdog was torn down + rebuilt every ~60ms and NEVER reached its 250ms deadline --
+  // starving the only steady clock source and FREEZING the displayed time (it then jumped
+  // to catch up when the spectrum loop happened to paint). Now: set active, paint once,
+  // and (re)create the watchdog ONLY if one is not already running, so it ticks
+  // continuously during playback. stopTimer() still clears+nulls `timer` on pause, so the
+  // !timer guard correctly recreates it on the next resume.
   _timerActive = true;
   tick();
-  // Interval is a tiny watchdog — if rAF isn't painting (e.g. spectrum off
-  // and the tab isn't focused), this still nudges the clock 4×/s.
-  timer = setInterval(tick, 250);
+  if (!timer) timer = setInterval(tick, 250);
 };
 const stopTimer = () => {
   _timerActive = false;
