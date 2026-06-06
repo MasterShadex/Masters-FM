@@ -331,7 +331,11 @@ internal sealed class ObsSceneFileEditor
                 ["width"]                  = width,
                 ["height"]                 = height,
                 ["fps"]                    = fps,
-                ["fps_custom"]             = false,
+                // v14: custom frame rate ON so the browser source renders at its OWN fps
+                // (decoupled from the OBS output/canvas fps). With fps_custom=false OBS
+                // ties the source to the output fps, so a 30 fps output throttled the
+                // overlay to 30 fps even though the page renders at 120. true = smooth.
+                ["fps_custom"]             = true,
                 ["css"]                    = css,
                 ["shutdown"]               = false,
                 ["restart_when_active"]    = false,

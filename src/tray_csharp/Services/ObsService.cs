@@ -563,6 +563,7 @@ public sealed class ObsService : IObsService, IDisposable
                 width  = 1000,
                 height = 200,
                 fps    = 60,
+                fps_custom = true,   // v14: decouple from OBS output fps -> source renders at 60 even if OBS output is lower
                 css    = "body { background-color: rgba(0,0,0,0) !important; margin: 0; overflow: hidden; }"
             },
             sceneItemEnabled = true
