@@ -209,8 +209,13 @@ internal sealed class ArtCascade
             _logger.LogInformation("ArtCascade: no art found for {Artist} - {Track} (source={SrcPlat})",
                 artist, track, source ?? "(none)");
 
-        _cache.Set(key,      primaryArt);
-        _cache.Set(keyHttps, httpsArt);
+        _cache.Set(key, primaryArt);
+        // v14 Phase 5: do NOT cache an EMPTY httpsArt. Caching empty would make a later retry
+        // (for a browser source that first got only a data: icon) short-circuit to the cached
+        // empty result forever. Leaving it uncached lets a bounded retry re-walk the remote
+        // sources for an HTTPS cover. A non-empty httpsArt IS cached (stable once found). The
+        // per-track retry cap (ServerState.ArtHttpsRetries) bounds the cost of the re-walks.
+        if (!string.IsNullOrEmpty(httpsArt)) _cache.Set(keyHttps, httpsArt);
         return (primaryArt, httpsArt);
     }
 

@@ -32,6 +32,10 @@ public class ServerState
     // Accessed only inside WebhookLock -- no additional locking needed.
     public bool ArtResolved;
     public bool ArtResolving;
+    // v14 Phase 5: bounded HTTPS-cover retry counter for browser sources whose first cascade
+    // returned only a data: icon (no HTTPS cover). Reset to 0 on each new track; the B11 guard
+    // caps it so the heartbeat cannot spam the multi-source cascade. Accessed under WebhookLock.
+    public int ArtHttpsRetries;
 
     // ── Timestamp diagnostic counter ──────────────────────────────────────────
     // Mirrors server.js: _tsDiagCount, logged every 5 ticks.

@@ -231,6 +231,7 @@ internal static class WebhookHandler
                 state.CurrentTrack = newTrack;
                 state.ArtResolved  = false;
                 state.ArtResolving = true;
+                state.ArtHttpsRetries = 0;   // v14 Phase 5: fresh HTTPS-retry budget per track
                 // Phase M #1A: new track = fresh cooldown window.  First seek
                 // / drift correction on this track always applies; subsequent
                 // ones within MinResyncIntervalMs are suppressed.
@@ -466,11 +467,21 @@ internal static class WebhookHandler
                 // Guard: !artResolved && !artResolving && isValidArt(data.trackArt) && !currentTrack.trackArt
                 // Read art from ct2 (already a clone) to avoid an extra DeepClone via the getter
                 var curArt = (string?)ct2["trackArt"];
+                var curArtHttps = (string?)ct2["trackArtHttps"] ?? string.Empty;
+                // v14 Phase 5: a browser source may have only a data: icon stored (curArt is data:,
+                // trackArtHttps empty). Let B11 re-attempt HTTPS resolution in that case too, bounded
+                // by ArtHttpsRetries so the 1s heartbeat cannot spam the multi-source cascade.
+                bool wantHttpsRetry = !string.IsNullOrEmpty(curArt)
+                    && curArt.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrEmpty(curArtHttps)
+                    && IsBrowserLikeSource(source)
+                    && state.ArtHttpsRetries < 3;
                 if (!state.ArtResolved && !state.ArtResolving
                     && IsValidArt(webhookArt)
-                    && string.IsNullOrEmpty(curArt))
+                    && (string.IsNullOrEmpty(curArt) || wantHttpsRetry))
                 {
                     state.ArtResolving = true;
+                    if (wantHttpsRetry) state.ArtHttpsRetries++;
                     // Fire background task -- NOT awaited (mirrors JS .then() pattern)
                     // Lock released before this task runs its async work.
                     _ = ArtRetryAsync(state, artCascade, discordRpcService, artist, track, webhookArt, originUrl, source, logger);
@@ -531,7 +542,14 @@ internal static class WebhookHandler
                     state.CurrentTrack = trackClone;
                     // Only mark resolved when we actually got art; if empty, leave false so
                     // B11 art-retry can fire on a subsequent heartbeat that carries valid art.
-                    state.ArtResolved  = !string.IsNullOrEmpty(art);
+                    // v14 Phase 5: ALSO leave it false for a browser source that got only a data:
+                    // icon and no HTTPS cover, so the bounded B11 retry keeps trying to resolve an
+                    // HTTPS cover (e.g. via the now-ungated YouTubeSource) on later heartbeats.
+                    bool gotPrimaryNew = !string.IsNullOrEmpty(art);
+                    bool browserIconOnly = gotPrimaryNew && string.IsNullOrEmpty(artHttps)
+                        && IsBrowserLikeSource(source)
+                        && (art ?? string.Empty).StartsWith("data:", StringComparison.OrdinalIgnoreCase);
+                    state.ArtResolved  = gotPrimaryNew && !browserIconOnly;
                     logger.LogInformation(
                         "Track ready -- art: {ArtStatus} (httpsArt: {HttpsStatus})  duration: {DurStatus}",
                         string.IsNullOrEmpty(art) ? "no" : "yes",
@@ -582,7 +600,18 @@ internal static class WebhookHandler
             var (art, artHttps) = await artCascade.ResolveAsync(
                 artist, track, webhookArt, originUrl, source, CancellationToken.None);
 
-            if (!string.IsNullOrEmpty(art))
+            // v14 Phase 5: "usable" = a real HTTPS cover OR a non-data: primary art. For BROWSER
+            // sources a bare data: icon is NOT usable (keep it but do not latch, so a bounded retry
+            // can keep trying for an HTTPS cover -- capped by ArtHttpsRetries in the B11 guard). For
+            // non-browser sources, behavior is unchanged: any non-empty art is terminal.
+            bool isBrowserRetry = IsBrowserLikeSource(source);
+            bool usable = isBrowserRetry
+                ? (!string.IsNullOrEmpty(artHttps)
+                   || (!string.IsNullOrEmpty(art)
+                       && !art.StartsWith("data:", StringComparison.OrdinalIgnoreCase)))
+                : (!string.IsNullOrEmpty(art) || !string.IsNullOrEmpty(artHttps));
+
+            if (!string.IsNullOrEmpty(art) || !string.IsNullOrEmpty(artHttps))
             {
                 await state.WebhookLock.WaitAsync(CancellationToken.None);
                 try
@@ -594,8 +623,12 @@ internal static class WebhookHandler
                         retryClone["trackArt"]      = JsonValue.Create(art);
                         retryClone["trackArtHttps"] = JsonValue.Create(artHttps);
                         state.CurrentTrack = retryClone;
-                        state.ArtResolved = true;
-                        logger.LogInformation("Art updated from webhook retry");
+                        // Latch resolved only on a usable result; an icon-only browser result leaves
+                        // it false so a further bounded retry can run (capped by ArtHttpsRetries).
+                        state.ArtResolved = usable;
+                        logger.LogInformation(
+                            "Art updated from webhook retry (usable={Usable}, https={Https})",
+                            usable, string.IsNullOrEmpty(artHttps) ? "no" : "yes");
                     }
                 }
                 finally
@@ -609,13 +642,12 @@ internal static class WebhookHandler
             }
             else
             {
-                // Art retry found nothing. Mark ArtResolved=true so the B11 guard stops
+                // Art retry found nothing at all. Mark ArtResolved=true so the B11 guard stops
                 // re-triggering this retry every heartbeat. Without this circuit-breaker the
-                // server accumulates parallel cascade tasks (11 HTTP sources × 1s heartbeat
+                // server accumulates parallel cascade tasks (multiple HTTP sources × 1s heartbeat
                 // cadence) causing unbounded memory growth.
                 // ArtResolved resets to false on the next distinct track, so a fresh cascade
-                // will run for each new title. The ArtCascade LRU also caches "not-found"
-                // so a re-trigger before the track changes exits immediately from cache.
+                // will run for each new title.
                 await state.WebhookLock.WaitAsync(CancellationToken.None);
                 try { state.ArtResolving = false; state.ArtResolved = true; }
                 finally { state.WebhookLock.Release(); }

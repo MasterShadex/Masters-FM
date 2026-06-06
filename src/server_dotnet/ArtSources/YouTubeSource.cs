@@ -40,7 +40,13 @@ internal sealed class YouTubeSource : IArtSource
         {
             // from server.js:783: only fires for YouTube source tracks
             var sourceLower = (source ?? string.Empty).ToLowerInvariant();
-            if (!sourceLower.Contains("youtube", StringComparison.Ordinal)) return string.Empty;
+            // server.js originally fired only for source.includes("youtube"). v14 Phase 5: ALSO fire
+            // for a generic "browser" source -- a YouTube tab frequently reports source="browser"
+            // when the tray cannot identify the site from the window title. YouTubeSource is the LAST
+            // HTTPS provider in the browser route (music DBs run first), so this only adds a
+            // last-resort YouTube-search thumbnail for browser audio the music DBs did not resolve.
+            if (!sourceLower.Contains("youtube", StringComparison.Ordinal)
+                && sourceLower != "browser") return string.Empty;
 
             // from server.js:577: build search query
             var q = $"{cleanedArtist} {cleanedTrack}".Trim();
