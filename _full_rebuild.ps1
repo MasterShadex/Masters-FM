@@ -547,7 +547,14 @@ try {
     Copy-Item $msi (Join-Path $bundleDir $msiVersioned) -Force
     L "  Bundle: $msiVersioned"
     $batSrc = Join-Path $root "Master's FM Install\INSTALL.bat"
-    if (Test-Path $batSrc) { Copy-Item $batSrc (Join-Path $bundleDir 'INSTALL.bat') -Force; L "  Bundle: INSTALL.bat" }
+    if (Test-Path $batSrc) {
+        # v14: force CRLF on the shipped .bat -- cmd.exe mis-parses LF-only batch
+        # files (a prior bundle shipped LF-only and silently failed on friends:
+        # "X is not recognized" burst, then the window closed with nothing installed).
+        $batTxt = [IO.File]::ReadAllText($batSrc) -replace "`r`n","`n" -replace "`n","`r`n"
+        [IO.File]::WriteAllText((Join-Path $bundleDir 'INSTALL.bat'), $batTxt, (New-Object System.Text.UTF8Encoding $false))
+        L "  Bundle: INSTALL.bat (CRLF-normalized)"
+    }
     $cerSrc = Join-Path $root 'build_tools\signing\MastersFM_publisher.cer'
     if (Test-Path $cerSrc) { Copy-Item $cerSrc (Join-Path $bundleDir 'MastersFM_publisher.cer') -Force; L "  Bundle: MastersFM_publisher.cer" }
 
