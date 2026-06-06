@@ -136,7 +136,7 @@ L "  preflight: VBCSCompiler pre-killed (if any were running)"
 # Step 1: server.exe -- .NET ASP.NET Core (Stage 4; legacy Node.js+pkg path retired in Stage 8).
 L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
 $svOut = Join-Path $root 'dist\server_dotnet_release'
-$svArgs = "publish `"$root\src\server_dotnet\server_dotnet.csproj`" -r win-x64 --self-contained false " +
+$svArgs = "publish `"$root\src\server_dotnet\server_dotnet.csproj`" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true " +
           "-p:PublishReadyToRun=true -c Release -o `"$svOut`" --nologo -v quiet"
 $sv = Start-Process -FilePath 'dotnet' -ArgumentList $svArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
 if ($sv.ExitCode -eq 0) {
@@ -155,7 +155,7 @@ if ($sv.ExitCode -eq 0) {
     # Sign server.exe and server.dll -- unsigned .NET PE files can trigger Defender on first scan
     $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
     if (Test-Path $signScript) {
-        foreach ($sf in @('server.exe','server.dll')) {
+        foreach ($sf in @('server.exe')) {
             $sfPath = Join-Path $root $sf
             try {
                 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
@@ -182,7 +182,7 @@ $pubOut = Join-Path $root 'dist\launcher_net8'
 # (Stage 8 investigation: S4 final fix, 2026-05-09)
 $pubTmp = 'G:\lnch_pub_tmp'
 if (Test-Path $pubTmp) { Remove-Item $pubTmp -Recurse -Force -ErrorAction SilentlyContinue }
-$dpOut = & dotnet publish “$root\src\launcher.csproj” -r win-x64 --self-contained false `
+$dpOut = & dotnet publish “$root\src\launcher.csproj” -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
     -p:PublishReadyToRun=true -c Release -o $pubTmp --nologo -v quiet 2>&1
 $dpExit = $LASTEXITCODE
 if ($dpExit -eq 0) {
@@ -208,7 +208,7 @@ L "[1c/5] Building customize.exe (WebView2 host)..."
 $czOut = Join-Path $root 'dist\customize_net8'
 $czTmp = 'G:\cz_pub_tmp'
 if (Test-Path $czTmp) { Remove-Item $czTmp -Recurse -Force -ErrorAction SilentlyContinue }
-$czOut2 = & dotnet publish "$root\src\customize.csproj" -r win-x64 --self-contained false `
+$czOut2 = & dotnet publish "$root\src\customize.csproj" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
     -p:PublishReadyToRun=true -c Release -o $czTmp --nologo -v quiet 2>&1
 $czExit = $LASTEXITCODE
 if ($czExit -eq 0) {
@@ -228,7 +228,7 @@ if ($czExit -eq 0) {
     # be flagged by Defender on first scan (same as tray_native.dll + audio_spectrum.dll pattern).
     $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
     if (Test-Path $signScript) {
-        foreach ($sf in @('customize.exe','customize.dll')) {
+        foreach ($sf in @('customize.exe')) {
             $sfPath = Join-Path $root $sf
             try {
                 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }
@@ -276,7 +276,7 @@ $trayCsTmp  = 'G:\tray_pub_tmp'
 if (Test-Path $trayCsTmp) { Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue }
 # Multi-file + R2R: small stub exe + apphost + .dll + .runtimeconfig.json + pinned NuGet DLLs.
 $trayCsOut2 = & dotnet publish "$root\src\tray_csharp\MastersFM_Tray_v14.csproj" -r win-x64 `
-    --self-contained false -p:PublishReadyToRun=true -c Release -o $trayCsTmp --nologo -v quiet 2>&1
+    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishReadyToRun=true -c Release -o $trayCsTmp --nologo -v quiet 2>&1
 $trayCsExit = $LASTEXITCODE
 if ($trayCsExit -eq 0) {
     if (-not (Test-Path $trayCsOut)) { New-Item -ItemType Directory -Path $trayCsOut -Force | Out-Null }
@@ -306,7 +306,7 @@ $cleanupOut = Join-Path $root 'dist\obs_cleanup_release'
 $cleanupTmp = 'G:\cleanup_pub_tmp'
 if (Test-Path $cleanupTmp) { Remove-Item $cleanupTmp -Recurse -Force -ErrorAction SilentlyContinue }
 $cleanupResult = & dotnet publish "$root\src\obs_cleanup\MastersFM_ObsCleanup.csproj" -r win-x64 `
-    --self-contained false -c Release -o $cleanupTmp --nologo -v quiet 2>&1
+    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -c Release -o $cleanupTmp --nologo -v quiet 2>&1
 $cleanupExit = $LASTEXITCODE
 if ($cleanupExit -eq 0) {
     if (-not (Test-Path $cleanupOut)) { New-Item -ItemType Directory -Path $cleanupOut -Force | Out-Null }
@@ -329,7 +329,7 @@ L "[1d2/5] Building audio_spectrum.exe (WASAPI loopback)..."
 $asOut = Join-Path $root 'dist\audio_spectrum_net8'
 $asTmp = 'G:\as_pub_tmp'
 if (Test-Path $asTmp) { Remove-Item $asTmp -Recurse -Force -ErrorAction SilentlyContinue }
-$asOut2 = & dotnet publish "$root\src\audio_spectrum.csproj" -r win-x64 --self-contained false `
+$asOut2 = & dotnet publish "$root\src\audio_spectrum.csproj" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
     -p:PublishReadyToRun=true -c Release -o $asTmp --nologo -v quiet 2>&1
 $asExit = $LASTEXITCODE
 if ($asExit -eq 0) {
@@ -347,7 +347,7 @@ if ($asExit -eq 0) {
     # be flagged by Defender on first scan (same as tray_native.dll pattern).
     $signScript = Join-Path $root 'build_tools\signing\_sign_msi.ps1'
     if (Test-Path $signScript) {
-        foreach ($sf in @('audio_spectrum.exe','audio_spectrum.dll')) {
+        foreach ($sf in @('audio_spectrum.exe')) {
             $sfPath = Join-Path $root $sf
             try {
                 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -MsiPath $sfPath 2>&1 | ForEach-Object { L "    $_" }

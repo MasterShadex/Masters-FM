@@ -238,6 +238,20 @@ if os.path.exists(_cleanup_exe_path):
     ]
     CLEANUP_FILES = [(s, d, g) for s, d, g in _all_cleanup if os.path.exists(os.path.join(SRC, s))]
 
+# v14: self-contained single-file publish bundles each app's satellite DLLs + the whole
+# .NET runtime INTO its .exe, so the old per-DLL manifest rows (WebView2 x3, NAudio x4,
+# System.* facades x7, and the per-app .dll/.deps.json/.runtimeconfig.json) no longer
+# exist on disk. Filter FILES + CLEANUP_FILES to sources that actually exist so makecab
+# and the File table never reference a missing file. Print every drop so the prune is
+# VISIBLE in the build log (SE2 scan), never silent.
+_dropped = [s for (s, d, g) in (FILES + CLEANUP_FILES) if not os.path.exists(os.path.join(SRC, s))]
+FILES         = [(s, d, g) for (s, d, g) in FILES         if os.path.exists(os.path.join(SRC, s))]
+CLEANUP_FILES = [(s, d, g) for (s, d, g) in CLEANUP_FILES if os.path.exists(os.path.join(SRC, s))]
+if _dropped:
+    print("[build_msi] v14 self-contained: dropped %d missing source(s) (bundled into exes / not built):" % len(_dropped))
+    for _d in _dropped:
+        print("    - " + _d)
+
 MSIDBOPEN_CREATE = ctypes.c_wchar_p(3)
 
 msi_dll = ctypes.WinDLL("msi.dll")

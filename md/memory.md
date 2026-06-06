@@ -6930,3 +6930,42 @@ STILL NEEDED (root; FULL .NET rebuild; briefly restarts Master's FM + OBS overla
   - These can FOLD into the operator-approved self-contained-everything rebuild (Gabby runtime fix) = ONE cold build for both.
 
 OPEN (separate, parked): Gabby friend-machine fixes -- INSTALL.bat CRLF (DONE, shipped) + server.exe self-contained-everything (APPROVED, build-system plan from workflow wkvdp02h5 NOT yet applied: csproj SelfContained=true + PublishSingleFile per component, build_msi.py single-file harvest, launcher.cs crash-surfacing, overlay offline placeholder).
+## 2026-06-06 15:23 -- OVERLAY SMOOTHNESS / fps: root = OBS output 30fps + browser-source fps_custom=false (NOT the data rate). Code fix committed (needs rebuild) + immediate OBS steps.
+
+Operator: overlay "sluggish", "data sent to OBS / localhost:4242 not 60 or 120fps". Diagnosed LIVE on Master PC (Chrome MCP + config reads).
+FINDINGS (data + render are NOT the bottleneck):
+  - Spectrum SSE from audio_spectrum.exe (:4243/spectrum?fps=2000) measured LIVE = ~1353 messages/sec (firehose). audio_spectrum publishes ~120fps+ (8ms loop, HOP=24 FFT ~2000/sec); overlay decodes only the latest per draw.
+  - overlay.html drawSpectrum renders at cfg.spectrum.fps (=120; cap 480) -- in a browser via rAF (monitor refresh), in OBS via setInterval(8ms)=120fps which BYPASSES the OBS rAF throttle (_inOBS = /OBS/i.test(UA), overlay.html ~3208-3213, 3622-3645, 3793-3798). So internal render is already 120fps.
+ROOT CAUSE (OBS capture/output rate):
+  - OBS OUTPUT fps = 30 (basic.ini [Video] FPSType=0 FPSCommon=30). This is the HARD CAP for the recorded/streamed overlay -- the overlay CANNOT appear smoother than the OBS output fps. Physics, not a bug.
+  - The auto-added Master's FM browser source had fps_custom=false (ObsSceneFileEditor.cs:334 + ObsService.cs CreateInput had no fps_custom) -> OBS ties the source render rate to the output fps -> source captured at 30fps even though the page renders 120.
+FIX SHIPPED (code, needs TRAY REBUILD to take effect; commit on local main):
+  - ObsSceneFileEditor.cs:334 fps_custom false->true; ObsService.cs CreateInput inputSettings added fps_custom=true (fps stays 60). Source now renders at its own 60fps decoupled from the OBS output fps. (fps value still 60 -- universal + friend-light; operator can go 120.)
+IMMEDIATE OPERATOR STEPS (no rebuild, instant on current install):
+  1. OBS Settings -> Video -> Common FPS Values -> 60 (THE real smoothness cap; raises output 30->60).
+  2. OBS: right-click "Master's FM" source -> Properties -> check "Use custom frame rate" -> 60 (or 120). (This is exactly what the code fix automates for future adds/friends.)
+NOTES: config spectrum.fps=120, smoothing=0, barCount=480 (very high -- 480 bars/frame is a GPU/perf lever; audio_spectrum only sends 120 bands so 480 is 4x upsampled; lower it for headroom on weak machines). localhost:4242/ in a FOREGROUND browser should already be 60+fps (monitor refresh); rAF=0 measured earlier was only because the tab was backgrounded (browsers pause rAF when hidden).
+This fps_custom code fix folds into the SAME queued tray rebuild as: freeze tray-interpolation root fix + self-contained-everything (Gabby). Commits this session on main: a23f166 (overlay freeze) + cd990a1 (INSTALL.bat CRLF) + this fps_custom commit.
+## 2026-06-06 15:53 -- SELF-CONTAINED EVERYTHING build SHIPPED for Gabby (no .NET runtime needed on any fresh machine). Validated live.
+
+Operator chose "everything self-contained" (bulletproof) + said build it to send to Gabby. DONE + live-validated on Master PC. version stays 14.0.0, NO push.
+
+WHAT CHANGED (all via CLI flags + 3 tiny edits; csprojs untouched):
+  - _full_rebuild.ps1: all 6 dotnet publish lines (server/launcher/customize/tray/obs_cleanup/audio_spectrum) flipped --self-contained false -> "--self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true". Dropped the now-nonexistent .dll from the 3 per-app signing loops (server/customize/audio) so SE2 stays clean. The commented bootstrapper line (507) left untouched.
+  - build_tools/build_msi.py: after FILES+CLEANUP_FILES are built, added a filter that drops any source that does not exist on disk (so the bundled-away satellite DLLs/.deps.json/.runtimeconfig.json never break makecab/File-table) + prints every drop (visible, not silent).
+  - src/launcher.cs: Icon.ExtractAssociatedIcon now uses Environment.ProcessPath instead of Assembly.GetEntryAssembly().Location (empty under single-file).
+  - Rides along (already committed earlier): overlay freeze self-heal (a23f166), OBS fps_custom (050fd3a), INSTALL.bat CRLF (cd990a1).
+
+DE-RISK: dry-published all 5 to temp first -- ALL build single-file exit 0 (server 49 / launcher 72 / customize 73 / audio 36 / tray 94 MB; each ONE .exe -- WebView2/NAudio/System.* all bundled in).
+
+COLD REBUILD: exit 0, REBUILD DONE OK, SE2 CLEAN. All 6 signed Valid CN=MasterShadex. MSI created+signed+installed OK. CAB = 64 files, 418MB->347MB (82.87% LZX).
+
+LIVE-VALIDATED on Master PC (all running self-contained): server.exe (48.8MB) bound 4242 + serving YouTube; MastersFM_Tray.exe (94.3MB, WPF single-file -- the high-risk one) BOOTED (450MB WS); customize 72.5 / launcher 72 / audio 35.7 running. PROOF the self-contained bundle is authoritative: server.exe runs bound-4242 WITH a stale framework-dependent server.runtimeconfig.json present in the install dir -> the single-file bundle ignores loose files, so self-contained works regardless of leftovers.
+
+FRIEND BUNDLE (Desktop\MastersFM_Installer -- SEND TO GABBY): "Master's FM V14.0.0-RC.1.msi" = 331.5 MB self-contained, signature Valid CN=MasterShadex; INSTALL.bat CRLF (CR=203/LF=203); MastersFM_publisher.cer. version.json RESTORED to baseline msi_sha256 7dcd4e34 (auto-updater untouched).
+
+KNOWN (cosmetic, harmless): 35 stale loose framework-dependent files (~7.6MB: server.dll/deps/runtimeconfig, WebView2, NAudio, System.* facades, etc.) lingered at ROOT+dist from the prior framework-dependent build + got bundled (build_msi filter keeps them since they exist on disk). The running self-contained exes IGNORE them (proven). FOLLOW-UP (not done -- avoids a 2nd disruptive rebuild for ~2% MSI): add a ROOT+dist\\*_release staging-clean step to _full_rebuild.ps1 before build_msi so future builds are clean.
+
+CAVEAT for Gabby: customize.exe (Customize window) still needs the Edge WebView2 RUNTIME (a separate OS Evergreen component, present on Win10/11 generally) -- self-contained does NOT bundle it. The overlay + server + tray do NOT need it, so her blank-OBS (server) IS fixed; only the customize window would fail if she lacks the WebView2 runtime.
+
+STILL DEFERRED: tray live-SMTC-interpolation root fix for the YouTube progress-bar RUN-AHEAD (the overlay freeze itself is fixed + shipped; run-ahead is a separate, lower-priority accuracy fix for a later validated build).

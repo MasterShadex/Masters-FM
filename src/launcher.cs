@@ -530,8 +530,11 @@ class MastersFM
         // Load own icon from the exe's resource so the Shell sees a proper
         // app icon attached to the window (important for app-grouping visual
         // output in Task Manager).
+        // v14: Environment.ProcessPath returns the real apphost .exe path under BOTH
+        // single-file and framework-dependent publish (Assembly.GetEntryAssembly().Location
+        // is EMPTY under single-file, which would make ExtractAssociatedIcon throw).
         try { hiddenForm.Icon = System.Drawing.Icon.ExtractAssociatedIcon(
-            System.Reflection.Assembly.GetEntryAssembly().Location); } catch { }
+            Environment.ProcessPath); } catch { }
         // Force the HWND to exist NOW so we can attach AUMID before
         // Application.Run even starts.
         IntPtr hwnd = hiddenForm.Handle;
