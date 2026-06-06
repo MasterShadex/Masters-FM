@@ -1536,7 +1536,7 @@
               pickerId: 'c-prog-f2-p', cssTarget: null, default: '#c040ff' },
             { id: 'c-ts-size', help: 'Font size of the time text.', type: 'slider', supercat: 'text', label: 'Timestamp size',
               cssTarget: null, default: 46, min: 20, max: 80, step: 2, unit: 'px' },
-            { id: 'c-ts-color', type: 'colorPair', supercat: 'text', label: 'Timestamp color',
+            { id: 'c-ts-color', help: 'Color of the elapsed and remaining time text shown with the progress bar.', type: 'colorPair', supercat: 'text', label: 'Timestamp color',
               pickerId: 'c-ts-color-p', cssTarget: null, default: 'var(--accent-master)' },
 
             // ===== OUTER GLOW (supercat: effects; first/second color are advanced) =====
@@ -1558,8 +1558,8 @@
               pickerId: 'c-np-glow-color-p', cssTarget: null, default: '#c060ff' },
             { id: 'c-np-glow-size', help: 'Soft halo around the Now Playing label. Set to 0 to hide.', type: 'slider', supercat: 'effects', advanced: true, label: 'Now Playing glow size',
               cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
-            { id: 'c-platform-glow-on', type: 'toggle', supercat: 'effects', label: 'Platform badge glow', cssTarget: null, default: false },
-            { id: 'c-platform-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Platform glow color',
+            { id: 'c-platform-glow-on', help: 'Adds a soft halo to the platform badge -- the small label showing the streaming source like SoundCloud.', type: 'toggle', supercat: 'effects', label: 'Platform badge glow', cssTarget: null, default: false },
+            { id: 'c-platform-glow-color', help: 'Color of the halo around the platform badge.', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Platform glow color',
               pickerId: 'c-platform-glow-color-p', cssTarget: null, default: '#c8a0ff' },
             { id: 'c-platform-glow-size', help: 'Soft halo around the platform badge. Set to 0 to hide.', type: 'slider', supercat: 'effects', advanced: true, label: 'Platform glow size',
               cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
@@ -1573,7 +1573,7 @@
               pickerId: 'c-artist-glow-color-p', cssTarget: null, default: '#80c0ff' },
             { id: 'c-artist-glow-size', help: 'Soft halo around the artist name. Set to 0 to hide.', type: 'slider', supercat: 'effects', advanced: true, label: 'Artist glow size',
               cssTarget: null, default: 6, min: 0, max: 60, step: 2, unit: 'px' },
-            { id: 'c-ts-glow-on', type: 'toggle', supercat: 'effects', label: 'Timestamps glow', cssTarget: null, default: false },
+            { id: 'c-ts-glow-on', help: 'Adds a soft halo to the elapsed and remaining time text.', type: 'toggle', supercat: 'effects', label: 'Timestamps glow', cssTarget: null, default: false },
             { id: 'c-ts-glow-color', type: 'colorPair', supercat: 'effects', advanced: true, label: 'Timestamps glow color',
               pickerId: 'c-ts-glow-color-p', cssTarget: null, default: '#e090ff' },
             { id: 'c-ts-glow-size', help: 'Soft halo around the time text. Set to 0 to hide.', type: 'slider', supercat: 'effects', advanced: true, label: 'Timestamps glow size',
@@ -1646,10 +1646,10 @@
               cssTarget: null, default: 120, min: 30, max: 120, step: 10, unit: 'fps' },
 
             // ===== PLATFORM BADGE (entire section is advanced per markAdvancedElements) =====
-            { id: 'c-platform-on', type: 'toggle', supercat: 'layout', advanced: true, label: 'Platform badge enabled', cssTarget: null, default: true },
+            { id: 'c-platform-on', help: 'Show or hide the platform badge -- the small label that names the streaming source like SoundCloud.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Platform badge enabled', cssTarget: null, default: true },
             { id: 'c-platform-sc-label', help: 'Override the badge text when SoundCloud is the source.', type: 'text', supercat: 'layout', advanced: true, label: 'SoundCloud label text',
               cssTarget: null, default: 'SoundCloud', placeholder: 'SoundCloud' },
-            { id: 'c-platform-color', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform color',
+            { id: 'c-platform-color', help: 'Text color of the platform badge that names the streaming source.', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform color',
               pickerId: 'c-platform-color-p', cssTarget: null, default: 'var(--accent-master)' },
             { id: 'c-platform-dot', help: 'Color of the small status dot on the platform badge.', type: 'colorPair', supercat: 'layout', advanced: true, label: 'Platform dot color',
               pickerId: 'c-platform-dot-p', cssTarget: null, default: 'var(--accent-master)' },
@@ -1674,7 +1674,7 @@
               cssTarget: null, default: ['#ff1085','#ff60c8','#d040ff','#8020e0','#4a0ab8'] },
 
             // ===== LAYOUT (entire section is advanced) =====
-            { id: 'c-layout-on', help: 'Enables drag-to-move positioning of each overlay element.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout editor enabled', cssTarget: null, default: false },
+            { id: 'c-layout-on', help: 'Applies element positions from an imported layout preset. This version has no drag editor yet, so it only affects configs that already include layout geometry.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout editor enabled', cssTarget: null, default: false },
             { id: 'c-layout-grid', help: 'Snap-to-grid spacing for the layout editor.', type: 'select', supercat: 'layout', advanced: true, label: 'Layout grid size',
               cssTarget: null, default: '8',
               options: [
@@ -1742,6 +1742,30 @@
             { key: 'layout',    icon: '📐', label: 'Layout' },
             { key: 'anim',      icon: '🎬', label: 'Slide-in animation' }
         ];
+
+        // v14 Phase 6: explicit per-category control ORDER (logical: primary controls first,
+        // enable-toggle before the options it gates, advanced/rarely-used last). renderAllControls
+        // renders these in order, then any control not listed here (safety fallback), skipping
+        // HIDDEN_CONTROLS. Replaces "within-category order == SETTINGS_CONFIG order".
+        const CAT_ORDER = {
+            general:  ['c-theme','c-master-accent-color','c-font','c-master-overall-size','c-master-text-size','c-overlay-opacity','c-master-glow','c-master-animations'],
+            card:     ['c-card-top','c-card-bot','c-card-angle','c-card-radius','c-card-thick','c-card-opacity','c-card-blur'],
+            art:      ['c-art-on','c-art-position','c-art-w','c-art-fade'],
+            np:       ['c-np-text','c-np-size','c-np-color','c-np-spacing','c-bars-on','c-bars-color','c-bars-count','c-bars-speed','c-keep-on-pause'],
+            platform: ['c-platform-on','c-platform-color','c-platform-size','c-platform-weight','c-platform-dot','c-platform-sc-label','c-platform-spacing'],
+            text:     ['c-title-size','c-title-weight','c-title-color','c-title-mspd','c-title-spacing','c-title-mpause','c-artist-size','c-artist-weight','c-artist-color','c-artist-mspd','c-artist-spacing','c-artist-mpause'],
+            spectrum: ['c-spec-on','c-spec-mode','c-spec-color','c-spec-bars','c-spec-gap','c-spec-radius','c-spec-height','c-spec-min','c-spec-opacity','c-spec-mirror','c-spec-sensitivity','c-spec-sensitivity-reset','c-spec-autogain','c-spec-response','c-spec-smooth','c-spec-fps'],
+            progress: ['c-prog-on','c-prog-f0','c-prog-f1','c-prog-f2','c-prog-track','c-prog-h','c-prog-radius','c-ts-size','c-ts-color'],
+            glow:     ['c-glow-on','c-glow-int','c-glow-pulse','c-glow-c1','c-glow-c2','c-title-glow-on','c-title-glow-color','c-title-glow-size','c-artist-glow-on','c-artist-glow-color','c-artist-glow-size','c-np-glow-on','c-np-glow-color','c-np-glow-size','c-ts-glow-on','c-ts-glow-color','c-ts-glow-size','c-platform-glow-on','c-platform-glow-color','c-platform-glow-size'],
+            dyncolors:['c-dynamic-colors','c-dyn-bg','c-dyn-title','c-dyn-artist','c-dyn-np','c-dyn-timestamps','c-dyn-platform','c-dyn-glow','c-dyn-spectrum','c-dyn-progressbar','c-dyn-border','c-dyn-titleglow','c-dyn-artistglow','c-dyn-npglow','c-dyn-tsglow','c-dyn-platformglow'],
+            border:   ['c-border-on','c-border-colors','c-border-spd'],
+            layout:   ['c-layout-on','c-layout-vis-spectrum'],
+            anim:     ['c-anim-dir','c-anim-dur','c-anim-slide','c-anim-easing','c-anim-crossfade']
+        };
+        // Controls that exist in SETTINGS_CONFIG (for import/round-trip) but are DEAD in V2 and must
+        // NOT render: the V1 drag editor was never ported, so these only fed that editor.
+        // layout.gridSize + layout.nodes.spectrum.locked still round-trip via State.nested passthrough.
+        const HIDDEN_CONTROLS = new Set(['c-layout-grid','c-layout-lock-spectrum']);
 
         // Maps every SETTINGS_CONFIG control id -> its category key. Single
         // authority for grouping (renderAllControls uses it, not the inert
@@ -2337,16 +2361,26 @@
                 root.appendChild(sc);
                 bodies[cat.key] = body;
             }
-            for (const cfg of SETTINGS_CONFIG) {
-                const cat = CAT_OF[cfg.id];
-                const target = bodies[cat];
-                if (!target) {
-                    console.warn('[Stage 7.32] no category for control:', cfg.id, '(cat=' + cat + ')');
-                    continue;
-                }
+            // v14 Phase 6: render per-category in CAT_ORDER (logical order), skipping HIDDEN_CONTROLS,
+            // then any control not yet placed as a safety fallback (so a missing CAT_ORDER entry can
+            // never silently drop a working control). CAT_OF stays the single category authority.
+            const byId = {};
+            for (const cfg of SETTINGS_CONFIG) byId[cfg.id] = cfg;
+            const rendered = new Set();
+            const renderInto = (id) => {
+                if (rendered.has(id) || HIDDEN_CONTROLS.has(id)) return;
+                const cfg = byId[id];
+                if (!cfg) { console.warn('[Phase6] CAT_ORDER id has no control:', id); return; }
+                const target = bodies[CAT_OF[id]];
+                if (!target) { console.warn('[Stage 7.32] no category for control:', id, '(cat=' + CAT_OF[id] + ')'); return; }
                 const row = renderControl(cfg);
-                if (row) target.appendChild(row);
+                if (row) { target.appendChild(row); rendered.add(id); }
+            };
+            for (const cat of CATEGORIES) {
+                for (const id of (CAT_ORDER[cat.key] || [])) renderInto(id);
             }
+            // Fallback: any control not placed by CAT_ORDER (and not hidden) renders last in its category.
+            for (const cfg of SETTINGS_CONFIG) renderInto(cfg.id);
         }
 
         /* ==========================================================================
