@@ -41,6 +41,12 @@ public sealed class HeartbeatService : IHeartbeatService
     private TimeSpan? _lastPosition;
     private DateTime _lastTickUtc;
     private bool _started;
+    // v14 Phase 7: send-gate state. The 50ms tick keeps running for seek detection, but the
+    // webhook SEND is throttled to real edges + a 1s keepalive (see OnTick) so a steadily-playing
+    // track no longer floods ~16-20 webhooks/sec.
+    private DateTime? _lastSentUtc;
+    private bool _lastSentIsPlaying;
+    private string _lastSentKey = string.Empty;
 
     public HeartbeatService(
         ITrackResolver trackResolver,
@@ -140,10 +146,28 @@ public sealed class HeartbeatService : IHeartbeatService
             // fields (Artist, Track, ArtUri, etc.) are preserved unchanged.
             var hb = track with { ObservedUtc = now, IsSeek = isSeek };
 
-            // Stage 7.8B: route through TrackResolver with forcePositionRefresh=true
-            // (bypasses dedup gate; increments webhook_heartbeat_sends in TrackResolver).
-            _trackResolver.OnTrackChanged(hb, forcePositionRefresh: true);
-            _telemetry.IncrementCounter("heartbeat_sends");
+            // v14 Phase 7: gate the SEND by change-detection + a 1s keepalive. The 50ms tick still
+            // runs the seek detection above, but a steadily-playing track no longer POSTs ~16-20
+            // webhooks/sec (the old unconditional send). That flood drove the server B7/B10 startedAt
+            // re-pins which churned the SSE the overlay sees and made the overlay clock track slightly
+            // fast on stale sources (e.g. SoundCloud-RPC). Send on a real edge -- seek, play/pause
+            // change, or track change -- or at most once per second to keep the server position fresh.
+            // Seeks/pause/track-changes are never dropped; the server BroadcastIfChanged still dedups.
+            bool shouldSend = isSeek
+                || !_lastSentUtc.HasValue
+                || (now - _lastSentUtc.Value).TotalMilliseconds >= 1000.0
+                || track.IsPlaying != _lastSentIsPlaying
+                || track.IdentityKey != _lastSentKey;
+            if (shouldSend)
+            {
+                // Stage 7.8B: route through TrackResolver with forcePositionRefresh=true
+                // (bypasses dedup gate; increments webhook_heartbeat_sends in TrackResolver).
+                _trackResolver.OnTrackChanged(hb, forcePositionRefresh: true);
+                _telemetry.IncrementCounter("heartbeat_sends");
+                _lastSentUtc = now;
+                _lastSentIsPlaying = track.IsPlaying;
+                _lastSentKey = track.IdentityKey;
+            }
         }
         catch (Exception ex)
         {
