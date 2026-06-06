@@ -2065,6 +2065,21 @@ function applyConfig(raw) {
   if (_cgl) _cgl.style.display = _specEnabled ? 'block' : 'none';
   if (analyser) analyser.smoothingTimeConstant = cfg.spectrum.smoothing;
   R.setProperty('--spectrum-opacity', String(cfg.spectrum.opacity ?? 1.0));
+  // v14 Phase 4 fix: forward Spectrum sensitivity LIVE to audio_spectrum.exe so dragging
+  // the slider takes effect immediately (the exe applies the gain pre-compressor; the
+  // overlay shader stays at gainScale=1.0 because band data is already normalized
+  // server-side). Guarded against the last-sent value so unrelated config edits don't
+  // spam the endpoint. Was a DEAD control before -- only honoured on the exe's next boot.
+  try {
+    const _sens = Math.max(0.1, Math.min(100, cfg.spectrum.sensitivity ?? 1.0));
+    if (window.__lastSens !== _sens) {
+      window.__lastSens = _sens;
+      fetch('http://127.0.0.1:4243/set-sensitivity', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitivity: _sens })
+      }).catch(() => {});
+    }
+  } catch (_) {}
 
   // ── Progress bar ────────────────────────────────────────────────────────
   // Only toggle hidden-by-config, not the normal hide-when-no-duration logic
@@ -2325,7 +2340,8 @@ function setArt(url) {
   // latch onto a stale cached response — "refresh cache" was previously the
   // only way to recover after CEF served a blank or partial image. Cache-
   // buster also forces a fresh fetch on every track change. Server-side the
-  // proxy serves currentTrack.trackArt, which SSE has already synced to `url`.
+  // proxy serves trackArtHttps||trackArt (the real HTTPS cover when resolved),
+  // matching the bestArt decision SSE has already synced to `url`.
   const proxied = `/art?t=${Date.now()}`;
   // Preload then crossfade in
   const tmp = new Image();
@@ -2693,8 +2709,12 @@ function applyServerUpdate(d) {
     if (_pauseDebounce) { clearTimeout(_pauseDebounce); _pauseDebounce = null; }
     if (!wasVisible && !isNew && lastTrack) {
       widget.classList.add('visible');
-      if (lastTrack.duration > 0) startTimer();
     }
+    // v14 Phase 4 fix: restart the shared ticker UNCONDITIONALLY on resume, mirroring
+    // poll()'s proven path. Previously startTimer() was nested inside the !wasVisible
+    // block, so resuming while the card was ALREADY visible never restarted the ticker
+    // and the progress bar + timestamp stayed frozen until the 2s poll watchdog fired.
+    if (lastTrack && lastTrack.duration > 0) startTimer();
   }
 }
 
@@ -2949,6 +2969,19 @@ function connectSpectrumSSE() {
       fetch('http://127.0.0.1:4243/set-hop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ms: _hopMs })
+      }).catch(() => {});
+    } catch (_) {}
+    // v14 Phase 4 fix: also (re)assert the saved Spectrum sensitivity on every SSE
+    // (re)connect, mirroring /set-hop above. audio_spectrum.exe always boots at
+    // sensitivity=1.0; the live /set-sensitivity endpoint applies it pre-compressor with
+    // no restart. Without this the slider was DEAD at runtime (only honoured on the exe's
+    // next bootstrap config read), and this also restores it after an exe crash-restart.
+    try {
+      const _sens = Math.max(0.1, Math.min(100, _cfg?.spectrum?.sensitivity ?? 1.0));
+      window.__lastSens = _sens;
+      fetch('http://127.0.0.1:4243/set-sensitivity', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitivity: _sens })
       }).catch(() => {});
     } catch (_) {}
     _loopbackSSE.onopen = () => {

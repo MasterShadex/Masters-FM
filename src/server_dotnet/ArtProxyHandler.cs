@@ -41,8 +41,16 @@ internal static class ArtProxyHandler
         CancellationToken ct)
     {
         var track = state.CurrentTrack;
-        // server.js: const art = currentTrack?.trackArt || '';
-        var artUrl = track?["trackArt"]?.GetValue<string>() ?? "";
+        // server.js served currentTrack.trackArt unconditionally. v14 Phase 4 fix:
+        // prefer the resolved HTTPS cover (trackArtHttps) -- the SAME field the overlay's
+        // bestArt uses to DECIDE which art to show -- falling back to trackArt only when
+        // there is no HTTPS art. Without this, browser sources (YouTube via Chrome) stream
+        // the SMTC data: URI here (often the Chrome app icon) while the overlay believes it
+        // is showing the real thumbnail, so OBS displays the wrong image. Sources with no
+        // HTTPS art (osu!, Twitch, pure-SMTC) fall back to trackArt exactly as before.
+        var httpsArt   = track?["trackArtHttps"]?.GetValue<string>() ?? "";
+        var primaryArt = track?["trackArt"]?.GetValue<string>() ?? "";
+        var artUrl = !string.IsNullOrEmpty(httpsArt) ? httpsArt : primaryArt;
 
         if (string.IsNullOrEmpty(artUrl))
         {
