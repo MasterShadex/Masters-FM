@@ -167,7 +167,7 @@ L "  preflight: cleaned $staleCleaned stale ROOT build-outputs + cleared dist\*_
 L "[1/5] Building server.exe via dotnet publish (net8.0, ASP.NET Core, R2R)..."
 $svOut = Join-Path $root 'dist\server_dotnet_release'
 $svArgs = "publish `"$root\src\server_dotnet\server_dotnet.csproj`" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true " +
-          "-p:PublishReadyToRun=true -c Release -o `"$svOut`" --nologo -v quiet"
+          "-p:PublishReadyToRun=false -c Release -o `"$svOut`" --nologo -v quiet"
 $sv = Start-Process -FilePath 'dotnet' -ArgumentList $svArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
 if ($sv.ExitCode -eq 0) {
     # Copy server artifacts to root -- MSI picks them up from there.
@@ -213,7 +213,7 @@ $pubOut = Join-Path $root 'dist\launcher_net8'
 $pubTmp = 'G:\lnch_pub_tmp'
 if (Test-Path $pubTmp) { Remove-Item $pubTmp -Recurse -Force -ErrorAction SilentlyContinue }
 $dpOut = & dotnet publish “$root\src\launcher.csproj” -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
-    -p:PublishReadyToRun=true -c Release -o $pubTmp --nologo -v quiet 2>&1
+    -p:PublishReadyToRun=false -c Release -o $pubTmp --nologo -v quiet 2>&1
 $dpExit = $LASTEXITCODE
 if ($dpExit -eq 0) {
     if (-not (Test-Path $pubOut)) { New-Item -ItemType Directory -Path $pubOut -Force | Out-Null }
@@ -239,7 +239,7 @@ $czOut = Join-Path $root 'dist\customize_net8'
 $czTmp = 'G:\cz_pub_tmp'
 if (Test-Path $czTmp) { Remove-Item $czTmp -Recurse -Force -ErrorAction SilentlyContinue }
 $czOut2 = & dotnet publish "$root\src\customize.csproj" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
-    -p:PublishReadyToRun=true -c Release -o $czTmp --nologo -v quiet 2>&1
+    -p:PublishReadyToRun=false -c Release -o $czTmp --nologo -v quiet 2>&1
 $czExit = $LASTEXITCODE
 if ($czExit -eq 0) {
     if (-not (Test-Path $czOut)) { New-Item -ItemType Directory -Path $czOut -Force | Out-Null }
@@ -306,7 +306,7 @@ $trayCsTmp  = 'G:\tray_pub_tmp'
 if (Test-Path $trayCsTmp) { Remove-Item $trayCsTmp -Recurse -Force -ErrorAction SilentlyContinue }
 # Multi-file + R2R: small stub exe + apphost + .dll + .runtimeconfig.json + pinned NuGet DLLs.
 $trayCsOut2 = & dotnet publish "$root\src\tray_csharp\MastersFM_Tray_v14.csproj" -r win-x64 `
-    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishReadyToRun=true -c Release -o $trayCsTmp --nologo -v quiet 2>&1
+    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishReadyToRun=false -c Release -o $trayCsTmp --nologo -v quiet 2>&1
 $trayCsExit = $LASTEXITCODE
 if ($trayCsExit -eq 0) {
     if (-not (Test-Path $trayCsOut)) { New-Item -ItemType Directory -Path $trayCsOut -Force | Out-Null }
@@ -360,7 +360,7 @@ $asOut = Join-Path $root 'dist\audio_spectrum_net8'
 $asTmp = 'G:\as_pub_tmp'
 if (Test-Path $asTmp) { Remove-Item $asTmp -Recurse -Force -ErrorAction SilentlyContinue }
 $asOut2 = & dotnet publish "$root\src\audio_spectrum.csproj" -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
-    -p:PublishReadyToRun=true -c Release -o $asTmp --nologo -v quiet 2>&1
+    -p:PublishReadyToRun=false -c Release -o $asTmp --nologo -v quiet 2>&1
 $asExit = $LASTEXITCODE
 if ($asExit -eq 0) {
     if (-not (Test-Path $asOut)) { New-Item -ItemType Directory -Path $asOut -Force | Out-Null }
@@ -535,7 +535,7 @@ try {
     #     L "[3b/5] Building install_bootstrapper.exe (net8.0-windows, R2R) ..."
     #     $bsOut = Join-Path $root 'dist\bootstrapper_net8'
     #     $bsArgs = "publish `"$root\src\install_bootstrapper.csproj`" -r win-x64 --self-contained false " +
-    #               "-p:PublishReadyToRun=true -c Release -o `"$bsOut`" --nologo -v quiet"
+    #               "-p:PublishReadyToRun=false -c Release -o `"$bsOut`" --nologo -v quiet"
     #     $bs = Start-Process -FilePath 'dotnet' -ArgumentList $bsArgs -WorkingDirectory $root -Wait -PassThru -NoNewWindow
     #     if ($bs.ExitCode -eq 0) {
     #         foreach ($bf in @('install_bootstrapper.exe','install_bootstrapper.dll')) {

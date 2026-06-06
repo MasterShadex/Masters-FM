@@ -6984,3 +6984,13 @@ COMMIT NOTE: this commit of SmtcEventBridge.cs also captures the long-standing P
 OPEN -- BUILD SPEED (operator directive "rebuild should be ~2s not 10min"): root caused = server.exe self-contained R2R publish took 10:02 (R2R-compiling the entire ASP.NET Core runtime); all OTHER components published in <1min each. The 2s path is HTML-only (fast-path, used for the freeze fix). NEXT: remove PublishReadyToRun from the self-contained publishes (R2R of the bundled runtime is the 10-min cost; modest startup gain not worth it) + add incremental per-component builds (only republish changed components) so future .NET rebuilds are ~1-3min and local code-test iterations ~30s.
 
 Session commits: a23f166 overlay-freeze, cd990a1 INSTALL.bat-CRLF, 050fd3a OBS-fps_custom, b20591a self-contained, + this fix-everything.
+## 2026-06-06 16:28 -- BUILD SPEED: removed the 10-minute issue (disabled R2R on self-contained publishes)
+
+Operator: "rebuild should take 2 seconds, not 10 minutes. Remove that 10 minutes issue."
+ROOT CAUSE (confirmed, not guessed): in the cold build log, server.exe self-contained publish took 602s (16:07:25->16:17:27) while ALL other components published in <1min each. The 602s is R2R / crossgen2 compiling the ENTIRE self-contained ASP.NET Core runtime on the first publish (the others reuse the crossgen cache, so they were fast). TIMED PROOF: server self-contained NO-R2R = 19s, identical 48.8MB exe (R2R added ZERO size -- only 10 min of compile).
+FIX (committed): _full_rebuild.ps1 all 5 live PublishReadyToRun=true -> false (CLI value overrides the csproj R2R on server_dotnet + tray). Each self-contained publish now skips crossgen -> ~15-45s; expected full build ~13min -> ~3-4min.
+TRADEOFF: no R2R = first-run JIT instead of pre-compiled -> marginally slower app cold-start. Negligible for a tray/overlay app that runs continuously; the ~3x build-speed + iteration win far outweighs it. (Re-enable per-release later via a switch if cold-start ever matters.)
+NOTE: did NOT force a validation rebuild (the 19s server test + the other components already being <1min are conclusive; avoids another disruptive restart). Gabby's current MSI (320.7MB, R2R, works, faster startup) is unaffected + ready to send; R2R-off applies to FUTURE builds.
+STILL FAST-PATH: HTML-only changes (overlay/customize) still use the 2s copy fast-path (S7.25.5). 
+OFFERED (not yet built): incremental per-component builds (only republish the changed component -> single-component change ~1-2min) + a local-test path (publish 1 component + copy its exe into %LOCALAPPDATA% + restart, no MSI -> ~30s) for the fastest .NET dev iteration.
+Commit: _full_rebuild.ps1 R2R-off.
