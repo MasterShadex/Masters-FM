@@ -6747,3 +6747,186 @@ NOT a closure -- mid-stage. Commits ab843c8/9ab5c65/f497dd1/a88c91b. Real Master
 - **Verification:** DOM-free node harnesses (build_tools/_s732_verify.js + _s732_roundtrip.js) -- compile + 17-cat/120-control invariants + decisive round-trips all PASS. Cold rebuild SE2 clean x2. Operator PASS on re-test.
 - Commits: 1fc8804 / 751265e / b481d30 / d43fe51 / 6f79784 / 808344c / 7c2f5be / 6b61525 / 0ed4813 / +closure. Report: V14_S7_32_REPORT.md.
 - **7.31.2 still PARKED** at its STEP 3 operator-publish HALT (auto-update end-to-end vs test-fm; superseded by 7.32, not closed).
+
+## 2026-06-06 02:25 -- Stage 7.32.1 + PHASE-4 runtime fixes (album-art/timestamp/sensitivity SHIPPED; SMTC self-heal REVERTED as a misdiagnosis)
+
+### Customize 7.32.1 (follow-up to 7.32) -- DONE earlier this session, operator-confirmed
+- Categories 17 -> **13**: merged Quick Settings + Themes + Font into General; fused Outer glow + Text glow into "Glow"; "Audio bars" category renamed **"Spectrum"** (name-collision fix w/ the reactive Spectrum); simpler names + logical order. customize.html 7E1ECEF3 -> **50377040**. CATEGORIES=13, CAT_OF=120, default-open key 'general', 98 help icons.
+- Audit (6-agent workflow) fixes: +3 tooltips (c-master-accent-color, c-bars-on, c-spec-on); styled raw reset/text/number controls. DEAD controls: c-spec-sensitivity (FIXED in Phase-4 #5); c-layout-grid + c-layout-lock-spectrum (editor-only metadata, drag editor never ported -- left as-is).
+
+### PHASE-4 runtime fixes (operator goal: album art / music detection / timestamp / progress). Commit 7972621 (LOCAL ONLY, no push, version stays 14.0.0)
+SHIPPED + verified (adversarial 5-agent review = sound; LIVE on Master PC):
+- **#1 album art** (ArtProxyHandler.cs 5BCE8945 -> **558CA2AB**): /art now prefers trackArtHttps (HTTPS cover the overlay bestArt picks) over trackArt (SMTC data: icon); falls back to trackArt when no HTTPS. PROVEN: when trackArtHttps IS resolved, /art serves the real 1200x1200 cover (was a 150x83 Chrome icon). Necessary but insufficient alone -- see REAL BUG below.
+- **#4 resume-freeze** (overlay.html): startTimer() hoisted to run UNCONDITIONALLY on resume in applyServerUpdate (mirrors poll's proven path); was nested in the !wasVisible block so resume-while-visible froze bar+timestamp until the 2s poll watchdog. Fixes progress bar AND timestamp (shared tick). PROVEN: ticker advancing.
+- **#5 spectrum sensitivity** (overlay.html): POSTs /set-sensitivity to audio_spectrum.exe live on slider change + every SSE reconnect (was DEAD -- only read at exe bootstrap). PROVEN: audio_spectrum.log now shows runtime `set-sensitivity: sensitivity=Nx` (never appeared before).
+- overlay.html 9A7CC817 -> **C9DEF993**. Cold rebuild SE2 clean x3. version.json restored 14.0.0/7dcd4e34 each time.
+
+REVERTED / DEFERRED:
+- **#2 SMTC self-heal REVERTED -- MISDIAGNOSIS. CRITICAL LESSON: eventsTotal=0 (or a flat/frozen counter) while a session is Playing is NORMAL, not a stall.** Bump() fires ONLY in the 5 WinRT handlers (tray_native.cs); SMTC emits events ONLY on state changes -- a steadily-playing source (e.g. a YouTube tab left running) legitimately produces ZERO events for minutes. LIVE PROOF: 8 canary ticks at eventsTotal=0 current=Chrome; the instant I generated a state change (pause+play on <video>), eventsTotal jumped 0->42. "present-but-silent == stuck" is an unreliable signal; the canary ForceResync false-fired on healthy playback. Restored to baseline (tray_native 6B9804A1 / SmtcEventBridge 137A42EF). The Phase-3 "Mode A/B stall" diagnosis was largely this misread. **current=(none) (Mode B) is a HARMLESS DISPLAY ARTIFACT** -- _currentSaumid has ZERO influence on track-change processing (per-session subscription/keying is decoupled from "current").
+- **#3 timestamp run-ahead DEFERRED** -- proposed backward snap (signedDrift < -30000) is BYTE-IDENTICAL to the branch deleted in Phase Q (2026-05-17) that caused the SoundCloud sawtooth. A safe #3 needs NEW per-source last-reported-position server state (a feature). The live "frozen 0:01" was #4 (resume-freeze), NOT run-ahead.
+
+### REAL remaining bug -- precisely diagnosed, NOT shipped (medium risk, needs operator repro/decision)
+- **Album art for browser/YouTube never resolves an HTTPS cover.** ROOT: WebhookHandler.cs:534 `state.ArtResolved = !IsNullOrEmpty(art)` latches TRUE off the data: Chrome icon, permanently killing the B11 re-resolution retry (guarded by !ArtResolved). Compounded by: YouTubeSource gated on source.Contains("youtube") so it never fires for source="browser" (tray DetectSiteFromAllWindows window-sweep MISSED the YouTube tab -> labeled "browser"); ArtCascade caches empty httpsArt with NO TTL. So YouTube-via-Chrome shows the Chrome icon forever.
+  - FIX OPTIONS (full .NET rebuild): (a) de-latch ArtResolved when only data:+no-HTTPS for browser sources + widen B11 guard (fire when curArt is data: but trackArtHttps empty) + once-per-interval cache-bypassing retry; (b) make tray emit source="youtube" (fix DetectSiteFromAllWindows) so YouTubeSource fires -- BUT it does artist+track SEARCH (no video-id), thumbnail quality uncertain; the title may have NO music-DB match (then data: icon is the correct terminal). Present to operator; needs repro to confirm a given title actually resolves.
+- **Track-change detection is SOUND** for a single deliberate change (per-session chain verified end-to-end: MediaPropertiesChanged -> Bump+Enqueue keyed by firing saumid -> snapshot refresh -> ProcessEvent -> TrackUpdate -> resolver -> webhook -> broadcast -> overlay). Only narrow edge: rapid-skip inside the 800ms burst window or within 250ms of a prior media-props read -> stale snapshot -> dedup -> that change waits for the next event. NEEDS operator repro (change ONE song on a steady source, watch it update) to confirm any real bug.
+- Minor: canary B-022 re-probe is mis-documented (header claims re-fetch sessions; OnCanaryTick only LogWarns) -- only matters when sessions.Length==0.
+
+### State / pending
+- PRE-EXISTING uncommitted diff in SmtcEventBridge.cs (working tree 137A42EF != HEAD 847FDBD9) PREDATES this session -- restored to the working-tree/shipping state, NOT touched. Flag for operator.
+- PENDING operator OBS gate: #4 (pause<10s then unpause while card visible -> bar+time resume instantly), #5 (drag Spectrum sensitivity -> bars react live), #1 (album art on a track CHANGE -- raw YouTube videos stay icon per the REAL BUG above). Then operator decides on the album-art-resolution fix + any track-change repro.
+- Tooling: adversarial review + re-diagnosis run via Workflow (Ultracode). Build logs in _backup/runtimefix/.
+
+## 2026-06-06 03:08 -- PHASE-5: resolve real HTTPS album art for browser/YouTube (operator chose "do both a+b")
+
+Commit b47c961 (LOCAL only, no push, version 14.0.0). 4 server files changed; cold rebuild #4 SE2 clean.
+- **Fix (b) -- YouTubeSource.cs F1BEFC07 -> 83466D18:** un-gate for source=="browser" (a YouTube tab
+  often reports source="browser" when the tray's window sweep can't ID the site). It is LAST in the
+  browser route (deezer/itunes/musicbrainz run first), so it only adds a last-resort YouTube-SEARCH
+  thumbnail (img.youtube.com/vi/<id>/hqdefault.jpg). This resolves trackArtHttps at new-track for
+  YouTube content. PRIMARY fix.
+- **Fix (a) -- WebhookHandler.cs 676E9390 -> D33FDF05 + ServerState.cs +ArtHttpsRetries (2E5A231F) +
+  ArtCascade.cs EF393DF4 -> 337E13BE:** ROOT bug was WebhookHandler.cs:534 latching ArtResolved=true
+  off the data: icon -> killed the B11 retry. Now: de-latch for browser data:-icon-only (keep
+  ArtResolved=false); B11 guard widened to refire when curArt is data: + trackArtHttps empty +
+  browser + ArtHttpsRetries<3 (increments before fire); ArtRetryAsync only latches on a USABLE result
+  (https or non-data art), icon-only keeps retrying to the cap; ArtCascade no longer caches an EMPTY
+  httpsArt (so retries re-walk for an HTTPS cover). The per-track counter (<3) + single-flight
+  (ArtResolving) REPLACE the cache as the spam/memory bound -- preserves the original circuit-breaker
+  intent. Non-browser sources are BYTE-IDENTICAL (all new logic gated on IsBrowserLikeSource).
+- **Adversarial review (3 lenses) = SHIP:** memory-spam sound (<=3 re-walks/track, no leak, terminal
+  after 3); correctness sound (target + transient-fail both resolve, end-to-end traced); regression
+  minor/ship-with-note (non-browser byte-identical; resolved HTTPS cover can't be clobbered; SMTC-
+  refresh + retry complementary). Agent COMPILED it: Build succeeded 0 warnings/0 errors.
+- **LIVE no-regression proof:** operator's YouTube tab had closed; current track was SoundCloud
+  ("Cerdin - ID SHOWCASE 2025") -> trackArtHttps resolved (i1.sndcdn.com ...t500x500.png), /art served
+  the 100KB real cover, overlay rendered it 500x500, console clean. So the pipeline + proxy work and
+  Phase-5 did NOT break non-browser resolution.
+- **NOT live-tested:** the YouTube/browser path specifically (no YouTube playing; refused to open one
+  -- would interrupt the operator's active SoundCloud). NEEDS operator OBS test: play a YouTube video,
+  confirm the overlay shows the real video cover (not the Chrome icon).
+- **Known note (flag):** un-gating YouTubeSource for ALL "browser" sources means non-music browser
+  audio (podcast/livestream) could get a WRONG youtube-search thumbnail -- but only after the music
+  DBs all miss, replacing the old bing-image fallback in that route slot. Bounded/acceptable.
+- Backups + build log in _backup/artfix5/. SmtcEventBridge.cs pre-existing uncommitted diff still
+  untouched (not Phase 5).
+
+## 2026-06-06 03:20 -- PHASE-6: organise controls within every category + tooltips + hide dead controls (customize-panel half of the goal)
+
+Commit 496115b (LOCAL only, HTML-only FAST-PATH no rebuild, version 14.0.0). customize.html
+50377040 -> **E3BD9B53**. customize_legacy UNCHANGED. Driven by a 4-agent audit workflow reading
+customize.html directly.
+- **ORGANISATION (the headline ask "controls organised under every category"):** added **CAT_ORDER**
+  (explicit per-category ordered id list) + switched renderAllControls to render per CAT_ORDER with a
+  SAFETY FALLBACK (any control not listed still renders, so a typo can't drop a working control).
+  CAT_OF remains the single category authority. 10/13 categories reordered logically (primary first;
+  enable-toggle before the options it gates; advanced last). e.g. General leads with Theme; Card with
+  c-card-top (bg color); Spectrum on->mode->color; Progress on->fill colors. (art/np/layout already
+  logical.) Within-category order is now CAT_ORDER, not SETTINGS_CONFIG order.
+- **TOOLTIPS:** added 6 needed help fields (c-ts-color, c-platform-on, c-platform-color,
+  c-platform-glow-on, c-platform-glow-color, c-ts-glow-on); corrected c-layout-on's help (it claimed a
+  drag editor that does NOT exist in V2). Rendered help icons now 102 (was 98; +6 added, -2 on the now-
+  hidden layout controls).
+- **DEAD CONTROLS fixed:** hid **c-layout-grid + c-layout-lock-spectrum** via a HIDDEN_CONTROLS set --
+  editor-only metadata the never-ported V1 drag editor read; inert in V2. They still round-trip via
+  State.config + State.nested (counts UNCHANGED 120 SETTINGS_CONFIG / 13 CATEGORIES / 120 CAT_OF).
+  c-layout-on + c-layout-vis-spectrum kept (work with imported layout geometry; import-only in V2).
+- **BUTTONS:** audit confirmed ALL 14 work (Apply to OBS, Reset, Preset Manager, Export, Import, Load,
+  Delete, Save preset, search-clear, category headers, help info-icons, sensitivity-reset, 8 master-
+  following badges, modal close). Zero broken.
+- **VERIFY:** node harness PASS (compile; CAT_ORDER 118 + HIDDEN 2 == 120; every id real + in right
+  category; no dups; counts unchanged). Chrome MCP LIVE on Master PC: 13 cats, 118 rows, reorder
+  confirmed (theme/card-top/spec-on/prog-on first), 2 dead hidden, 102 help icons, the 6 new tips
+  present, console clean, round-trip intact (State.config 118 flat keys incl the 2 hidden; State.nested
+  has layout). Backup _backup/artfix5/customize.html.phase6pre.
+- This completes the CUSTOMIZE-PANEL half of the operator's goal. The RUNTIME half (Phase 4/5: album
+  art, timestamp/progress, sensitivity shipped; music-detection misdiagnosis reverted; #3 deferred)
+  still awaits the operator's live OBS verification + the #3 decision.
+
+## 2026-06-06 03:40 -- PHASE-7: fix intermittent timestamp/progress FREEZE during playback (live-reproduced AND live-fixed)
+
+Commit 0a64114 (LOCAL, HTML-only fast-path, version 14.0.0). overlay.html C9DEF993 -> **0236D77A**.
+- **LIVE-REPRODUCED the operator's "timestamp + progress problems":** on SoundCloud the overlay clock
+  FROZE for several seconds then JUMPED to catch up, repeatedly, while playing (isPaused=false,
+  startedAt/title stable). Measured: displayed frozen at 908s for ~10s while server free-run advanced
+  932->944s, then jumped to 968s. So #4 alone did NOT fix the timestamp -- there was a second freeze cause.
+- **ROOT CAUSE (3-agent diagnosis workflow, high confidence):** startTimer() did stopTimer()
+  (clearInterval the 250ms watchdog) then setInterval again on EVERY call. Phase-4 #4 calls startTimer()
+  on every non-paused server push, and the tray HeartbeatService fires every 50ms (IntervalSeconds=0.05)
+  sending a webhook UNCONDITIONALLY (~16-20/s flood). So the 250ms watchdog was torn down + rebuilt every
+  ~60ms and NEVER reached its deadline -- starved. In OBS the spectrum rAF self-scheduling is OFF (loop
+  driven by setInterval(drawSpectrum,8ms)), so the watchdog was the only steady clock; starved -> any
+  spectrum-loop stall froze the clock. **#4 was implicated** (collapsed two clock sources to one + starved it).
+- **FIX:** made startTimer() IDEMPOTENT -- set active, tick() once, (re)create the 250ms interval ONLY if
+  !timer. Watchdog now runs continuously during playback (flood-proof); #4's resume call still fixes the
+  original resume-freeze; stopTimer() still clears timer on pause so it recreates on resume. No new state.
+- **LIVE-VERIFIED under the same flood:** clock tracks continuously, 0 frozen windows, lag 0-1s vs server
+  position over 12s. **FREEZE FIXED.**
+- **RESIDUAL (webhook flood, NOT yet fixed):** the ~16/s heartbeat flood drives frequent server B10 forward
+  position re-pins, so on a stale SoundCloud DJ-mix the clock now advances slightly FAST (~1.3x) but
+  SMOOTHLY (no freeze). ROOT: HeartbeatService.cs:29 IntervalSeconds=0.05 + OnTick send unconditional +
+  TrackResolver forcePositionRefresh no-dedup. RECOMMENDED FIX (.NET cold rebuild, seek-timing-sensitive):
+  gate the SEND by change-detection (seek/play-pause/track-change/position-drift>250ms) + 1000ms keepalive,
+  keeping the 50ms tick for seek detection -> ~16/s drops to ~1/s. Assessing code now to decide
+  implement-vs-present.
+
+## 2026-06-06 04:08 -- PHASE-7b: webhook-flood heartbeat gate IMPLEMENTED + live-verified (timestamp work COMPLETE)
+
+Commit c8d6550 (LOCAL, .NET cold rebuild #6, version 14.0.0). HeartbeatService.cs -> **EBC13352**.
+- **FIX:** HeartbeatService.OnTick (50ms tick) kept running for seek detection (Stage-7.15 stale guard
+  intact), but the SEND is now GATED: send only on a real edge (isSeek / IsPlaying changed / IdentityKey
+  changed) or >= 1000ms keepalive. Added fields _lastSentUtc/_lastSentIsPlaying/_lastSentKey. Seeks,
+  pause/resume, track-changes are never dropped; server BroadcastIfChanged still dedups.
+- **LIVE-VERIFIED on SoundCloud:** webhook rate **16/s -> ~1/s** (16x fewer loopback POSTs); overlay
+  clock **0 frozen windows + 0.99x real-time** over 17s (was 1.36x fast). Combined with the Phase-7
+  idempotent-startTimer freeze fix (0a64114), the operator's "timestamp problems with progress bar
+  problems" are now FULLY RESOLVED + live-proven (no freeze, no fast-drift, on their actual SoundCloud).
+- Risk profile: additive gate, much lower-risk than #2; worst case = position freshness lags <=1s and the
+  overlay free-runs anyway. SE2 clean, install verified (overlay 0236D77A, fresh tray).
+
+## 2026-06-06 14:32 -- FRIEND-MACHINE (Gabby) TWO BUGS: INSTALL.bat LF (FIXED, no rebuild) + server runtime gap (PENDING operator decision)
+
+Trigger: friend on a FRESH Win11 box -- (1) INSTALL.bat run-as-admin "installs nothing and closes"; (2) v14 MSI installs + tray detects her SoundCloud, but OBS overlay is BLANK; her overlay.log floods "[Webhook] webhook send HTTP error" + "server art upgrade failed: target machine actively refused it (127.0.0.1:4242)". Diagnosed via Workflow (3-agent, Ultracode) + confirmed by direct code read.
+
+BUG 1 -- INSTALL.bat silent close = LF-ONLY line endings. Both copies were CR=0 LF=173 no-BOM. cmd.exe needs CRLF; LF-only mis-parses (workflow A/B-proved: real file run elevated emits 'elayedExpansion'/'the'/'evates' not-recognized then aborts BEFORE any echo/pause; CRLF copy runs clean). _full_rebuild.ps1 line 550 Copy-Item'd it verbatim so every bundle shipped LF.
+  FIX SHIPPED (script-only, NO rebuild, NO version bump):
+  - Both INSTALL.bat (src "Master's FM Install\" + Desktop MastersFM_Installer\) rewritten CRLF UTF-8 no-BOM (now CR=203 LF=203).
+  - Broadened MSI glob to match BOTH naming schemes (bundle "Master's FM V*.msi" AND GitHub "Masters-FM-V*.msi" + MastersFM*.msi).
+  - No silent close: failure path now pause (was timeout 10 + close); added %TEMP%\MastersFM_install_bat.log milestones.
+  - VBS elevation now passes the full quoted path (%~f0/%~dp0) -- 8.3 short names are disabled on modern volumes so %~s0 returned the long path anyway.
+  - NEW .gitattributes ("*.bat text eol=crlf") + _full_rebuild.ps1 line 550 now CRLF-normalizes the bundled .bat at ship time. Cannot regress.
+  NOTE: the SHIPPED Desktop bundle MSI is "Master's FM V14.0.0-RC.1.msi" which already matched the OLD glob -- so for the friend bundle the LF was the ONLY real INSTALL.bat bug; the glob mismatch only bit the source folder.
+
+BUG 2 -- OBS blank = server.exe is FRAMEWORK-DEPENDENT on Microsoft.AspNetCore.App 8, which a fresh machine LACKS. (high confidence; code-verified)
+  - server_dotnet.csproj SelfContained=false (Sdk.Web); server.runtimeconfig.json lists BOTH Microsoft.NETCore.App 8.0.0 AND Microsoft.AspNetCore.App 8.0.0, no rollForward -> apphost exits code 150 (framework not found) instantly.
+  - The WPF TRAY runs because it only needs the .NET 8 DESKTOP runtime (Microsoft.WindowsDesktop.App), which Gabby has. ASP.NET Core is a SEPARATE install she does not have. So tray detects music, but server.exe never binds 4242 -> every webhook refused -> overlay (OBS Browser Source loads from 4242) is blank. Re-adding the source cannot start a dead server.
+  - launcher.cs spawns server.exe + logs "server.exe spawned PID=" but NEVER checks it stays alive (no stderr redirect / exit-code check) -> the instant crash is invisible. MSI bundles NO runtime. Classic works-on-my-machine (dev box has AspNetCore 8.0.26).
+  IMMEDIATE UNBLOCK for Gabby (confirms diagnosis): install ".NET 8 ASP.NET Core Runtime (Windows x64)" from Microsoft, relaunch -> server binds 4242 -> OBS lights up. (Or run 'dotnet --list-runtimes' -- expect NO Microsoft.AspNetCore.App 8.x.)
+  PERMANENT FIX = PENDING OPERATOR DECISION (full rebuild + installer rebuild; MSI grows; NO version bump):
+    A) self-contained server.exe only (+~70MB; assumes friend has Desktop runtime -- Gabby does);
+    B) self-contained EVERYTHING (server+tray+audio+customize+launcher) -- bulletproof on ANY fresh PC, biggest MSI (recommended for unknown friends);
+    C) keep dependent + auto-install runtimes via INSTALL.bat (weak: does not help MSI-only installs).
+    REGARDLESS, fold in: launcher.cs crash-surfacing (redirect server.exe stderr + WaitForExit short timeout + log/balloon) + optional overlay.html offline placeholder (html-fast-path) so a dead server is never silent/blank again.
+
+Files touched this entry (all LOCAL, no push, 14.0.0): "Master's FM Install\INSTALL.bat", Desktop MastersFM_Installer\INSTALL.bat, NEW .gitattributes, _full_rebuild.ps1 (line 550 bundle step). 5 protected files + customize_legacy + customize.html + overlay.html + all .NET src UNCHANGED. No rebuild ran.
+## 2026-06-06 15:06 -- PROGRESS-BAR FREEZE on active YouTube: diagnosed LIVE (3-layer root) + overlay self-heal SHIPPED (html-only); tray root fix STAGED (needs rebuild)
+
+/goal (loop): "progress bar freezes while actively playing YouTube; skip/pause does not fix it; diagnose live on my computer + make a workflow." Diagnosed via 3-agent Workflow (wv6lav4wd) + LIVE server.log + Chrome MCP (Master PC).
+
+ROOT CAUSE = 3 converging layers (all evidence-backed):
+  1. SOURCE/TRAY (deepest): YouTube-in-Chrome emits SMTC TimelineProperties.Position + PlaybackStatus ONLY on play/pause/seek events, NOT continuously. SmtcEventBridge.cs:309-322 interpolates position from LastUpdatedTime but ONLY at event time (inside ProcessEvent). HeartbeatService.OnTick (50ms, sends ~1/s) re-reads the CACHED TrackResolver.CurrentTrack.Position + IsPlaying verbatim -- never re-interpolates, never re-reads live PlaybackStatus. So between sporadic events the tray ships a FROZEN position + a STALE isPaused. LIVE PROOF: server.log "[youtube] reported=1889s overlay=2186s drift=+297s paused=True" -- reported FROZEN at 1889s + paused=True sustained 1.5min while now-startedAt climbed; distinct reported values 322/857/844/1889 = the only SMTC events in ~25min.
+  2. OVERLAY: tick() (overlay.html:2219) LATCHED on isPaused -- a single isPaused=true frame froze el=pausedAt-startedAt instantly; the 1s _pauseDebounce only gated stopTimer(), not the visual freeze; the resume frame could be dropped by ServerState.BroadcastIfChanged dedup / the 2000ms browser seek-cooldown -> NEVER un-froze == the operator's "frozen, skip/pause does not fix it".
+  3. SERVER: WebhookHandler.cs:398 forward-only drift correction (signedDrift>4000 = overlay BEHIND); backward correction DELETED Phase Q (407-434). So overlay running AHEAD of a frozen reported position is never re-anchored == the run-ahead face (drift +297s). Overlay CANNOT self-fix run-ahead: /current sends startedAt, NOT raw position, so the overlay has no reference.
+
+SHIPPED THIS SESSION -- overlay self-heal (HTML-ONLY fast-path; src/overlay.html 0236D77A -> 79B7E0E3; copied to %LOCALAPPDATA%\MastersFM\overlay.html; NOT yet baked into MSI/build):
+  - Added let _pauseConfirmed=false;. tick() freeze gated to if (lastTrack.isPaused && _pauseConfirmed) -> a transient/oscillating isPaused no longer latches (the else-branch keeps climbing during the 1s debounce).
+  - _pauseConfirmed set TRUE inside both pause-debounce callbacks (poll + applyServerUpdate); reset FALSE on resume + on isNew (new track) in both paths.
+  - Always-on 1s watchdog (after setInterval(poll,2000)): if a track is present and NOT confirmed-paused, re-arm the timer (if dead) + tick() from live now-startedAt -- independent of the SSE resume frame AND the OBS spectrum loop. Guarantees recovery from a dropped/deduped resume, a torn-down 250ms timer, or a stalled spectrum loop.
+  - LIVE-VERIFIED in Chrome (Master PC tab localhost:4242/): parses clean (no console errors; poll/applyServerUpdate/connectSSE present), correctly HOLDS on a confirmed pause. Backup: _backup/freezefix/overlay.html.{src,live}.bak.
+  - ACTION FOR OPERATOR: REFRESH the OBS browser source (or restart the app) to load the new overlay.html -- CEF caches the old one.
+
+STILL NEEDED (root; FULL .NET rebuild; briefly restarts Master's FM + OBS overlay):
+  - TRAY (primary): make HeartbeatService report FRESH state each send -- (a) interpolate live position (Fix A: carry AnchorPositionMs + AnchorUpdatedUtc on TrackUpdate from SmtcEventBridge, compute livePos=anchor+(now-anchorUpd) when playing, cap at duration) AND (b) re-read live PlaybackStatus so a STALE isPaused=true (tab backgrounded / ad / buffering) stops freezing the overlay. NOTE: HeartbeatService currently has NO SMTCWatcher access (ctor deps = ITrackResolver/ITelemetry/ILogger) -> either inject a live-snapshot accessor or carry the anchor on TrackUpdate.
+  - SERVER (defense-in-depth, optional): re-add a backward re-anchor GATED on reported having CHANGED (>250ms) since the last webhook -- the fresh-vs-stale discriminator Phase Q lacked (SoundCloud-RPC froze at the SAME value -> would be skipped; a real advance/seek -> re-anchors). Kills the run-ahead without the Phase Q sawtooth.
+  - These can FOLD into the operator-approved self-contained-everything rebuild (Gabby runtime fix) = ONE cold build for both.
+
+OPEN (separate, parked): Gabby friend-machine fixes -- INSTALL.bat CRLF (DONE, shipped) + server.exe self-contained-everything (APPROVED, build-system plan from workflow wkvdp02h5 NOT yet applied: csproj SelfContained=true + PublishSingleFile per component, build_msi.py single-file harvest, launcher.cs crash-surfacing, overlay offline placeholder).

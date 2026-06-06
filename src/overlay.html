@@ -2216,11 +2216,13 @@ let _lastFillPct  = -1;
 const tick = () => {
   if (!lastTrack?.duration) return;
   let el;
-  if (lastTrack.isPaused) {
-    // Authoritative freeze: isPaused=true is ALWAYS enough, regardless of
-    // whether pausedAt was populated. Prefer the server-provided freeze point
-    // (pausedAt - startedAt); fall back to whatever elapsed we last computed
-    // so the number never climbs.
+  if (lastTrack.isPaused && _pauseConfirmed) {
+    // v14 freeze fix: freeze ONLY after the 1s pause-debounce CONFIRMS a sustained
+    // pause (_pauseConfirmed). A transient/oscillating isPaused=true (YouTube
+    // buffering, ad insertions, background-tab throttling, stale SMTC PlaybackStatus)
+    // no longer latches the bar -- during the debounce window the else-branch keeps
+    // the clock climbing, and a real resume cancels it. Prefer the server freeze
+    // point (pausedAt - startedAt); fall back to last elapsed so it never climbs.
     if (lastTrack.pausedAt) {
       frozenElapsed = Math.max(0, lastTrack.pausedAt - lastTrack.startedAt);
     } else if (frozenElapsed === null) {
@@ -2256,6 +2258,7 @@ const tick = () => {
 // motion (was 4 fps before → looked choppy). The interval fallback is kept
 // for the rare case where the spectrum is disabled in config.
 let _timerActive = false;
+let _pauseConfirmed = false;  // v14 freeze fix: only freeze the clock after the 1s pause-debounce CONFIRMS a sustained pause -- a transient/oscillating isPaused (YouTube buffering/ads/stale SMTC) no longer latches the bar.
 const startTimer = () => {
   // v14 Phase 7 fix: idempotent. Previously this did stopTimer() (clearInterval the
   // 250ms watchdog) then setInterval again on EVERY call. Phase-4 #4 calls startTimer()
@@ -2585,6 +2588,7 @@ async function poll() {
 
     if (isNew) {
       lastTrack = { ...d }; lastArt = newArt;
+      _pauseConfirmed = false;  // v14: new track always starts unfrozen
       showTrack(d);
       _sseNeedsArtRefresh = false;
       return;  // let transitionToTrack fully own this cycle
@@ -2614,6 +2618,7 @@ async function poll() {
         _pauseDebounce = setTimeout(() => {
           _pauseDebounce = null;
           if (!lastTrack?.isPaused) return; // resumed before debounce fired
+          _pauseConfirmed = true;           // v14: sustained pause confirmed -> tick() may now freeze
           stopTimer();
           tick();
           // If "keep visible on pause" is off, hide after 10 s of being paused.
@@ -2630,6 +2635,7 @@ async function poll() {
     } else {
       // Resumed — cancel any pending pause debounce immediately
       if (_pauseDebounce) { clearTimeout(_pauseDebounce); _pauseDebounce = null; }
+      _pauseConfirmed = false;  // v14: resume -> clock un-freezes immediately
       if (!wasVisible && !isNew && lastTrack) {
         widget.classList.add('visible');
       }
@@ -2653,6 +2659,20 @@ poll();
 // restart) and for the initial state on a brand-new connection (handled by the
 // poll() call immediately above this line).  2000 ms is plenty.
 setInterval(poll, 2000);
+
+// v14 freeze-proof watchdog (independent of the SSE/poll resume frame AND of the
+// spectrum rAF loop). Every 1s: if we have a track and are NOT confirmed-paused,
+// make sure the ticker is alive and repaint from the live clock. This guarantees
+// recovery from a dropped/deduped resume frame, a torn-down 250ms timer, or a
+// stalled spectrum loop -- while a genuine CONFIRMED pause still holds the bar.
+setInterval(() => {
+  try {
+    if (lastTrack && lastTrack.duration > 0 && !(lastTrack.isPaused && _pauseConfirmed)) {
+      if (!_timerActive) startTimer();
+      tick();
+    }
+  } catch (e) {}
+}, 1000);
 
 // ── Server-Sent Events: near-zero-latency track updates ─────────────────
 // Server pushes a message every time currentTrack mutates (webhook, art
@@ -2679,6 +2699,7 @@ function applyServerUpdate(d) {
   const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
   if (isNew) {
     lastTrack = { ...d }; lastArt = newArt;
+    _pauseConfirmed = false;  // v14: new track always starts unfrozen
     showTrack(d);
     _sseNeedsArtRefresh = false;   // isNew path re-renders via transitionToTrack
     return;  // let transitionToTrack fully own this cycle
@@ -2699,6 +2720,7 @@ function applyServerUpdate(d) {
       _pauseDebounce = setTimeout(() => {
         _pauseDebounce = null;
         if (!lastTrack?.isPaused) return;
+        _pauseConfirmed = true;           // v14: sustained pause confirmed -> tick() may now freeze
         stopTimer();
         tick();
         if (!_cfg.pauseBehavior?.keepVisibleOnPause) {
@@ -2713,6 +2735,7 @@ function applyServerUpdate(d) {
     }
   } else {
     if (_pauseDebounce) { clearTimeout(_pauseDebounce); _pauseDebounce = null; }
+    _pauseConfirmed = false;  // v14: resume -> clock un-freezes immediately
     if (!wasVisible && !isNew && lastTrack) {
       widget.classList.add('visible');
     }
