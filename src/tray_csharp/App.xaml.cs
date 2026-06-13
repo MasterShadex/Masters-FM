@@ -48,6 +48,7 @@ public partial class App : Application
     private IHeartbeatService? _heartbeatService; // INTERRUPT #3 STEP 5 (Issues 1+8)
     private IConfigService? _configService;
     private IUpdateCheckService? _updateService;
+    private DispatcherTimer? _updateCheckTimer; // hourly update re-check while the app is open
     private IDiscordToggleService? _discordService;
     private IAutoStartService? _autoStartService;
     private ICustomizerLauncher? _customizerLauncher;
@@ -241,26 +242,34 @@ public partial class App : Application
         _logger.Log($"welcome-seen={welcomeSeen}", "Bootstrap");
         _configService.Changed += OnConfigChanged;
 
-        // -- Stage 7.2: schedule startup update check if last check is older
-        // than 6 hours (per brief STEP 4.9 cadence) --
+        // -- Auto-update cadence (operator request): check ON START (every launch)
+        // and then EVERY 1 HOUR while the app runs. Replaces the prior 6h startup
+        // gate so a fresh launch always checks. The recurring DispatcherTimer's
+        // first tick is +1h, so it never double-fires with the startup pass below.
+        // Both are cheap GETs against the version.json manifest. --
         _updateService = _services.GetRequiredService<IUpdateCheckService>();
         var lastChecked = _updateService.LastCheckedUtc;
-        var sinceLast = lastChecked.HasValue ? (DateTime.UtcNow - lastChecked.Value) : TimeSpan.MaxValue;
-        if (sinceLast >= TimeSpan.FromHours(6))
+        var lastDisplay = lastChecked.HasValue ? lastChecked.Value.ToString("o") : "(never)";
+        _logger.Log($"startup update check (always-on-start; last={lastDisplay})", "Update");
+        // fire-and-forget startup check; runs in background
+        _ = Task.Run(async () =>
         {
-            var lastDisplay = lastChecked.HasValue ? lastChecked.Value.ToString("o") : "(never)";
-            _logger.Log($"startup check scheduled (last={lastDisplay})", "Update");
-            // fire-and-forget; runs in background
+            try { await _updateService.CheckNowAsync(); }
+            catch (Exception ex) { _logger.LogErr("startup check fire-and-forget", ex, "Update"); }
+        });
+        // recurring hourly re-check while the app is open
+        _updateCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        _updateCheckTimer.Tick += (_, _) =>
+        {
+            _logger.Log("hourly update check fired", "Update");
             _ = Task.Run(async () =>
             {
                 try { await _updateService.CheckNowAsync(); }
-                catch (Exception ex) { _logger.LogErr("startup check fire-and-forget", ex, "Update"); }
+                catch (Exception ex) { _logger.LogErr("hourly check fire-and-forget", ex, "Update"); }
             });
-        }
-        else
-        {
-            _logger.Log($"startup check skipped; last check {(int)sinceLast.TotalMinutes} min ago (threshold 6h)", "Update");
-        }
+        };
+        _updateCheckTimer.Start();
+        _logger.Log("hourly update-check timer started (interval=1h)", "Update");
 
         // -- Stage 7.9: Resolve Discord/AutoStart/Customizer services and log
         // initial states. Tray menu UI integration is 7.6's job; 7.9 just
@@ -335,6 +344,34 @@ public partial class App : Application
         _dialogService = _services.GetRequiredService<IDialogService>();
         _logger.Log("DialogService initialized; 5 dialogs registered (Welcome / Audio / Platforms / SetupWizard / Error)", "Bootstrap");
 
+        // -- Stage 7.x: post-update "just updated" greeting --------------
+        // InstallAsync writes app.just_updated_to = the version it installed,
+        // then the elevated updater relaunches MastersFM.exe. On that relaunch
+        // we consume the marker ONCE (clear BEFORE showing so a crash mid-dialog
+        // can't loop it) and show the just-updated dialog instead of the normal
+        // first-run welcome. Guard on the marker matching the version actually
+        // running so a stale marker from an aborted/older install is ignored.
+        // Normalization mirrors ConfigService.NormalizeVersion (strip leading
+        // 'v'/'V' and any '+build.metadata'), since App.xaml.cs has no helper.
+        bool justUpdatedLaunch = false;
+        var ju = _configService?.GetValue<string>("app.just_updated_to", "") ?? "";
+        if (!string.IsNullOrEmpty(ju) && NormalizeStartupVersion(ju) == NormalizeStartupVersion(GetRunningVersion()))
+        {
+            // consume-once, crash-safe: clear BEFORE showing
+            _configService?.SetValue<string>("app.just_updated_to", "");
+            justUpdatedLaunch = true;
+            _logger.Log($"just-updated marker matched running version (v{NormalizeStartupVersion(ju)}); showing just-updated greeting, skipping first-run welcome", "Bootstrap");
+            var dlg = _dialogService;
+            // Mirror the file's dispatcher-posted async dialog pattern (OnStartup
+            // is void; defer so MainWindow / TaskbarIcon settle first).
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                new Action(async () =>
+                {
+                    try { if (dlg != null) await dlg.ShowJustUpdatedAsync(ju); }
+                    catch (Exception ex) { _logger?.LogErr("just-updated dialog show", ex, "Bootstrap"); }
+                }));
+        }
+
         // -- Stage 7.7B: WelcomeWindow first-run hero (STEP 3 / S3.1) --
         // Show WelcomeWindow once on first launch. Uses a separate flag
         // (app.first_run_shown) so it is decoupled from the old welcome_seen
@@ -343,7 +380,14 @@ public partial class App : Application
         //   false -> Skip Setup  -> mark welcome_seen; wizard does not auto-show
         bool firstRunShown = _configService?.GetValue<bool>("app.first_run_shown", false) ?? false;
         _logger.Log($"app.first_run_shown={firstRunShown}", "Bootstrap");
-        if (!firstRunShown)
+        if (justUpdatedLaunch)
+        {
+            // Just-updated launch: the just-updated greeting replaces the normal
+            // first-run welcome for this one launch. Skip both the Welcome hero
+            // and the setup wizard so we don't stack dialogs on the greeting.
+            _logger.Log("just-updated launch: skipping first-run welcome/wizard for this launch", "Bootstrap");
+        }
+        else if (!firstRunShown)
         {
             _logger.Log("first_run_shown=false: showing Welcome hero", "Bootstrap");
             var welcome = _services.GetRequiredService<WelcomeWindow>();
@@ -478,6 +522,33 @@ public partial class App : Application
             }
         }
         _logger?.Log("all-platforms-ON default enforced (8 platforms; respects existing user values)", "Bootstrap");
+    }
+
+    /// <summary>
+    /// Stage 7.x: the version of the assembly actually running, taken from
+    /// AssemblyInformationalVersion (matching ConfigService.GetCurrentAppVersion),
+    /// used to validate the app.just_updated_to marker against this launch.
+    /// </summary>
+    private static string GetRunningVersion()
+    {
+        var asm = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info)) return info;
+        var ver = asm.GetName().Version;
+        return ver != null ? ver.ToString() : "0.0.0";
+    }
+
+    /// <summary>
+    /// Stage 7.x: strips a leading 'v'/'V' and any '+build.metadata' suffix,
+    /// mirroring ConfigService.NormalizeVersion so the just-updated marker and
+    /// the running version compare cleanly (e.g. "v14.1.0" == "14.1.0+stage7").
+    /// </summary>
+    private static string NormalizeStartupVersion(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return v;
+        if (v.Length > 1 && (v[0] == 'v' || v[0] == 'V')) v = v.Substring(1);
+        var plus = v.IndexOf('+');
+        return plus >= 0 ? v.Substring(0, plus) : v;
     }
 
     protected override void OnExit(ExitEventArgs e)
