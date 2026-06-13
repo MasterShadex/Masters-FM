@@ -1612,10 +1612,10 @@
             // ===== SPECTRUM (supercat: audio; reactivity sub-controls are advanced) =====
             { id: 'c-spec-on', help: 'The audio-reactive frequency visualizer. The small bars by the Now Playing label are set separately.', type: 'toggle', supercat: 'audio', label: 'Spectrum enabled', cssTarget: null, default: true },
             { id: 'c-spec-autogain', help: 'Normalizes loud and quiet music to similar bar heights.', type: 'toggle', supercat: 'audio', advanced: true, label: 'Make quiet sounds louder', cssTarget: null, default: false },
-            { id: 'c-spec-sensitivity', help: 'Boosts quiet music. 1.0x = no boost.', type: 'slider', supercat: 'audio', label: 'Spectrum sensitivity',
-              cssTarget: null, default: 1.0, min: 0.5, max: 100, step: 0.5, unit: 'x' },
-            { id: 'c-spec-sensitivity-reset', type: 'button', supercat: 'audio', label: 'Reset sensitivity to 1.0x',
-              cssTarget: null, default: null, buttonText: '↺ Reset', actionResetTarget: 'c-spec-sensitivity', resetTo: 1.0 },
+            { id: 'c-spec-sensitivity', help: 'Boosts quiet music so low volume still moves the bars. Default 3.0x; 1.0x = no boost.', type: 'slider', supercat: 'audio', label: 'Spectrum sensitivity',
+              cssTarget: null, default: 3.0, min: 0.5, max: 100, step: 0.5, unit: 'x' },
+            { id: 'c-spec-sensitivity-reset', type: 'button', supercat: 'audio', label: 'Reset sensitivity to 3.0x',
+              cssTarget: null, default: null, buttonText: '↺ Reset', actionResetTarget: 'c-spec-sensitivity', resetTo: 3.0 },
             { id: 'c-spec-mode', help: 'Rainbow cycles hues; Solid uses one color; Gradient blends three.', type: 'select', supercat: 'audio', label: 'Spectrum color mode',
               cssTarget: null, default: 'rainbow',
               options: [
@@ -1691,6 +1691,20 @@
             // node generation if needed.
             { id: 'c-layout-vis-spectrum', help: 'Show or hide the spectrum in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum visible', cssTarget: null, default: true },
             { id: 'c-layout-lock-spectrum', help: 'Lock the spectrum so it cannot be dragged.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: spectrum locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-albumArt', help: 'Show or hide the album art on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: album art visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-albumArt', help: 'Lock the album art so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: album art locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-animatedBars', help: 'Show or hide the animated bars on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: animated bars visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-animatedBars', help: 'Lock the animated bars so they cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: animated bars locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-nowPlayingText', help: 'Show or hide the Now Playing text on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: Now Playing text visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-nowPlayingText', help: 'Lock the Now Playing text so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: Now Playing text locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-platformBadge', help: 'Show or hide the platform badge on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: platform badge visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-platformBadge', help: 'Lock the platform badge so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: platform badge locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-trackTitle', help: 'Show or hide the track title on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: track title visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-trackTitle', help: 'Lock the track title so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: track title locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-artistName', help: 'Show or hide the artist name on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: artist name visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-artistName', help: 'Lock the artist name so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: artist name locked', cssTarget: null, default: false },
+            { id: 'c-layout-vis-progressBar', help: 'Show or hide the progress bar on the overlay.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: progress bar visible', cssTarget: null, default: true },
+            { id: 'c-layout-lock-progressBar', help: 'Lock the progress bar so it cannot be dragged in the layout editor.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Layout: progress bar locked', cssTarget: null, default: false },
 
             // ===== SLIDE-IN ANIMATION (entire section is advanced) =====
             { id: 'c-anim-dur', help: 'How long the slide-in animation lasts.', type: 'slider', supercat: 'layout', advanced: true, label: 'Slide-in duration',
@@ -1759,13 +1773,13 @@
             glow:     ['c-glow-on','c-glow-int','c-glow-pulse','c-glow-c1','c-glow-c2','c-title-glow-on','c-title-glow-color','c-title-glow-size','c-artist-glow-on','c-artist-glow-color','c-artist-glow-size','c-np-glow-on','c-np-glow-color','c-np-glow-size','c-ts-glow-on','c-ts-glow-color','c-ts-glow-size','c-platform-glow-on','c-platform-glow-color','c-platform-glow-size'],
             dyncolors:['c-dynamic-colors','c-dyn-bg','c-dyn-title','c-dyn-artist','c-dyn-np','c-dyn-timestamps','c-dyn-platform','c-dyn-glow','c-dyn-spectrum','c-dyn-progressbar','c-dyn-border','c-dyn-titleglow','c-dyn-artistglow','c-dyn-npglow','c-dyn-tsglow','c-dyn-platformglow'],
             border:   ['c-border-on','c-border-colors','c-border-spd'],
-            layout:   ['c-layout-on','c-layout-vis-spectrum'],
+            layout:   ['c-layout-on','c-layout-vis-albumArt','c-layout-lock-albumArt','c-layout-vis-animatedBars','c-layout-lock-animatedBars','c-layout-vis-nowPlayingText','c-layout-lock-nowPlayingText','c-layout-vis-platformBadge','c-layout-lock-platformBadge','c-layout-vis-trackTitle','c-layout-lock-trackTitle','c-layout-vis-artistName','c-layout-lock-artistName','c-layout-vis-spectrum','c-layout-lock-spectrum','c-layout-vis-progressBar','c-layout-lock-progressBar'],
             anim:     ['c-anim-dir','c-anim-dur','c-anim-slide','c-anim-easing','c-anim-crossfade']
         };
         // Controls that exist in SETTINGS_CONFIG (for import/round-trip) but are DEAD in V2 and must
         // NOT render: the V1 drag editor was never ported, so these only fed that editor.
         // layout.gridSize + layout.nodes.spectrum.locked still round-trip via State.nested passthrough.
-        const HIDDEN_CONTROLS = new Set(['c-layout-grid','c-layout-lock-spectrum']);
+        const HIDDEN_CONTROLS = new Set(['c-layout-grid']);
 
         // Maps every SETTINGS_CONFIG control id -> its category key. Single
         // authority for grouping (renderAllControls uses it, not the inert
@@ -1827,6 +1841,7 @@
             // Layout
             'c-layout-on':'layout', 'c-layout-grid':'layout',
             'c-layout-vis-spectrum':'layout', 'c-layout-lock-spectrum':'layout',
+            'c-layout-vis-albumArt':'layout','c-layout-lock-albumArt':'layout','c-layout-vis-animatedBars':'layout','c-layout-lock-animatedBars':'layout','c-layout-vis-nowPlayingText':'layout','c-layout-lock-nowPlayingText':'layout','c-layout-vis-platformBadge':'layout','c-layout-lock-platformBadge':'layout','c-layout-vis-trackTitle':'layout','c-layout-lock-trackTitle':'layout','c-layout-vis-artistName':'layout','c-layout-lock-artistName':'layout','c-layout-vis-progressBar':'layout','c-layout-lock-progressBar':'layout',
             // Slide-in animation
             'c-anim-dur':'anim', 'c-anim-slide':'anim', 'c-anim-dir':'anim',
             'c-anim-easing':'anim', 'c-anim-crossfade':'anim'
@@ -2742,12 +2757,27 @@
             // ----- Layout -----
             'c-layout-on':              ['layout', 'enabled'],
             'c-layout-grid':            ['layout', 'gridSize'],
-            // v2 currently only includes the spectrum vis/lock pair statically.
-            // Legacy iterates 8 nodes (albumArt/animatedBars/nowPlayingText/
-            // platformBadge/trackTitle/artistName/spectrum/progressBar); the
-            // other 7 are dynamically rendered. Parked for Stage 7.31 / v14.1.0.
-            'c-layout-vis-spectrum':    ['layout', 'nodes', 'spectrum', 'visible'],
-            'c-layout-lock-spectrum':   ['layout', 'nodes', 'spectrum', 'locked'],
+            // All 8 layout nodes' visible/locked round-trip to layout.nodes.<node>.*
+            // (restored v14.0.0). Node keys are camelCase and MUST match overlay.html's
+            // [data-layout-node] names exactly. visible=false hides the element on the
+            // overlay (honored in normal mode, not just drag mode); locked is honored by
+            // the layout/drag editor.
+            'c-layout-vis-spectrum':       ['layout', 'nodes', 'spectrum', 'visible'],
+            'c-layout-lock-spectrum':      ['layout', 'nodes', 'spectrum', 'locked'],
+            'c-layout-vis-albumArt':       ['layout', 'nodes', 'albumArt', 'visible'],
+            'c-layout-lock-albumArt':      ['layout', 'nodes', 'albumArt', 'locked'],
+            'c-layout-vis-animatedBars':   ['layout', 'nodes', 'animatedBars', 'visible'],
+            'c-layout-lock-animatedBars':  ['layout', 'nodes', 'animatedBars', 'locked'],
+            'c-layout-vis-nowPlayingText': ['layout', 'nodes', 'nowPlayingText', 'visible'],
+            'c-layout-lock-nowPlayingText':['layout', 'nodes', 'nowPlayingText', 'locked'],
+            'c-layout-vis-platformBadge':  ['layout', 'nodes', 'platformBadge', 'visible'],
+            'c-layout-lock-platformBadge': ['layout', 'nodes', 'platformBadge', 'locked'],
+            'c-layout-vis-trackTitle':     ['layout', 'nodes', 'trackTitle', 'visible'],
+            'c-layout-lock-trackTitle':    ['layout', 'nodes', 'trackTitle', 'locked'],
+            'c-layout-vis-artistName':     ['layout', 'nodes', 'artistName', 'visible'],
+            'c-layout-lock-artistName':    ['layout', 'nodes', 'artistName', 'locked'],
+            'c-layout-vis-progressBar':    ['layout', 'nodes', 'progressBar', 'visible'],
+            'c-layout-lock-progressBar':   ['layout', 'nodes', 'progressBar', 'locked'],
             // ----- Masters (Quick Settings) -----
             'c-master-accent-color':    ['masters', 'accentColor'],
             'c-master-overall-size':    ['masters', 'overallSize'],
@@ -3203,7 +3233,11 @@
 
             if (!q) {
                 rows.forEach(r => { r.hidden = false; });
-                supercats.forEach(sc => { sc.hidden = false; });
+                // Clearing the search returns to the default clean state: every
+                // category visible but COLLAPSED (matches the every-open all-closed
+                // rule), which also re-collapses any category that was auto-expanded
+                // to show search results below.
+                supercats.forEach(sc => { sc.hidden = false; sc.classList.add('collapsed'); });
                 return;
             }
 
@@ -3216,10 +3250,15 @@
                 row.hidden = !match;
             });
 
-            // Hide a supercat entirely when none of its rows survived the filter.
+            // Hide a supercat entirely when none of its rows survived the filter,
+            // and AUTO-EXPAND the ones that still have matches. Categories default to
+            // collapsed (their body is display:none), so without uncollapsing here the
+            // matching rows would stay invisible inside a closed category.
             supercats.forEach(sc => {
                 const visible = sc.querySelectorAll('.control-row:not([hidden])').length;
                 sc.hidden = visible === 0;
+                if (visible > 0) { sc.classList.remove('collapsed'); }
+                else { sc.classList.add('collapsed'); }
             });
         }
 
@@ -3229,11 +3268,12 @@
            parent .supercat container; CSS handles the visual transition.
 
            localStorage key per supercat: supercat_<id>_collapsed ('0' / '1').
-           Defaults:
-             - 'start' -> EXPANDED on first load (no localStorage entry yet)
-             - all others -> EXPANDED on first load too
-           Stored values override defaults. Only '1' triggers .collapsed; '0'
-           or null leaves the supercat expanded.
+           Behavior (operator request, every-open all-collapsed): EVERY open starts
+           with ALL categories COLLAPSED -- the clean, fully-closed sidebar is
+           guaranteed every time anyone opens the customizer. The initial state
+           ignores any stored value, so a category the user expanded last time is
+           collapsed again on the next open. Clicking a header still toggles it
+           (and records '0'/'1') for the current view.
            ========================================================================== */
         function initSupercatCollapse() {
             document.querySelectorAll('.supercat-header').forEach(header => {
@@ -3243,21 +3283,13 @@
                 if (!supercat) return;
                 const lsKey = 'supercat_' + key + '_collapsed';
 
-                let stored = null;
-                try { stored = localStorage.getItem(lsKey); }
-                catch (e) { /* localStorage unavailable */ }
-
-                if (stored === '1') {
-                    supercat.classList.add('collapsed');
-                } else if (stored === null && key !== 'general') {
-                    // Stage 7.32 / 7.32.1: default-collapse all categories EXCEPT
-                    // General on first load -- a tidy sidebar that avoids a very
-                    // long all-expanded scroll. A saved '0' (user-expanded) or
-                    // '1' (user-collapsed) still takes effect above.
-                    supercat.classList.add('collapsed');
-                }
-                // General stays expanded on first load so users see the masters /
-                // theme / font immediately (it is the merged "start here" section).
+                // Operator request (every-open all-collapsed): ALWAYS start every
+                // category collapsed on open, regardless of any saved state. This
+                // guarantees the fully-closed sidebar every time anyone opens the
+                // customizer; the prior per-category localStorage expansion state is
+                // intentionally NOT restored here. The click handler below still
+                // toggles the category + records '0'/'1' for the current view.
+                supercat.classList.add('collapsed');
 
                 header.addEventListener('click', () => {
                     supercat.classList.toggle('collapsed');
@@ -3719,8 +3751,8 @@
             // renderAllControls (but doesn't depend on bindings/state).
             initSearchFilter();
 
-            // Stage 7.29: wire supercat collapse + restore localStorage state.
-            // Click any .supercat-header to toggle; Start here defaults open.
+            // Stage 7.29: wire supercat collapse. Operator request (every-open
+            // all-collapsed): every category starts collapsed; click a header to open.
             initSupercatCollapse();
 
             // Stage 7.30.6: wire help-icon tooltip tap-toggle + Esc (delegated).
