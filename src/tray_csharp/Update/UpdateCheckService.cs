@@ -250,31 +250,69 @@ public sealed class UpdateCheckService : IUpdateCheckService
             using var localCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             lock (_lock) { _cts = localCts; }
 
-            using (var resp = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, localCts.Token).ConfigureAwait(false))
+            // Hardened download (post "frozen at 45%" fix): auto-retry with HTTP Range
+            // resume + a per-read stall watchdog. Under HttpCompletionOption.ResponseHeadersRead
+            // the body read is NOT covered by HttpClient.Timeout, so a stalled CDN stream would
+            // otherwise block ReadAsync forever. The stall CTS is reset after every successful
+            // read; if no bytes arrive within StallTimeout the read is cancelled and the attempt
+            // retried, resuming from the bytes already on disk so we never re-download all 354 MB.
+            const int maxAttempts = 6;
+            var stallTimeout = TimeSpan.FromSeconds(45);
+            long totalBytes = -1L;
+            bool complete = false;
+            for (int attempt = 1; attempt <= maxAttempts && !complete; attempt++)
             {
-                resp.EnsureSuccessStatusCode();
-                var totalBytes = resp.Content.Headers.ContentLength ?? -1L;
-                using var src = await resp.Content.ReadAsStreamAsync(localCts.Token).ConfigureAwait(false);
-                using var dst = File.Create(partialPath);
-                var buf = new byte[81920];
-                long received = 0;
-                int read;
-                int lastReportedPct = -1;
-                while ((read = await src.ReadAsync(buf.AsMemory(0, buf.Length), localCts.Token).ConfigureAwait(false)) > 0)
+                localCts.Token.ThrowIfCancellationRequested();
+                long resumeFrom = 0;
+                try { if (File.Exists(partialPath)) resumeFrom = new FileInfo(partialPath).Length; } catch { resumeFrom = 0; }
+                try
                 {
-                    await dst.WriteAsync(buf.AsMemory(0, read), localCts.Token).ConfigureAwait(false);
-                    received += read;
-                    if (totalBytes > 0)
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    if (resumeFrom > 0) req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(resumeFrom, null);
+                    using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, localCts.Token).ConfigureAwait(false);
+                    bool resuming = resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.PartialContent;
+                    if (resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.OK) resumeFrom = 0; // server ignored Range -> restart
+                    resp.EnsureSuccessStatusCode();
+                    if (resuming && resp.Content.Headers.ContentRange?.Length is long crLen) totalBytes = crLen;
+                    else if (!resuming) totalBytes = resp.Content.Headers.ContentLength ?? -1L;
+                    long received = resuming ? resumeFrom : 0;
+                    _logger.Log($"download attempt {attempt}/{maxAttempts}{(resuming ? $" (resume from {received})" : "")} total={totalBytes}", Component);
+                    using var src = await resp.Content.ReadAsStreamAsync(localCts.Token).ConfigureAwait(false);
+                    using var dst = new FileStream(partialPath, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None);
+                    using var stallCts = CancellationTokenSource.CreateLinkedTokenSource(localCts.Token);
+                    var buf = new byte[81920];
+                    int lastReportedPct = -1;
+                    while (true)
                     {
-                        var pct = (int)(received * 100L / totalBytes);
-                        if (pct != lastReportedPct && pct % 5 == 0)
+                        stallCts.CancelAfter(stallTimeout); // reset the no-data watchdog before each read
+                        int read;
+                        try { read = await src.ReadAsync(buf.AsMemory(0, buf.Length), stallCts.Token).ConfigureAwait(false); }
+                        catch (OperationCanceledException) when (!localCts.IsCancellationRequested)
+                        { throw new IOException($"stalled (no data for {stallTimeout.TotalSeconds:n0}s)"); }
+                        if (read <= 0) break;
+                        await dst.WriteAsync(buf.AsMemory(0, read), localCts.Token).ConfigureAwait(false);
+                        received += read;
+                        if (totalBytes > 0)
                         {
-                            FireStateChanged(UpdateState.Downloading, UpdateState.Downloading, pct, $"{received}/{totalBytes} bytes");
-                            lastReportedPct = pct;
+                            var pct = (int)(received * 100L / totalBytes);
+                            if (pct != lastReportedPct && pct % 5 == 0)
+                            {
+                                FireStateChanged(UpdateState.Downloading, UpdateState.Downloading, pct, $"{received}/{totalBytes} bytes");
+                                lastReportedPct = pct;
+                            }
                         }
                     }
+                    if (totalBytes > 0 && received < totalBytes) throw new IOException($"short read {received}/{totalBytes}");
+                    complete = true;
+                }
+                catch (OperationCanceledException) when (localCts.IsCancellationRequested) { throw; }
+                catch (Exception ex) when (attempt < maxAttempts)
+                {
+                    _logger.LogWarn($"download attempt {attempt}/{maxAttempts} failed ({ex.Message}); retry+resume", Component);
+                    try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * attempt, 10)), localCts.Token).ConfigureAwait(false); } catch { }
                 }
             }
+            if (!complete) throw new IOException($"download failed after {maxAttempts} attempts");
 
             // Verify SHA256
             if (!string.IsNullOrEmpty(expectedSha))
@@ -361,27 +399,35 @@ public sealed class UpdateCheckService : IUpdateCheckService
 
         try
         {
-            // ProcessStartInfo with ArgumentList closes B-003 (spaces-in-path quoting bug)
-            // by construction. Each ArgumentList entry is escaped per-arg by the runtime;
-            // no shell interpretation. PS used a temp helper script for the same reason
-            // plus to handle Major Upgrade SecureRepair (v10.1.7); brief STEP 4.8
-            // chooses simpler path -- if 7.10 cutover surfaces SecureRepair, brief
-            // re-introduces helper.
-            var psi = new ProcessStartInfo
-            {
-                FileName = "msiexec.exe",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("/i");
-            psi.ArgumentList.Add(msiPath);
-            psi.ArgumentList.Add("/quiet");
-            psi.ArgumentList.Add("/norestart");
+            // Stage 7.x: spawn the signed elevated updater (MastersFM_Updater.exe)
+            // instead of msiexec directly. The updater stages the cert + MSI, runs
+            // msiexec elevated, then relaunches MastersFM.exe. Fixes the prior bug
+            // where the fire-and-forget msiexec /i /quiet raced the tray Shutdown
+            // and frequently failed to replace in-use files (no elevation, no
+            // post-update relaunch). UseShellExecute=true + Verb="runas" gives the
+            // UAC prompt the elevated MSI install requires. ArgumentList escapes
+            // each arg per-arg (no shell interpretation; spaces-in-path safe).
+            string ver = _availableVersion ?? "";
+            _config.SetValue<string>("app.just_updated_to", ver);
 
-            _logger.Log($"install: spawning msiexec.exe with ArgumentList=[/i, '{msiPath}', /quiet, /norestart]", Component);
+            string installDir = System.IO.Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory.TrimEnd('\\', '/');
+            string stageDir   = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MastersFM_Update");
+            System.IO.Directory.CreateDirectory(stageDir);
+            string stagedExe  = System.IO.Path.Combine(stageDir, "MastersFM_Updater.exe");
+            string stagedCer  = System.IO.Path.Combine(stageDir, "MastersFM_publisher.cer");
+            System.IO.File.Copy(System.IO.Path.Combine(installDir, "MastersFM_Updater.exe"), stagedExe, true);
+            try { System.IO.File.Copy(System.IO.Path.Combine(installDir, "MastersFM_publisher.cer"), stagedCer, true); } catch { /* cert optional */ }
+
+            var psi = new ProcessStartInfo { FileName = stagedExe, UseShellExecute = true, Verb = "runas" };
+            psi.ArgumentList.Add("--msi");        psi.ArgumentList.Add(msiPath);
+            psi.ArgumentList.Add("--version");    psi.ArgumentList.Add(ver);
+            psi.ArgumentList.Add("--installDir"); psi.ArgumentList.Add(installDir);
+            psi.ArgumentList.Add("--cer");        psi.ArgumentList.Add(stagedCer);
+            psi.ArgumentList.Add("--relaunch");   psi.ArgumentList.Add(System.IO.Path.Combine(installDir, "MastersFM.exe"));
+            _logger.Log("install: launching elevated updater for v" + ver, Component);
             Process.Start(psi);
 
-            // Shut down the tray so the MSI can replace files.
+            TransitionTo(UpdateState.Installing, detail: ver);
             Application.Current.Shutdown(0);
         }
         catch (Exception ex)
