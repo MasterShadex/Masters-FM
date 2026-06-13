@@ -50,6 +50,27 @@ public sealed class DialogService : IDialogService
         });
     }
 
+    public Task ShowJustUpdatedAsync(string version)
+    {
+        return ShowOnDispatcherAsync(() =>
+        {
+            _logger.Log("showing JustUpdated v" + version, Component);
+            var window = _services.GetRequiredService<WelcomeWindow>();
+            var vm = _services.GetRequiredService<WelcomeViewModel>();
+            vm.JustUpdated = true;
+            vm.UpdatedToVersion = "v" + version;
+            window.DataContext = vm;
+            window.Owner = Application.Current.MainWindow;
+            PositionDialogOnPrimaryMonitor(window);
+            var ok = window.ShowDialog();
+            _logger.Log("JustUpdated closed openCustomize=" + (ok == true), Component);
+            if (ok == true)
+            {
+                _services.GetRequiredService<MastersFM.Tray.Services.ICustomizerLauncher>().Launch();
+            }
+        });
+    }
+
     public Task<AudioDeviceResult?> ShowAudioDeviceAsync()
     {
         return ShowOnDispatcherAsync<AudioDeviceResult?>(() =>
@@ -113,10 +134,9 @@ public sealed class DialogService : IDialogService
             vm.Populate(title, message, ex);
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
-            // Stage 7.8B STEP 9: SizeToContent="Height" window — position after layout via ContentRendered
-            // so ActualHeight is available for vertical centring.
-            window.WindowStartupLocation = WindowStartupLocation.Manual;
-            window.ContentRendered += (_, _) => PositionDialogOnPrimaryMonitor(window);
+            // SizeToContent window: ApplyPrimaryAndTopmost re-centres at ContentRendered
+            // once the final height is known (it hooks that event internally).
+            PositionDialogOnPrimaryMonitor(window);
             window.ShowDialog();
             _logger.Log("Error closed", Component);
         });
@@ -148,26 +168,13 @@ public sealed class DialogService : IDialogService
         });
     }
 
-    // Stage 7.12 Batch A (post STEP 6 rev2): centre every modal dialog in the
-    // middle of the PRIMARY monitor's work area regardless of cursor position.
-    //
-    // SystemParameters.WorkArea returns the primary monitor work area already
-    // in DIPs (WPF logical pixels) — the same unit space as Window.Left/Top
-    // and dialog.Width/Height.  The previous Screen.WorkingArea approach
-    // mixed device-pixel screen metrics with logical-pixel window dimensions,
-    // which at any DPI > 100% pushed dialogs down and to the right.
-    //
-    // Call BEFORE ShowDialog for windows with explicit Width/Height in XAML.
-    // For SizeToContent windows, subscribe ContentRendered so ActualHeight is known.
+    // Centre every window on the PRIMARY monitor + mark it always-on-top. Multi-monitor
+    // / mixed-DPI safe: WindowPlacement positions via Win32 in physical pixels AFTER the
+    // HWND + final size exist, so a window never opens off-screen on a 4-5 display rig
+    // (the old pre-show SystemParameters.WorkArea + Left/Top DIP math could). Safe to call
+    // before Show()/ShowDialog() for both fixed-size and SizeToContent windows.
     private static void PositionDialogOnPrimaryMonitor(Window dialog)
-    {
-        var wa = System.Windows.SystemParameters.WorkArea;     // DIPs, primary monitor
-        var w  = dialog.ActualWidth  > 0 ? dialog.ActualWidth  : dialog.Width;
-        var h  = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
-        dialog.WindowStartupLocation = WindowStartupLocation.Manual;
-        dialog.Left = wa.Left + (wa.Width  - w) / 2;
-        dialog.Top  = wa.Top  + (wa.Height - h) / 2;
-    }
+        => WindowPlacement.ApplyPrimaryAndTopmost(dialog);
 
     // -- Dispatcher marshalling helpers --
     private Task ShowOnDispatcherAsync(Action action)

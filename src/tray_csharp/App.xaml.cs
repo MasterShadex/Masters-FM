@@ -391,6 +391,7 @@ public partial class App : Application
         {
             _logger.Log("first_run_shown=false: showing Welcome hero", "Bootstrap");
             var welcome = _services.GetRequiredService<WelcomeWindow>();
+            MastersFM.Tray.Services.WindowPlacement.ApplyPrimaryAndTopmost(welcome); // primary monitor + always-on-top
             bool? getStarted = welcome.ShowDialog();
             _configService?.SetValue("app.first_run_shown", true);
             _logger.Log($"Welcome closed (getStarted={getStarted})", "Bootstrap");
