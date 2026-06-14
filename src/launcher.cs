@@ -242,14 +242,34 @@ class MastersFM
                 if (parts.Length == 0) continue;
                 if (!int.TryParse(parts[parts.Length - 1], out int pid) || pid <= 4) continue;
 
-                // Kill only the first match (mirrors Select-Object -First 1)
+                // SAFETY (Overwatch-kill fix): ONLY kill the process on :4242 if it is
+                // actually OUR stale server.exe. The old code blind-killed whatever held
+                // the port -- so if a game or any other app (e.g. Overwatch / a Battle.net
+                // component) happened to be listening on 4242, (re)starting or updating
+                // Master's FM would TERMINATE that process. Verify the process image is our
+                // own install-dir server.exe before killing; never touch a foreign process.
                 try
                 {
-                    Process.GetProcessById(pid).Kill();
-                    Log("ClearPort4242: killed PID=" + pid + " on :4242 (mirrors tray.ps1:5083)");
-                    Thread.Sleep(400);   // mirrors Start-Sleep -Milliseconds 400
+                    var proc = Process.GetProcessById(pid);
+                    string ourServer = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server.exe");
+                    string procPath = null;
+                    try { procPath = proc.MainModule != null ? proc.MainModule.FileName : null; }
+                    catch { procPath = null; }   // access denied => definitely not our own child
+                    bool isOurServer = procPath != null
+                        && string.Equals(procPath, ourServer, StringComparison.OrdinalIgnoreCase);
+                    if (isOurServer)
+                    {
+                        proc.Kill();
+                        Log("ClearPort4242: killed stale OUR server.exe PID=" + pid + " on :4242");
+                        Thread.Sleep(400);   // mirrors Start-Sleep -Milliseconds 400
+                    }
+                    else
+                    {
+                        Log("ClearPort4242: PID=" + pid + " on :4242 is NOT our server.exe (path="
+                            + (procPath ?? "<unknown/access-denied>") + ") -- leaving it ALONE (no foreign kill)");
+                    }
                 }
-                catch (Exception ex) { Log("ClearPort4242: Kill PID=" + pid + " failed: " + ex.Message); }
+                catch (Exception ex) { Log("ClearPort4242: identity-check/Kill PID=" + pid + " failed: " + ex.Message); }
                 break;
             }
         }
