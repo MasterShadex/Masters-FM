@@ -14,6 +14,10 @@ public interface IDialogService
     /// the About panel (Surface 10 embedded) is selected by default.</summary>
     Task ShowWelcomeAsync(bool showAboutTab = false);
 
+    /// <summary>Show the post-update welcome panel for the version just
+    /// installed. On "Open customize overlay" the customizer is launched.</summary>
+    Task ShowJustUpdatedAsync(string version);
+
     /// <summary>Show Audio device dialog (Surface 05). Returns the
     /// selected device on Apply, null on Cancel.</summary>
     Task<AudioDeviceResult?> ShowAudioDeviceAsync();

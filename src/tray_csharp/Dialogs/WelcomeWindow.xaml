@@ -308,6 +308,51 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
+
+            <!-- Cluster B: post-update welcome panel. Shown instead of the
+                 first-run welcome copy when WelcomeViewModel.JustUpdated is true.
+                 Code-behind (OnLoaded) collapses WelcomeContentScroller +
+                 WelcomeActionButtons (and other panels) and reveals this one.
+                 Occupies the same area as the main welcome content. -->
+            <Grid x:Name="JustUpdatedPanel"
+                  Grid.Row="0"
+                  Grid.RowSpan="2"
+                  Visibility="Collapsed"
+                  Margin="40,32,40,24">
+                <StackPanel VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+
+                    <!-- Headline (brand display style; set in code-behind) -->
+                    <TextBlock x:Name="JustUpdatedHeadline"
+                               Text="Master's FM got updated"
+                               Style="{StaticResource DisplayTextStyle}"
+                               Foreground="{StaticResource TextPrimary}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,16"/>
+
+                    <!-- Optional version subline -->
+                    <TextBlock x:Name="JustUpdatedSubline"
+                               Text="You're on the latest build."
+                               Style="{StaticResource BodyTextStyle}"
+                               Foreground="{StaticResource TextSecondary}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,32"/>
+
+                    <!-- Actions: primary opens customize overlay, secondary dismisses -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center">
+                        <Button Content="Awesome!"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="0,0,8,0"
+                                Click="OnAwesome"/>
+                        <Button Content="Open customize overlay"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Click="OnOpenCustomize"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

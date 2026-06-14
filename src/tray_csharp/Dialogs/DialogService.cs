@@ -42,6 +42,7 @@ public sealed class DialogService : IDialogService
             var window = _services.GetRequiredService<WelcomeWindow>();
             var vm = _services.GetRequiredService<WelcomeViewModel>();
             vm.ShowAboutTab = showAboutTab;
+            vm.JustUpdated = false;   // singleton VM: clear a stale post-update flag so Patch notes always shows the notes
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;
             PositionDialogOnPrimaryMonitor(window);
@@ -58,6 +59,7 @@ public sealed class DialogService : IDialogService
             var window = _services.GetRequiredService<WelcomeWindow>();
             var vm = _services.GetRequiredService<WelcomeViewModel>();
             vm.JustUpdated = true;
+            vm.ShowAboutTab = false;  // singleton VM: clear a stale patch-notes flag so the post-update greeting shows
             vm.UpdatedToVersion = "v" + version;
             window.DataContext = vm;
             window.Owner = Application.Current.MainWindow;

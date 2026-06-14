@@ -92,17 +92,40 @@ public partial class WelcomeWindow : Window
         var versionLabel = "v" + GetAppVersion();
         if (VersionText != null) VersionText.Text = versionLabel;
 
-        // Stage 7.12 Issue 6: if opened as patch-notes view, hide the
-        // first-run welcome copy + action buttons and show the patch notes
-        // panel instead.  Window title becomes "You are currently running
-        // version v..." so the operator can see at a glance which build
-        // they're looking at.
-        if (DataContext is ViewModels.WelcomeViewModel vm && vm.ShowAboutTab)
+        // View selection is MUTUALLY EXCLUSIVE, by priority:
+        //   1. ShowAboutTab -> patch-notes list. An explicit "Patch notes" open
+        //      must ALWAYS win, even right after an update when JustUpdated is
+        //      still set on the singleton WelcomeViewModel (the bug this fixes:
+        //      JustUpdated previously ran second and clobbered the patch notes).
+        //   2. JustUpdated  -> post-update "got updated" greeting.
+        //   3. otherwise    -> first-run welcome hero.
+        // Every branch sets ALL four panels explicitly, so no stale visibility
+        // from a prior open of the singleton VM can bleed through.
+        if (DataContext is ViewModels.WelcomeViewModel vm)
         {
-            WelcomeContentScroller.Visibility = Visibility.Collapsed;
-            WelcomeActionButtons.Visibility   = Visibility.Collapsed;
-            PatchNotesPanel.Visibility        = Visibility.Visible;
-            Title = $"You are currently running version {versionLabel}";
+            if (vm.ShowAboutTab)
+            {
+                WelcomeContentScroller.Visibility = Visibility.Collapsed;
+                WelcomeActionButtons.Visibility   = Visibility.Collapsed;
+                JustUpdatedPanel.Visibility       = Visibility.Collapsed;
+                PatchNotesPanel.Visibility        = Visibility.Visible;
+                Title = $"You are currently running version {versionLabel}";
+            }
+            else if (vm.JustUpdated)
+            {
+                WelcomeContentScroller.Visibility = Visibility.Collapsed;
+                WelcomeActionButtons.Visibility   = Visibility.Collapsed;
+                PatchNotesPanel.Visibility        = Visibility.Collapsed;
+                JustUpdatedPanel.Visibility       = Visibility.Visible;
+                JustUpdatedHeadline.Text          = "Master's FM got updated to " + vm.UpdatedToVersion;
+            }
+            else
+            {
+                WelcomeContentScroller.Visibility = Visibility.Visible;
+                WelcomeActionButtons.Visibility   = Visibility.Visible;
+                PatchNotesPanel.Visibility        = Visibility.Collapsed;
+                JustUpdatedPanel.Visibility       = Visibility.Collapsed;
+            }
         }
     }
 
@@ -199,6 +222,24 @@ public partial class WelcomeWindow : Window
     {
         // false -> App.xaml.cs interprets as "go straight to tray menu".
         DialogResult = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Cluster B: post-update welcome panel actions
+    //   OnOpenCustomize -> DialogResult=true  -> DialogService launches customizer
+    //   OnAwesome       -> DialogResult=false -> dismiss, do nothing
+    // -------------------------------------------------------------------------
+
+    private void OnOpenCustomize(object sender, RoutedEventArgs e)
+    {
+        DialogResult = true;
+        Close();
+    }
+
+    private void OnAwesome(object sender, RoutedEventArgs e)
+    {
+        DialogResult = false;
+        Close();
     }
 
     // -------------------------------------------------------------------------

@@ -42,6 +42,12 @@ public sealed partial class WelcomeViewModel : ObservableObject
     [ObservableProperty]
     private bool dontShowAgain;
 
+    [ObservableProperty]
+    private bool justUpdated;
+
+    [ObservableProperty]
+    private string updatedToVersion = string.Empty;
+
     private bool _patchNotesLoaded;
 
     public WelcomeViewModel(ILogger logger)
