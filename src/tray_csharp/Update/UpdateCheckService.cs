@@ -294,72 +294,37 @@ public sealed class UpdateCheckService : IUpdateCheckService
             using var localCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             lock (_lock) { _cts = localCts; }
 
-            // Hardened download (post "frozen at 45%" fix): auto-retry with HTTP Range
-            // resume + a per-read stall watchdog. Under HttpCompletionOption.ResponseHeadersRead
-            // the body read is NOT covered by HttpClient.Timeout, so a stalled CDN stream would
-            // otherwise block ReadAsync forever. The stall CTS is reset after every successful
-            // read; if no bytes arrive within StallTimeout the read is cancelled and the attempt
-            // retried, resuming from the bytes already on disk so we never re-download all 354 MB.
-            const int maxAttempts = 6;
-            var stallTimeout = TimeSpan.FromSeconds(45);
-            long totalBytes = -1L;
+            // "Unlimited"-speed download. GitHub's release-asset CDN throttles a
+            // SINGLE connection, so a 354 MB MSI over one stream is the bottleneck.
+            // We split the file into parallel byte-range segments -- each on its own
+            // connection -- to saturate the link the way a download manager does.
+            // Falls back to the proven single-stream resilient path when the server
+            // does not support ranged requests or a parallel attempt fails; the
+            // SHA256 + Authenticode gate below verifies the assembled file either way.
             bool complete = false;
-            for (int attempt = 1; attempt <= maxAttempts && !complete; attempt++)
+            long rangeTotal = await ProbeRangeTotalAsync(url, localCts.Token).ConfigureAwait(false);
+            const long parallelThreshold = 16L * 1024 * 1024; // only worth parallelizing large files
+            if (rangeTotal >= parallelThreshold)
             {
-                localCts.Token.ThrowIfCancellationRequested();
-                long resumeFrom = 0;
-                try { if (File.Exists(partialPath)) resumeFrom = new FileInfo(partialPath).Length; } catch { resumeFrom = 0; }
+                int segments = (int)Math.Clamp(rangeTotal / (8L * 1024 * 1024), 2, 8);
                 try
                 {
-                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    if (resumeFrom > 0) req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(resumeFrom, null);
-                    using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, localCts.Token).ConfigureAwait(false);
-                    bool resuming = resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.PartialContent;
-                    if (resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.OK) resumeFrom = 0; // server ignored Range -> restart
-                    resp.EnsureSuccessStatusCode();
-                    if (resuming && resp.Content.Headers.ContentRange?.Length is long crLen) totalBytes = crLen;
-                    else if (!resuming) totalBytes = resp.Content.Headers.ContentLength ?? -1L;
-                    long received = resuming ? resumeFrom : 0;
-                    _logger.Log($"download attempt {attempt}/{maxAttempts}{(resuming ? $" (resume from {received})" : "")} total={totalBytes}", Component);
-                    using var src = await resp.Content.ReadAsStreamAsync(localCts.Token).ConfigureAwait(false);
-                    using var dst = new FileStream(partialPath, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None);
-                    using var stallCts = CancellationTokenSource.CreateLinkedTokenSource(localCts.Token);
-                    // 1 MB buffer: the old 80 KB buffer capped throughput (~12x more async
-                    // read hops) and throttled a gigabit line to ~6 MB/s. 1 MB lets the
-                    // download saturate fast links so a 354 MB update lands in seconds.
-                    var buf = new byte[1024 * 1024];
-                    int lastReportedPct = -1;
-                    while (true)
-                    {
-                        stallCts.CancelAfter(stallTimeout); // reset the no-data watchdog before each read
-                        int read;
-                        try { read = await src.ReadAsync(buf.AsMemory(0, buf.Length), stallCts.Token).ConfigureAwait(false); }
-                        catch (OperationCanceledException) when (!localCts.IsCancellationRequested)
-                        { throw new IOException($"stalled (no data for {stallTimeout.TotalSeconds:n0}s)"); }
-                        if (read <= 0) break;
-                        await dst.WriteAsync(buf.AsMemory(0, read), localCts.Token).ConfigureAwait(false);
-                        received += read;
-                        if (totalBytes > 0)
-                        {
-                            var pct = (int)(received * 100L / totalBytes);
-                            if (pct != lastReportedPct && pct % 5 == 0)
-                            {
-                                FireStateChanged(UpdateState.Downloading, UpdateState.Downloading, pct, $"{received}/{totalBytes} bytes");
-                                lastReportedPct = pct;
-                            }
-                        }
-                    }
-                    if (totalBytes > 0 && received < totalBytes) throw new IOException($"short read {received}/{totalBytes}");
+                    _logger.Log($"parallel download: {rangeTotal} bytes over {segments} segments", Component);
+                    await DownloadSegmentedAsync(url, partialPath, rangeTotal, segments, localCts.Token).ConfigureAwait(false);
                     complete = true;
                 }
                 catch (OperationCanceledException) when (localCts.IsCancellationRequested) { throw; }
-                catch (Exception ex) when (attempt < maxAttempts)
+                catch (Exception ex)
                 {
-                    _logger.LogWarn($"download attempt {attempt}/{maxAttempts} failed ({ex.Message}); retry+resume", Component);
-                    try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * attempt, 10)), localCts.Token).ConfigureAwait(false); } catch { }
+                    _logger.LogWarn($"parallel download failed ({ex.Message}); falling back to single-stream", Component);
+                    try { File.Delete(partialPath); } catch { }   // clear the pre-sized partial so resume starts fresh
                 }
             }
-            if (!complete) throw new IOException($"download failed after {maxAttempts} attempts");
+            if (!complete)
+            {
+                complete = await DownloadSingleStreamAsync(url, partialPath, localCts.Token).ConfigureAwait(false);
+            }
+            if (!complete) throw new IOException("download failed");
 
             // Verify SHA256
             if (!string.IsNullOrEmpty(expectedSha))
@@ -418,6 +383,196 @@ public sealed class UpdateCheckService : IUpdateCheckService
         {
             lock (_lock) { _cts = null; }
         }
+    }
+
+    /// <summary>
+    /// Probes the asset for ranged-request support and total size by requesting the
+    /// first byte (Range: bytes=0-0). Returns the total length if the server answers
+    /// 206 with a Content-Range total (so a parallel segmented download is safe), else
+    /// -1 (caller uses the single-stream path). GitHub's asset CDN follows the release
+    /// redirect and honours Range, which is also what the resume path relies on.
+    /// </summary>
+    private async Task<long> ProbeRangeTotalAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+            using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            if (resp.StatusCode == System.Net.HttpStatusCode.PartialContent &&
+                resp.Content.Headers.ContentRange?.Length is long len && len > 0)
+                return len;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { /* unknown / no range support -> single-stream */ }
+        return -1;
+    }
+
+    /// <summary>
+    /// Parallel segmented download: splits [0,totalBytes) into N contiguous segments,
+    /// each fetched on its own connection via an HTTP Range request and written to its
+    /// own region of the pre-sized file with positional (RandomAccess) writes -- so the
+    /// segments never contend on a shared file position. Per-segment stall watchdog +
+    /// retry/resume mirrors the single-stream path. If any segment ultimately fails the
+    /// whole call throws (siblings are cancelled first) and the caller falls back.
+    /// </summary>
+    private async Task DownloadSegmentedAsync(string url, string partialPath, long totalBytes, int segments, CancellationToken ct)
+    {
+        // Pre-size the destination so each segment can write its own region independently.
+        using (var fs = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            fs.SetLength(totalBytes);
+
+        using var handle = File.OpenHandle(partialPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, FileOptions.Asynchronous);
+        using var segCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var segToken = segCts.Token;
+
+        long segLen = (totalBytes + segments - 1) / segments;
+        long receivedTotal = 0;
+        int lastPct = -1;
+        var pctLock = new object();
+        var stallTimeout = TimeSpan.FromSeconds(45);
+        const int maxAttempts = 6;
+
+        var tasks = new List<Task>();
+        for (int s = 0; s < segments; s++)
+        {
+            long segStart = (long)s * segLen;
+            if (segStart >= totalBytes) break;
+            long segEnd = Math.Min(segStart + segLen, totalBytes) - 1; // inclusive
+            int idx = s;
+            tasks.Add(Task.Run(async () =>
+            {
+                long pos = segStart;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++)
+                {
+                    segToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                        req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(pos, segEnd);
+                        using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, segToken).ConfigureAwait(false);
+                        if (resp.StatusCode != System.Net.HttpStatusCode.PartialContent)
+                            throw new IOException($"segment {idx}: expected 206, got {(int)resp.StatusCode}");
+                        using var src = await resp.Content.ReadAsStreamAsync(segToken).ConfigureAwait(false);
+                        using var stallCts = CancellationTokenSource.CreateLinkedTokenSource(segToken);
+                        var buf = new byte[1024 * 1024];
+                        while (pos <= segEnd)
+                        {
+                            stallCts.CancelAfter(stallTimeout); // reset no-data watchdog before each read
+                            int read;
+                            try { read = await src.ReadAsync(buf.AsMemory(0, buf.Length), stallCts.Token).ConfigureAwait(false); }
+                            catch (OperationCanceledException) when (!segToken.IsCancellationRequested)
+                            { throw new IOException($"segment {idx} stalled (no data for {stallTimeout.TotalSeconds:n0}s)"); }
+                            if (read <= 0) break;
+                            long remaining = segEnd - pos + 1;          // never write past this segment's boundary
+                            if (read > remaining) read = (int)remaining;
+                            await RandomAccess.WriteAsync(handle, buf.AsMemory(0, read), pos, segToken).ConfigureAwait(false);
+                            pos += read;
+                            long rt = System.Threading.Interlocked.Add(ref receivedTotal, read);
+                            int pct = (int)(rt * 100L / totalBytes);
+                            if (pct % 5 == 0)
+                            {
+                                lock (pctLock)
+                                {
+                                    if (pct != lastPct)
+                                    {
+                                        lastPct = pct;
+                                        FireStateChanged(UpdateState.Downloading, UpdateState.Downloading, pct, $"{rt}/{totalBytes} bytes");
+                                    }
+                                }
+                            }
+                            if (pos > segEnd) break;
+                        }
+                        if (pos > segEnd) return; // segment fully received
+                        throw new IOException($"segment {idx} ended early at {pos}/{segEnd}");
+                    }
+                    catch (OperationCanceledException) when (segToken.IsCancellationRequested) { throw; }
+                    catch (Exception ex) when (attempt < maxAttempts)
+                    {
+                        _logger.LogWarn($"segment {idx} attempt {attempt}/{maxAttempts} failed ({ex.Message}); retry from {pos}", Component);
+                        try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * attempt, 10)), segToken).ConfigureAwait(false); } catch { }
+                    }
+                }
+                throw new IOException($"segment {idx} failed after {maxAttempts} attempts");
+            }, segToken));
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch
+        {
+            try { segCts.Cancel(); } catch { }                 // stop sibling segments
+            try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { } // drain
+            throw;                                              // propagate -> caller falls back to single-stream
+        }
+    }
+
+    /// <summary>
+    /// Single-stream resilient download (the proven "frozen at 45%" fix path): one
+    /// connection with HTTP Range resume + a per-read stall watchdog. Used as the
+    /// fallback when ranged parallel download is unavailable. Returns true on success.
+    /// </summary>
+    private async Task<bool> DownloadSingleStreamAsync(string url, string partialPath, CancellationToken ct)
+    {
+        const int maxAttempts = 6;
+        var stallTimeout = TimeSpan.FromSeconds(45);
+        long totalBytes = -1L;
+        bool complete = false;
+        for (int attempt = 1; attempt <= maxAttempts && !complete; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            long resumeFrom = 0;
+            try { if (File.Exists(partialPath)) resumeFrom = new FileInfo(partialPath).Length; } catch { resumeFrom = 0; }
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                if (resumeFrom > 0) req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(resumeFrom, null);
+                using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                bool resuming = resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.PartialContent;
+                if (resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.OK) resumeFrom = 0; // server ignored Range -> restart
+                resp.EnsureSuccessStatusCode();
+                if (resuming && resp.Content.Headers.ContentRange?.Length is long crLen) totalBytes = crLen;
+                else if (!resuming) totalBytes = resp.Content.Headers.ContentLength ?? -1L;
+                long received = resuming ? resumeFrom : 0;
+                _logger.Log($"single-stream attempt {attempt}/{maxAttempts}{(resuming ? $" (resume from {received})" : "")} total={totalBytes}", Component);
+                using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var dst = new FileStream(partialPath, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None);
+                using var stallCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var buf = new byte[1024 * 1024];
+                int lastReportedPct = -1;
+                while (true)
+                {
+                    stallCts.CancelAfter(stallTimeout); // reset the no-data watchdog before each read
+                    int read;
+                    try { read = await src.ReadAsync(buf.AsMemory(0, buf.Length), stallCts.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    { throw new IOException($"stalled (no data for {stallTimeout.TotalSeconds:n0}s)"); }
+                    if (read <= 0) break;
+                    await dst.WriteAsync(buf.AsMemory(0, read), ct).ConfigureAwait(false);
+                    received += read;
+                    if (totalBytes > 0)
+                    {
+                        var pct = (int)(received * 100L / totalBytes);
+                        if (pct != lastReportedPct && pct % 5 == 0)
+                        {
+                            FireStateChanged(UpdateState.Downloading, UpdateState.Downloading, pct, $"{received}/{totalBytes} bytes");
+                            lastReportedPct = pct;
+                        }
+                    }
+                }
+                if (totalBytes > 0 && received < totalBytes) throw new IOException($"short read {received}/{totalBytes}");
+                complete = true;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarn($"single-stream attempt {attempt}/{maxAttempts} failed ({ex.Message}); retry+resume", Component);
+                try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * attempt, 10)), ct).ConfigureAwait(false); } catch { }
+            }
+        }
+        return complete;
     }
 
     public void Cancel()
