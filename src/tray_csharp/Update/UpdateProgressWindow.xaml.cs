@@ -5,6 +5,7 @@
 // OnClosing guard prevents accidental close during Downloading / Installing states.
 
 using System.ComponentModel;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,6 +24,23 @@ public partial class UpdateProgressWindow : Window
         SetValue(ForegroundProperty, SystemColors.WindowTextBrush);
         InitializeComponent();
         DataContext = viewModel;
+        // Title bar (top-left) shows the build the user is currently running -- the
+        // body heading still shows the status (No updates available / Downloading...).
+        // Mirrors the patch-notes window so the running version is visible at a glance.
+        Title = "Currently running Master's FM v" + GetAppVersion();
+    }
+
+    private static string GetAppVersion()
+    {
+        var asm  = Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            var plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        var ver = asm.GetName().Version;
+        return ver != null ? ver.ToString() : "0.0.0";
     }
 
     // -------------------------------------------------------------------------
