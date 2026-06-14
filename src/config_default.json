@@ -92,7 +92,7 @@
     "showAnimation": {
       "duration": 0.5,
       "slideDistance": 28,
-      "crossfadeScope": "textArt"
+      "crossfadeScope": "everything"
     },
     "overlay": {
       "opacity": 1.0

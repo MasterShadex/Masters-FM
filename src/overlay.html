@@ -674,7 +674,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
           </div>
 
           <!-- ③ Right column: spectrum + timestamps -->
-          <div class="right-col">
+          <div class="right-col" id="right-col">
             <!-- v9.4.0 — canvas2d wiped, WebGL is now the only renderer.
                  spectrum-canvas stays in the DOM as a transparent layout
                  placeholder so the existing data-layout-node="spectrum" hook
@@ -849,7 +849,7 @@ const DEFAULTS = {
     direction:       'up',
     easing:          'spring',
     crossfadeOnSkip: false,  // when true: art+text fade across instead of full slide-out/in
-    crossfadeScope:  'textArt',  // 'textArt' (default, current) | 'everything' (whole card incl. glow/border/spectrum) | 'keepSpectrum' (all card content except spectrum)
+    crossfadeScope:  'everything',  // what cross-fades on skip; the card FRAME (glow/border/bg) ALWAYS stays. 'everything' (all content incl. spectrum) | 'keepSpectrum' (all content except the spectrum) | 'textArt' (text + album art only)
   },
   pauseBehavior: {
     keepVisibleOnPause: false,  // when true: overlay stays visible indefinitely while paused
@@ -2493,37 +2493,40 @@ async function transitionToTrack(d) {
   // Clear stale progress immediately — prevents old end-time flashing on new track
   setDuration(0);
 
-  // Elements that change per-song and should crossfade. Scope-driven so the fade
-  // can cover just text+art, the WHOLE card, or everything except the spectrum.
-  //   'everything'   -> #glow-wrap (single root group; opacity inherits to glow
-  //                     halo, spinning border, card bg, art, all text, bars,
-  //                     progress/timestamps, AND both spectrum canvases).
-  //   'keepSpectrum' -> art-wrap + info (label/title/artist/bars) + time-bar;
-  //                     leaves #spectrum-canvas/-gl and the glow/border live.
-  //   'textArt'      -> original whitelist (title/artist/platform/time-bar);
-  //                     #artwork still handled by its separate block below.
-  // time-bar is included (where applicable) so old timestamps/progress don't show
-  // during the swap.
+  // Per-song content groups that crossfade. The card FRAME (glow halo, spinning
+  // border, background) is NEVER in any set, so it always stays put -- only the
+  // song content fades. Sets are whole GROUP containers (not cherry-picked leaf
+  // nodes) so nothing is ever orphaned: #art-wrap = album art (+ fallback note);
+  // #info = the ENTIRE info column (now-playing label = bars + "now playing" text
+  // + platform badge, AND track title AND artist); #right-col = both spectrum
+  // canvases + the progress/timestamps. Order is left-to-right (art -> info ->
+  // right column) to drive the staggered left-to-right cascade below.
+  //   'everything'   -> art + info + right column  (EVERYTHING inside; card stays)
+  //   'keepSpectrum' -> art + info + time-bar       (all content except the spectrum)
+  //   'textArt'      -> art + info                  (text + art; spectrum + progress stay)
   const _fadeEls = () => {
     let ids;
-    if (_fadeScope === 'everything')         ids = ['glow-wrap'];
+    if (_fadeScope === 'everything')         ids = ['art-wrap','info','right-col'];
     else if (_fadeScope === 'keepSpectrum')  ids = ['art-wrap','info','time-bar'];
-    else                                     ids = ['track-title','artist','platform-label','time-bar'];
+    else                                     ids = ['art-wrap','info'];
     return ids.map(id => document.getElementById(id)).filter(Boolean);
   };
-  const FADE_MS  = 260; // fast enough to feel snappy, slow enough to read
+  const FADE_MS    = 260; // fast enough to feel snappy, slow enough to read
+  const STAGGER_MS = 60;  // left-to-right cascade between groups (art -> info -> right column)
 
   if (crossfade) {
-    // Fade only the track title, artist, platform badge, and album art out.
-    // Everything else (card background, border, spectrum, timestamps) stays live.
-    _fadeEls().forEach(el => {
-      el.style.transition = `opacity ${FADE_MS}ms ease`;
+    // Fade the per-song content OUT left-to-right: each group is delayed by its
+    // position so the card sweeps from the left edge to the right. The card frame
+    // (glow/border/bg) is never touched -- only the content fades.
+    const outEls = _fadeEls();
+    outEls.forEach((el, i) => {
+      el.style.transition = `opacity ${FADE_MS}ms ease ${i * STAGGER_MS}ms`;
       el.style.opacity    = '0';
     });
     const artImg = document.getElementById('artwork');
     if (artImg) { artImg.style.transition = `opacity ${FADE_MS}ms ease`; artImg.style.opacity = '0'; }
     stopTimer();
-    await sleep(FADE_MS + 20);
+    await sleep(FADE_MS + (outEls.length - 1) * STAGGER_MS + 20); // wait for the rightmost group
   } else if (isVisible) {
     widget.classList.remove('visible');           // trigger slide-out
     stopTimer();
@@ -2552,15 +2555,20 @@ async function transitionToTrack(d) {
   await sleep(20);                                // tiny settle delay
 
   if (crossfade) {
-    // Fade the text elements back in. Album art is handled by setArt() inside
-    // applyTrackContent — it preloads the new image then fades the <img> in,
-    // so we just clear the inline opacity/transition we set during fade-out.
-    _fadeEls().forEach(el => { el.style.opacity = ''; });
+    // Fade the new song's content back IN with the same left-to-right cascade.
+    // Album art is also handled by setArt() inside applyTrackContent (preload +
+    // fade the <img> in); we re-assert the staggered transition then clear the
+    // inline opacity so each group eases 0->1 in left-to-right order.
+    const inEls = _fadeEls();
+    inEls.forEach((el, i) => {
+      el.style.transition = `opacity ${FADE_MS}ms ease ${i * STAGGER_MS}ms`;
+      el.style.opacity    = '';
+    });
     setTimeout(() => {
       _fadeEls().forEach(el => { el.style.transition = ''; });
       const artImg = document.getElementById('artwork');
       if (artImg) { artImg.style.transition = ''; }
-    }, FADE_MS + 80);
+    }, FADE_MS + (inEls.length - 1) * STAGGER_MS + 80);
   } else {
     widget.classList.add('visible');              // slide in
   }

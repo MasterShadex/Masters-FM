@@ -1729,12 +1729,12 @@
               ] },
             { id: 'c-anim-crossfade', help: 'Title, artist and art fade to the new song without the card moving.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Crossfade on track skip',
               cssTarget: null, default: false },
-            { id: 'c-anim-crossfade-scope', help: 'Choose what crossfades on track skip: just the text + art, the whole card, or everything except the spectrum.', type: 'select', supercat: 'layout', advanced: true, label: 'What fades on skip',
-              cssTarget: null, default: 'textArt',
+            { id: 'c-anim-crossfade-scope', help: 'Choose what cross-fades when the song changes. The card frame always stays put -- only the content fades, left to right. "Everything inside" fades all the song info (now-playing label, title, artist, album art, spectrum and progress); the other options fade less.', type: 'select', supercat: 'layout', advanced: true, label: 'What fades on skip',
+              cssTarget: null, default: 'everything',
               options: [
-                  { value: 'textArt', label: 'Text + art only (current)' },
-                  { value: 'everything', label: 'Everything in the card' },
-                  { value: 'keepSpectrum', label: 'Everything except spectrum' }
+                  { value: 'everything', label: 'Everything inside (card stays)' },
+                  { value: 'keepSpectrum', label: 'Everything except the spectrum' },
+                  { value: 'textArt', label: 'Text + album art only' }
               ] }
         ];
 
