@@ -1728,7 +1728,14 @@
                   { value: 'spring', label: 'Spring' }
               ] },
             { id: 'c-anim-crossfade', help: 'Title, artist and art fade to the new song without the card moving.', type: 'toggle', supercat: 'layout', advanced: true, label: 'Crossfade on track skip',
-              cssTarget: null, default: false }
+              cssTarget: null, default: false },
+            { id: 'c-anim-crossfade-scope', help: 'Choose what crossfades on track skip: just the text + art, the whole card, or everything except the spectrum.', type: 'select', supercat: 'layout', advanced: true, label: 'What fades on skip',
+              cssTarget: null, default: 'textArt',
+              options: [
+                  { value: 'textArt', label: 'Text + art only (current)' },
+                  { value: 'everything', label: 'Everything in the card' },
+                  { value: 'keepSpectrum', label: 'Everything except spectrum' }
+              ] }
         ];
 
         /* ==========================================================================
@@ -1774,7 +1781,7 @@
             dyncolors:['c-dynamic-colors','c-dyn-bg','c-dyn-title','c-dyn-artist','c-dyn-np','c-dyn-timestamps','c-dyn-platform','c-dyn-glow','c-dyn-spectrum','c-dyn-progressbar','c-dyn-border','c-dyn-titleglow','c-dyn-artistglow','c-dyn-npglow','c-dyn-tsglow','c-dyn-platformglow'],
             border:   ['c-border-on','c-border-colors','c-border-spd'],
             layout:   ['c-layout-on','c-layout-vis-albumArt','c-layout-lock-albumArt','c-layout-vis-animatedBars','c-layout-lock-animatedBars','c-layout-vis-nowPlayingText','c-layout-lock-nowPlayingText','c-layout-vis-platformBadge','c-layout-lock-platformBadge','c-layout-vis-trackTitle','c-layout-lock-trackTitle','c-layout-vis-artistName','c-layout-lock-artistName','c-layout-vis-spectrum','c-layout-lock-spectrum','c-layout-vis-progressBar','c-layout-lock-progressBar'],
-            anim:     ['c-anim-dir','c-anim-dur','c-anim-slide','c-anim-easing','c-anim-crossfade']
+            anim:     ['c-anim-dir','c-anim-dur','c-anim-slide','c-anim-easing','c-anim-crossfade','c-anim-crossfade-scope']
         };
         // Controls that exist in SETTINGS_CONFIG (for import/round-trip) but are DEAD in V2 and must
         // NOT render: the V1 drag editor was never ported, so these only fed that editor.
@@ -1844,7 +1851,7 @@
             'c-layout-vis-albumArt':'layout','c-layout-lock-albumArt':'layout','c-layout-vis-animatedBars':'layout','c-layout-lock-animatedBars':'layout','c-layout-vis-nowPlayingText':'layout','c-layout-lock-nowPlayingText':'layout','c-layout-vis-platformBadge':'layout','c-layout-lock-platformBadge':'layout','c-layout-vis-trackTitle':'layout','c-layout-lock-trackTitle':'layout','c-layout-vis-artistName':'layout','c-layout-lock-artistName':'layout','c-layout-vis-progressBar':'layout','c-layout-lock-progressBar':'layout',
             // Slide-in animation
             'c-anim-dur':'anim', 'c-anim-slide':'anim', 'c-anim-dir':'anim',
-            'c-anim-easing':'anim', 'c-anim-crossfade':'anim'
+            'c-anim-easing':'anim', 'c-anim-crossfade':'anim', 'c-anim-crossfade-scope':'anim'
         };
 
         /* ==========================================================================
@@ -2888,7 +2895,8 @@
             'c-anim-slide':             ['showAnimation', 'slideDistance'],
             'c-anim-dir':               ['showAnimation', 'direction'],
             'c-anim-easing':            ['showAnimation', 'easing'],
-            'c-anim-crossfade':         ['showAnimation', 'crossfadeOnSkip']
+            'c-anim-crossfade':         ['showAnimation', 'crossfadeOnSkip'],
+            'c-anim-crossfade-scope':   ['showAnimation', 'crossfadeScope']
             // Intentionally NOT mapped (UI-only / meta-state; see log S0.4):
             //   c-theme                    -- theme name; managed by applyTheme; no overlay-bound nested path
             //   c-spec-sensitivity-reset   -- button; dispatches event on c-spec-sensitivity slider; no own state

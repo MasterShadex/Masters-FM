@@ -109,19 +109,16 @@
   --text-scale:     1.0;
 }
 
-/* v14 reduced-motion respect.
-   Mirrors customize.html's STEP 7 global guard. OBS streamers with Windows
-   accessibility "reduced motion" set will see the overlay snap directly to
-   new states instead of animating == better for distraction-sensitive
-   viewers and lower GPU cost. */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
+/* v14 fix (removed prefers-reduced-motion auto-kill): an OBS overlay is content
+   the STREAMER composes for VIEWERS, so it must NOT freeze its animations based
+   on the streamer's Windows "animation effects" / reduced-motion setting. The
+   old @media (prefers-reduced-motion: reduce) block forced animation-duration to
+   0.01ms on a machine that had reduced-motion ON (a common Windows default), so
+   every CSS @keyframes -- title marquee, the NOW PLAYING equalizer bars, the
+   spinning border -- froze, while the canvas spectrum + JS progress clock kept
+   running (they are not CSS animations). It was also independent of app config,
+   so "Reset to default" could not recover it. Animations are now governed ONLY
+   by the user-facing in-app Animations master toggle (.no-animations, below). */
 
 /* Stage 7.20.5: Master Glow override.
    Class is added to <body> by applyConfig() when S.masters.glowEnabled is false.
@@ -656,7 +653,7 @@ body.layout-mode-on [data-layout-node].layout-hidden {
           </div>
 
           <!-- ② Info: NOW PLAYING + title + artist -->
-          <div class="info">
+          <div class="info" id="info">
             <div class="now-playing-label">
               <!-- v7.0.2: each of the three now-playing pieces is its OWN
                    layout-node so users can position them independently. -->
@@ -852,6 +849,7 @@ const DEFAULTS = {
     direction:       'up',
     easing:          'spring',
     crossfadeOnSkip: false,  // when true: art+text fade across instead of full slide-out/in
+    crossfadeScope:  'textArt',  // 'textArt' (default, current) | 'everything' (whole card incl. glow/border/spectrum) | 'keepSpectrum' (all card content except spectrum)
   },
   pauseBehavior: {
     keepVisibleOnPause: false,  // when true: overlay stays visible indefinitely while paused
@@ -2197,6 +2195,9 @@ let lastTrack = null, lastArt = '', timer = null;
 // briefly sends isPaused=true without pausedAt (race between tray webhook and
 // server's transition-handling pin). Reset to null on resume.
 let frozenElapsed = null;
+// v14 stale-SMTC freeze guard: remember the last live (playing) elapsed so a bogus
+// "pause" that collapses the freeze point to ~0 can be rejected (see tick() below).
+let _lastLiveEl = 0;
 // Pause debounce: wait 1s before freezing the timer so the 1-second sync tick
 // always gets a chance to correct the position before we lock it in place.
 let _pauseDebounce = null;
@@ -2223,15 +2224,32 @@ const tick = () => {
     // no longer latches the bar -- during the debounce window the else-branch keeps
     // the clock climbing, and a real resume cancels it. Prefer the server freeze
     // point (pausedAt - startedAt); fall back to last elapsed so it never climbs.
-    if (lastTrack.pausedAt) {
-      frozenElapsed = Math.max(0, lastTrack.pausedAt - lastTrack.startedAt);
-    } else if (frozenElapsed === null) {
-      frozenElapsed = Math.max(0, Date.now() - lastTrack.startedAt);
+    //
+    // v14 stale-SMTC guard: YouTube-in-Chrome can wrongly report Paused + a stale
+    // near-zero position; the server then pins pausedAt-startedAt to ~0, which would
+    // snap the bar backward to the start mid-track. If the clock had genuinely advanced
+    // deep into the track (_lastLiveEl > 30s) but the freeze point collapsed to < 10s,
+    // that is the stale-SMTC signature (a REAL pause's pausedAt-startedAt equals the
+    // true deep position, so cand stays large) -- keep the clock free-running.
+    const cand = lastTrack.pausedAt
+      ? Math.max(0, lastTrack.pausedAt - lastTrack.startedAt)
+      : (frozenElapsed !== null ? frozenElapsed : Math.max(0, Date.now() - lastTrack.startedAt));
+    if (_lastLiveEl > 30000 && cand < 10000) {
+      frozenElapsed = null;
+      el = Math.max(0, Date.now() - lastTrack.startedAt);
+      _lastLiveEl = el;
+    } else {
+      if (lastTrack.pausedAt) {
+        frozenElapsed = Math.max(0, lastTrack.pausedAt - lastTrack.startedAt);
+      } else if (frozenElapsed === null) {
+        frozenElapsed = Math.max(0, Date.now() - lastTrack.startedAt);
+      }
+      el = frozenElapsed;
     }
-    el = frozenElapsed;
   } else {
     frozenElapsed = null;
     el = Math.max(0, Date.now() - lastTrack.startedAt);
+    _lastLiveEl = el;
   }
   // Defensive clamp: never display past the track's own duration. If the client
   // falls out of sync with the server (SSE dies silently, poll hangs, whatever)
@@ -2468,14 +2486,31 @@ async function transitionToTrack(d) {
   // Crossfade only makes sense when the card is already visible — first appear
   // always uses the normal slide-in so there's something to animate into.
   const crossfade = !!_cfg.showAnimation?.crossfadeOnSkip && isVisible;
+  // What fades on skip. 'textArt' (default) preserves the original behavior for
+  // existing/old configs that lack the key.
+  const _fadeScope = _cfg.showAnimation?.crossfadeScope || 'textArt';
 
   // Clear stale progress immediately — prevents old end-time flashing on new track
   setDuration(0);
 
-  // Elements that change per-song and should crossfade.
-  // time-bar is included so old timestamps/progress don't show during the swap.
-  const _fadeEls = () => ['track-title','artist','platform-label','time-bar']
-    .map(id => document.getElementById(id)).filter(Boolean);
+  // Elements that change per-song and should crossfade. Scope-driven so the fade
+  // can cover just text+art, the WHOLE card, or everything except the spectrum.
+  //   'everything'   -> #glow-wrap (single root group; opacity inherits to glow
+  //                     halo, spinning border, card bg, art, all text, bars,
+  //                     progress/timestamps, AND both spectrum canvases).
+  //   'keepSpectrum' -> art-wrap + info (label/title/artist/bars) + time-bar;
+  //                     leaves #spectrum-canvas/-gl and the glow/border live.
+  //   'textArt'      -> original whitelist (title/artist/platform/time-bar);
+  //                     #artwork still handled by its separate block below.
+  // time-bar is included (where applicable) so old timestamps/progress don't show
+  // during the swap.
+  const _fadeEls = () => {
+    let ids;
+    if (_fadeScope === 'everything')         ids = ['glow-wrap'];
+    else if (_fadeScope === 'keepSpectrum')  ids = ['art-wrap','info','time-bar'];
+    else                                     ids = ['track-title','artist','platform-label','time-bar'];
+    return ids.map(id => document.getElementById(id)).filter(Boolean);
+  };
   const FADE_MS  = 260; // fast enough to feel snappy, slow enough to read
 
   if (crossfade) {
@@ -2588,7 +2623,7 @@ async function poll() {
 
     if (isNew) {
       lastTrack = { ...d }; lastArt = newArt;
-      _pauseConfirmed = false;  // v14: new track always starts unfrozen
+      _pauseConfirmed = false; _lastLiveEl = 0;  // v14: new track starts unfrozen + reset stale-SMTC guard baseline
       showTrack(d);
       _sseNeedsArtRefresh = false;
       return;  // let transitionToTrack fully own this cycle
@@ -2699,7 +2734,7 @@ function applyServerUpdate(d) {
   const durChanged = !isNew && d.duration > 0 && d.duration !== lastTrack?.duration;
   if (isNew) {
     lastTrack = { ...d }; lastArt = newArt;
-    _pauseConfirmed = false;  // v14: new track always starts unfrozen
+    _pauseConfirmed = false; _lastLiveEl = 0;  // v14: new track starts unfrozen + reset stale-SMTC guard baseline
     showTrack(d);
     _sseNeedsArtRefresh = false;   // isNew path re-renders via transitionToTrack
     return;  // let transitionToTrack fully own this cycle

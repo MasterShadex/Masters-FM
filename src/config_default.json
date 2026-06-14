@@ -76,7 +76,8 @@
       "heightMult": 1.0,
       "minHeight": 2,
       "fps": 120,
-      "autoGain": false
+      "autoGain": false,
+      "sensitivity": 3.0
     },
     "progressBar": {
       "enabled": true,
@@ -90,7 +91,8 @@
     },
     "showAnimation": {
       "duration": 0.5,
-      "slideDistance": 28
+      "slideDistance": 28,
+      "crossfadeScope": "textArt"
     },
     "overlay": {
       "opacity": 1.0
