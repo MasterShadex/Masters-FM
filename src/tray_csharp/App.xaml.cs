@@ -251,10 +251,19 @@ public partial class App : Application
         var lastChecked = _updateService.LastCheckedUtc;
         var lastDisplay = lastChecked.HasValue ? lastChecked.Value.ToString("o") : "(never)";
         _logger.Log($"startup update check (always-on-start; last={lastDisplay})", "Update");
-        // fire-and-forget startup check; runs in background
+        // fire-and-forget startup check; runs in background.
+        // Force a fresh manifest read so a stale Available (e.g. a release that was
+        // superseded or removed since last run) is re-resolved instead of latched.
         _ = Task.Run(async () =>
         {
-            try { await _updateService.CheckNowAsync(); }
+            try
+            {
+                var st = _updateService.CurrentState;
+                if (st is UpdateState.Idle or UpdateState.Available or UpdateState.Error)
+                    await _updateService.ForceCheckNowAsync();
+                else
+                    _logger.Log($"startup update-check skipped (busy: {st})", "Update");
+            }
             catch (Exception ex) { _logger.LogErr("startup check fire-and-forget", ex, "Update"); }
         });
         // recurring hourly re-check while the app is open
@@ -264,7 +273,16 @@ public partial class App : Application
             _logger.Log("hourly update check fired", "Update");
             _ = Task.Run(async () =>
             {
-                try { await _updateService.CheckNowAsync(); }
+                try
+                {
+                    // Re-read the manifest fresh so a stale Available self-heals; never
+                    // disturb an in-flight download/install or a ready-to-install build.
+                    var st = _updateService.CurrentState;
+                    if (st is UpdateState.Idle or UpdateState.Available or UpdateState.Error)
+                        await _updateService.ForceCheckNowAsync();
+                    else
+                        _logger.Log($"hourly update-check skipped (busy: {st})", "Update");
+                }
                 catch (Exception ex) { _logger.LogErr("hourly check fire-and-forget", ex, "Update"); }
             });
         };

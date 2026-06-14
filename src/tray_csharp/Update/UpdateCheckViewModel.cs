@@ -79,7 +79,9 @@ public sealed partial class UpdateCheckViewModel : ObservableObject
     private async Task CheckNowAsync()
     {
         _logger.Log("CheckNowCommand invoked", "UpdateVM");
-        await _service.CheckNowAsync();
+        // A user-initiated check must ALWAYS re-read the manifest, even from a
+        // stale Available/Error state -- so force it.
+        await _service.ForceCheckNowAsync();
         UpdateLastCheckedDisplay();
     }
 
@@ -87,7 +89,10 @@ public sealed partial class UpdateCheckViewModel : ObservableObject
     private async Task DownloadAsync()
     {
         _logger.Log("DownloadCommand invoked", "UpdateVM");
-        await _service.DownloadAsync();
+        // Re-read the live manifest before pulling the MSI so a superseded /
+        // removed release is never downloaded; only proceed if still available.
+        if (await _service.ForceCheckNowAsync() == UpdateState.Available)
+            await _service.DownloadAsync();
     }
 
     [RelayCommand]

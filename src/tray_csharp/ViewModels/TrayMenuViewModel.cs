@@ -576,15 +576,29 @@ public sealed partial class TrayMenuViewModel : ObservableObject
             await _dialogService.ShowUpdateProgressAsync();
             switch (state)
             {
-                case UpdateState.Idle:
-                case UpdateState.Error:
-                    await _updateService.CheckNowAsync();
-                    break;
-                case UpdateState.Available:
-                    await _updateService.DownloadAsync();
-                    break;
                 case UpdateState.Ready:
+                    // MSI already downloaded + SHA256/Authenticode-verified -> install it.
                     await _updateService.InstallAsync();
+                    break;
+
+                case UpdateState.Checking:
+                case UpdateState.Downloading:
+                case UpdateState.Installing:
+                    // An operation is already running -- just surface the progress
+                    // window; never restart or disturb an in-flight transfer.
+                    break;
+
+                case UpdateState.Available:
+                    // "Download update": ALWAYS re-read the live manifest first so a
+                    // superseded or removed release (e.g. a deleted build the app had
+                    // latched onto) is never downloaded. Only fetch if the freshly
+                    // read manifest STILL advertises an update.
+                    if (await _updateService.ForceCheckNowAsync() == UpdateState.Available)
+                        await _updateService.DownloadAsync();
+                    break;
+
+                default: // Idle, Error -> "Check for updates": re-read the manifest, fresh, every press.
+                    await _updateService.ForceCheckNowAsync();
                     break;
             }
         }

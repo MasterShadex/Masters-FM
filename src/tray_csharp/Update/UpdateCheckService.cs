@@ -94,9 +94,45 @@ public sealed class UpdateCheckService : IUpdateCheckService
         _httpClient = httpClient;
     }
 
-    public async Task<UpdateState> CheckNowAsync(CancellationToken ct = default)
+    // Non-forced check: only runs from Idle (gated). Used by the automatic
+    // startup/hourly cadence, which guards its own callers against busy states.
+    public Task<UpdateState> CheckNowAsync(CancellationToken ct = default) =>
+        CheckInternalAsync(force: false, ct);
+
+    // Forced re-check: ALWAYS re-reads the manifest, from ANY state, discarding
+    // any cached "available" result first. This is what a user "Check for
+    // updates" press must use so a superseded / removed release (e.g. a deleted
+    // build the app had latched onto in Available) can never strand the user.
+    public Task<UpdateState> ForceCheckNowAsync(CancellationToken ct = default) =>
+        CheckInternalAsync(force: true, ct);
+
+    private async Task<UpdateState> CheckInternalAsync(bool force, CancellationToken ct)
     {
-        if (!TryTransitionTo(UpdateState.Checking, fromMust: UpdateState.Idle))
+        if (force)
+        {
+            // Cancel any in-flight check so it can't flip state back under us, then
+            // hard-reset to Checking from ANY state and DISCARD the cached result.
+            // (Download/Install are never routed through here -- their callers guard
+            // against forcing while busy -- so this only ever supersedes a prior
+            // check or a stale Available/Error/Idle.)
+            CancellationTokenSource? old;
+            lock (_lock) { old = _cts; }
+            try { old?.Cancel(); } catch { }
+            UpdateState prev;
+            lock (_lock)
+            {
+                prev = _currentState;
+                _currentState = UpdateState.Checking;
+                _availableVersion = null;
+                _msiUrl = null;
+                _msiSha256 = null;
+                _msiPath = null;
+                _lastErrorMessage = null;
+            }
+            _logger.Log($"state {prev} -> Checking (forced re-check)", Component);
+            FireStateChanged(prev, UpdateState.Checking);
+        }
+        else if (!TryTransitionTo(UpdateState.Checking, fromMust: UpdateState.Idle))
         {
             _logger.LogWarn($"CheckNow: cannot transition to Checking from {CurrentState}; ignoring", Component);
             return CurrentState;
@@ -110,11 +146,19 @@ public sealed class UpdateCheckService : IUpdateCheckService
             using var localCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             lock (_lock) { _cts = localCts; }
 
+            // Always a unique URL (cache-bust) so neither GitHub's CDN nor any
+            // intermediate proxy can serve a stale manifest; the no-cache headers
+            // are belt-and-suspenders for the same guarantee.
             var cacheBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var url = $"{ManifestUrl}?t={cacheBust}";
-            _logger.Log($"check fired: GET {url}", Component);
+            _logger.Log($"check fired{(force ? " (forced)" : "")}: GET {url}", Component);
 
-            var json = await _httpClient.GetStringAsync(url, localCts.Token).ConfigureAwait(false);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
+            req.Headers.Pragma.ParseAdd("no-cache");
+            using var resp = await _httpClient.SendAsync(req, localCts.Token).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync(localCts.Token).ConfigureAwait(false);
             var resultState = ProcessManifestJson(json);
 
             // Persist last-checked timestamp (success path; even when no update)

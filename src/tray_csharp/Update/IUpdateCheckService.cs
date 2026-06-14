@@ -23,8 +23,22 @@ public interface IUpdateCheckService
     /// Triggers a manifest fetch. Transitions Idle -> Checking, then to
     /// Available (if newer stable release), Idle (if up-to-date or remote
     /// is pre-release), or Error briefly. Returns final state.
+    /// NOTE: only runs from the Idle state (no-ops otherwise). For a
+    /// user-initiated re-check that must ALWAYS re-read the manifest, use
+    /// ForceCheckNowAsync.
     /// </summary>
     Task<UpdateState> CheckNowAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Forced re-check: ALWAYS re-reads the manifest, from ANY state, and
+    /// discards any cached "available" result first. This is the contract a
+    /// "Check for updates" button must use so a superseded or removed release
+    /// (e.g. a deleted build the app had already latched onto in Available)
+    /// can never strand the user. Callers must avoid forcing through an
+    /// in-flight Download/Install (those have their own guarded paths).
+    /// Returns the final state after the fresh manifest read.
+    /// </summary>
+    Task<UpdateState> ForceCheckNowAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Downloads the MSI from the manifest's msi_url. Transitions
