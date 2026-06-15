@@ -2120,7 +2120,9 @@ function applyConfig(raw) {
     // arrives past the settle point then pulls in; bounce digs deeper under
     // the start and rebounds higher at the end; ease punchier in/out.
     spring: 'cubic-bezier(0.34,1.85,0.64,1)',    // overshoot spring (1.56 → 1.85)
-    ease:   'cubic-bezier(0.30,0.55,0.40,1.00)', // snappier smooth ease-out
+    'ease-out':    'cubic-bezier(0.0,0,0.2,1)',  // true ease-out (was silently falling back to spring)
+    'ease-in-out': 'cubic-bezier(0.45,0,0.2,1)', // true ease-in-out (was silently falling back to spring)
+    ease:   'cubic-bezier(0.30,0.55,0.40,1.00)', // snappier smooth ease-out (alias)
     bounce: 'cubic-bezier(0.68,-0.80,0.27,1.85)',// deeper back + bigger overshoot
     linear: 'linear',
   };
@@ -2511,8 +2513,24 @@ async function transitionToTrack(d) {
     else                                     ids = ['art-wrap','info'];
     return ids.map(id => document.getElementById(id)).filter(Boolean);
   };
-  const FADE_MS    = 260; // fast enough to feel snappy, slow enough to read
-  const STAGGER_MS = 60;  // left-to-right cascade between groups (art -> info -> right column)
+  // Crossfade tuned to MATCH the slide animation's feel: the fade duration follows
+  // the user's Animation Speed (showAnimation.duration -- the SAME value the slide
+  // uses) and the curve follows their Slide-in easing, mapped to an OPACITY-SAFE
+  // smooth decelerate. (Overshoot curves like spring/bounce would push opacity past
+  // 1, clamp, and look flat -- so they resolve to a clean spring-decelerate that
+  // reads as the same springy-smooth settle.) A gentle stagger (~15% of the fade)
+  // overlaps the groups heavily, so the left-to-right sweep reads as ONE smooth
+  // motion instead of discrete steps; will-change:opacity keeps it GPU-composited.
+  const FADE_MS    = Math.round(Math.min(Math.max((_cfg.showAnimation?.duration ?? 0.5) * 1000, 240), 460));
+  const STAGGER_MS = Math.round(FADE_MS * 0.15);
+  const _xfEase    = ({
+    spring:        'cubic-bezier(0.16,1,0.3,1)',   // smooth spring decelerate (opacity-safe)
+    'ease-out':    'cubic-bezier(0.0,0,0.2,1)',
+    'ease-in-out': 'cubic-bezier(0.45,0,0.2,1)',
+    ease:          'cubic-bezier(0.0,0,0.2,1)',
+    bounce:        'cubic-bezier(0.16,1,0.3,1)',
+    linear:        'linear',
+  })[_cfg.showAnimation?.easing] || 'cubic-bezier(0.16,1,0.3,1)';
 
   if (crossfade) {
     // Fade the per-song content OUT left-to-right: each group is delayed by its
@@ -2520,11 +2538,12 @@ async function transitionToTrack(d) {
     // (glow/border/bg) is never touched -- only the content fades.
     const outEls = _fadeEls();
     outEls.forEach((el, i) => {
-      el.style.transition = `opacity ${FADE_MS}ms ease ${i * STAGGER_MS}ms`;
+      el.style.willChange = 'opacity';            // GPU-composite for jank-free motion
+      el.style.transition = `opacity ${FADE_MS}ms ${_xfEase} ${i * STAGGER_MS}ms`;
       el.style.opacity    = '0';
     });
     const artImg = document.getElementById('artwork');
-    if (artImg) { artImg.style.transition = `opacity ${FADE_MS}ms ease`; artImg.style.opacity = '0'; }
+    if (artImg) { artImg.style.willChange = 'opacity'; artImg.style.transition = `opacity ${FADE_MS}ms ${_xfEase}`; artImg.style.opacity = '0'; }
     stopTimer();
     await sleep(FADE_MS + (outEls.length - 1) * STAGGER_MS + 20); // wait for the rightmost group
   } else if (isVisible) {
@@ -2561,13 +2580,13 @@ async function transitionToTrack(d) {
     // inline opacity so each group eases 0->1 in left-to-right order.
     const inEls = _fadeEls();
     inEls.forEach((el, i) => {
-      el.style.transition = `opacity ${FADE_MS}ms ease ${i * STAGGER_MS}ms`;
+      el.style.transition = `opacity ${FADE_MS}ms ${_xfEase} ${i * STAGGER_MS}ms`;
       el.style.opacity    = '';
     });
     setTimeout(() => {
-      _fadeEls().forEach(el => { el.style.transition = ''; });
+      _fadeEls().forEach(el => { el.style.transition = ''; el.style.willChange = ''; });
       const artImg = document.getElementById('artwork');
-      if (artImg) { artImg.style.transition = ''; }
+      if (artImg) { artImg.style.transition = ''; artImg.style.willChange = ''; }
     }, FADE_MS + (inEls.length - 1) * STAGGER_MS + 80);
   } else {
     widget.classList.add('visible');              // slide in
