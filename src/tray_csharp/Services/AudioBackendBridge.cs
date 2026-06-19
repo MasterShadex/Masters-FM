@@ -147,6 +147,13 @@ public sealed class AudioBackendBridge
             // looks them up via MMDeviceEnumerator.GetDevice(id)).
             return ("wasapi_loopback", rawId);
         }
+        if (string.Equals(backend, "WASAPI_INPUT", System.StringComparison.OrdinalIgnoreCase))
+        {
+            // The tray's Input tab enumerates CAPTURE endpoints (input devices) --
+            // microphones, Stereo Mix, AND virtual mics from Sonar / Voicemeeter /
+            // VB-Cable. Spectrum opens these in shared-mode WASAPI capture.
+            return ("wasapi_input", rawId);
+        }
         if (string.Equals(backend, "MME", System.StringComparison.OrdinalIgnoreCase))
         {
             // Tray DeviceId format: "mme-out-N" (set by AudioDeviceViewModel

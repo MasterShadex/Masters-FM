@@ -91,6 +91,11 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     public AudioDeviceInfo? SelectedMmeDevice =>
         _selectedDevice?.Backend == "MME" ? _selectedDevice : null;
 
+    // Input ListBox binds to this. Sonar / Voicemeeter / VB-Cable virtual mics
+    // and physical microphones live here. Spectrum opens these as wasapi_input.
+    public AudioDeviceInfo? SelectedInputDevice =>
+        _selectedDevice?.Backend == "WASAPI_INPUT" ? _selectedDevice : null;
+
     // Stage 7.12 Batch B Phase K (DIAG 04): KS and ASIO list-box bindings.
     public AudioDeviceInfo? SelectedKsDevice =>
         _selectedDevice?.Backend == "KS" ? _selectedDevice : null;
@@ -122,6 +127,13 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     [ObservableProperty]
     private bool hasMme;
+
+    // 14.1.7: visible "Input" tab for WASAPI capture endpoints. This is THE
+    // tab Sonar / Voicemeeter / VB-Cable users need -- their music routes
+    // through a virtual mic ("SteelSeries Sonar - Stream", "Voicemeeter Out
+    // B1", "CABLE Output", etc.), captured as a wasapi_input endpoint.
+    [ObservableProperty]
+    private bool hasInput;
 
     [ObservableProperty]
     private string statusText = "Idle.";
@@ -162,14 +174,16 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
     {
         // Update each device's IsActive flag so the data-driven DataTrigger
         // in the ListBoxItem template can show the highlight on the single
-        // active item across ALL four tabs.
+        // active item across ALL tabs (incl. the Input tab added in 14.1.7).
         foreach (var d in OutputDevices) d.IsActive = ReferenceEquals(d, _selectedDevice);
+        foreach (var d in InputDevices)  d.IsActive = ReferenceEquals(d, _selectedDevice);
         foreach (var d in MmeDevices)    d.IsActive = ReferenceEquals(d, _selectedDevice);
         foreach (var d in KsDevices)     d.IsActive = ReferenceEquals(d, _selectedDevice);
         foreach (var d in AsioDevices)   d.IsActive = ReferenceEquals(d, _selectedDevice);
 
         OnPropertyChanged(nameof(SelectedDevice));
         OnPropertyChanged(nameof(SelectedWasapiDevice));
+        OnPropertyChanged(nameof(SelectedInputDevice));
         OnPropertyChanged(nameof(SelectedMmeDevice));
         OnPropertyChanged(nameof(SelectedKsDevice));
         OnPropertyChanged(nameof(SelectedAsioDevice));
@@ -213,19 +227,28 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 });
             }
 
-            // Input devices via WinRT — used internally; not currently surfaced
-            // in the dialog UI but populated for parity with output devices.
+            // Input devices via WinRT. 14.1.7: now surfaced as a VISIBLE "Input"
+            // tab. THIS is the tab Sonar / Voicemeeter / VB-Cable users need --
+            // their music routes through a virtual mic captured as a WASAPI
+            // input endpoint (which audio_spectrum opens via the wasapi_input
+            // backend). Virtual mics from known mixers are promoted to the top
+            // with a "(recommended)" suffix so friends can find them at a glance.
             var captureClass = await DeviceInformation.FindAllAsync(DeviceClass.AudioCapture).AsTask().ConfigureAwait(true);
+            var captureList = new List<AudioDeviceInfo>();
             foreach (var d in captureClass)
             {
-                InputDevices.Add(new AudioDeviceInfo
+                bool isVirtualMix = IsVirtualMixerDevice(d.Name);
+                string displayName = isVirtualMix
+                    ? d.Name + "  -  recommended for Sonar / Voicemeeter / VB-Cable"
+                    : d.Name;
+                captureList.Add(new AudioDeviceInfo
                 {
-                    DeviceId = d.Id,
-                    Name = d.Name,
-                    IsDefault = d.IsDefault,
-                    IsEnabled = d.IsEnabled,
+                    DeviceId    = d.Id,
+                    Name        = displayName,
+                    IsDefault   = d.IsDefault,
+                    IsEnabled   = d.IsEnabled,
                     IsStereoMix = false,
-                    Backend = "WASAPI"
+                    Backend     = "WASAPI_INPUT"
                 });
                 // Stage 7.12 Batch B Phase K (DIAG 04): KS list mirrors the
                 // same WinRT capture endpoints but is tagged Backend="KS" so
@@ -241,6 +264,14 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                     IsStereoMix = false,
                     Backend = "KS"
                 });
+            }
+            // Sort: virtual mixers first (Sonar/Voicemeeter/VB-Cable), then the
+            // default mic, then everything else alphabetically.
+            foreach (var info in captureList
+                .OrderByDescending(x => IsVirtualMixerDevice(x.Name) ? 2 : (x.IsDefault ? 1 : 0))
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                InputDevices.Add(info);
             }
 
             // INTERRUPT #3 STEP 7 (Issue 2): MME output device enumeration via winmm.dll.
@@ -294,20 +325,34 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 });
             }
 
-            HasMme  = MmeDevices.Count  > 0;
-            HasKs   = KsDevices.Count   > 0;
-            HasAsio = AsioDevices.Count > 0;
+            HasMme   = MmeDevices.Count   > 0;
+            HasKs    = KsDevices.Count    > 0;
+            HasAsio  = AsioDevices.Count  > 0;
+            HasInput = InputDevices.Count > 0;
 
-            // Restore previously-selected device from config.
-            // Priority: saved device (any backend) → WASAPI default → MME default.
+            // Restore previously-selected device from config. Saved backend ID
+            // can match any tab; the priority order is documented inline.
             try
             {
                 var savedId = _config.GetValue<string>("audio.outputDeviceId");
+                var savedBackend = _config.GetValue<string>("audio.selectedBackend") ?? string.Empty;
 
                 AudioDeviceInfo? toSelect = null;
                 if (!string.IsNullOrEmpty(savedId))
                 {
-                    toSelect = OutputDevices.FirstOrDefault(d =>
+                    // 14.1.7: when the saved backend is WASAPI_INPUT, look in
+                    // InputDevices first -- the SAME DeviceId would otherwise
+                    // match in KsDevices (same WinRT endpoint) and silently
+                    // restore as KS instead of WASAPI_INPUT.
+                    bool wasInput = string.Equals(savedBackend, "WASAPI_INPUT", StringComparison.OrdinalIgnoreCase);
+                    if (wasInput)
+                    {
+                        toSelect = InputDevices.FirstOrDefault(d =>
+                            string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
+                    }
+                    toSelect ??= OutputDevices.FirstOrDefault(d =>
+                        string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
+                    toSelect ??= InputDevices.FirstOrDefault(d =>
                         string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
                     toSelect ??= MmeDevices.FirstOrDefault(d =>
                         string.Equals(d.DeviceId, savedId, StringComparison.OrdinalIgnoreCase));
@@ -325,11 +370,12 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
                 _logger.LogWarn("config read for audio selection: " + ex.Message, Component);
             }
 
-            StatusText = $"{OutputDevices.Count} WASAPI, {MmeDevices.Count} MME, " +
-                         $"{KsDevices.Count} KS, {AsioDevices.Count} ASIO.";
+            StatusText = $"{OutputDevices.Count} WASAPI, {InputDevices.Count} Input, " +
+                         $"{MmeDevices.Count} MME, {KsDevices.Count} KS, {AsioDevices.Count} ASIO.";
             _logger.Log(
-                $"enumerated {OutputDevices.Count} WASAPI output, {InputDevices.Count} WASAPI input, " +
-                $"{MmeDevices.Count} MME, {KsDevices.Count} KS, {AsioDevices.Count} ASIO",
+                $"enumerated {OutputDevices.Count} WASAPI output, {InputDevices.Count} WASAPI input " +
+                $"(Sonar/virtual-mic tab), {MmeDevices.Count} MME, {KsDevices.Count} KS, " +
+                $"{AsioDevices.Count} ASIO",
                 Component);
         }
         catch (Exception ex)
@@ -345,6 +391,27 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     [RelayCommand]
     private async Task RefreshAsync_Cmd() => await RefreshAsync();
+
+    // 14.1.7: detect capture devices that belong to a software audio router
+    // (Sonar / Voicemeeter / VB-Cable / VB-Matrix / generic Virtual Audio Cable).
+    // These get promoted to the top of the Input tab so friends who use one
+    // can spot the right device at a glance.
+    private static bool IsVirtualMixerDevice(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        var n = name.ToLowerInvariant();
+        return n.Contains("sonar")           // SteelSeries Sonar
+            || n.Contains("steelseries")     // SteelSeries-branded virtual streams
+            || n.Contains("voicemeeter")     // Voicemeeter (Banana / Potato)
+            || n.Contains("vb-audio")        // VB-Audio family
+            || n.Contains("vb audio")
+            || n.Contains("vb-cable")        // VB-Cable (input/output)
+            || n.Contains("cable output")    // VB-Cable's capture endpoint
+            || n.Contains("vaio")            // VB-Audio Matrix VAIO entries
+            || n.Contains("vac ")            // Virtual Audio Cable (Eugene Muzychenko)
+            || n.Contains("synchronous audio router")
+            || n.Contains("virtual");
+    }
 
     [RelayCommand]
     private void OpenWindowsSound()

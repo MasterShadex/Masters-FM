@@ -329,6 +329,23 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </TabItem>
 
+            <!-- Input tab (14.1.7): WASAPI capture endpoints. THIS is the tab
+                 Sonar / Voicemeeter / VB-Cable users need: their music
+                 reaches Master's FM through a virtual mic, not loopback. The
+                 view-model promotes known virtual mixer devices to the top of
+                 the list with a "recommended" suffix so they're easy to spot. -->
+            <TabItem Header="Input"
+                     Visibility="{Binding HasInput, Converter={StaticResource BoolToVis},
+                                          FallbackValue=Visible}">
+                <ListBox ItemsSource="{Binding InputDevices}"
+                         IsSynchronizedWithCurrentItem="False"
+                         SelectionChanged="OnDeviceSelectionChanged"
+                         Style="{StaticResource DeviceListBoxStyle}"
+                         ItemTemplate="{StaticResource DeviceRowTemplate}"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+            </TabItem>
+
             <!-- MME tab — Phase N #1: ScrollViewer wrapper removed. -->
             <TabItem Header="MME"
                      Visibility="{Binding HasMme, Converter={StaticResource BoolToVis},
