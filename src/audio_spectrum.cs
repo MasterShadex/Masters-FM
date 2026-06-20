@@ -280,12 +280,15 @@ class AudioSpectrum
     static readonly object s_fftLock = new object();
 
     // v6.9.3: live "Sensitivity" multiplier — applied to the magnitude
-    // before the compressor knee in DoFftAndPublish. 1.0x = unchanged
-    // (the empirically tuned default). Higher values amplify quiet audio
-    // so friends running music at 1-5 % system volume still see full
-    // bars. The compressor + clamp downstream prevents loud audio from
-    // blowing past 100 %, so the slider can be cranked safely.
-    static float s_sensitivity = 1.0f;
+    // before the compressor knee in DoFftAndPublish. 1.0x = unchanged.
+    // v14: default raised to 3.0x. The old 1.0x default made bars track
+    // ABSOLUTE volume, so friends running music at 10-20 % system volume
+    // saw bars stuck at 1-5 %. 3.0x lifts quiet audio into the lively
+    // range; the compressor knee + smooth limiter + hard clamp downstream
+    // still prevent loud audio from blowing past 100 %, so it is safe.
+    // Reaches existing users too: a config.json with no "sensitivity" key
+    // never matches the bootstrap regex and falls back to this value.
+    static float s_sensitivity = 3.0f;
 
     // Stage 7.12 Batch B Phase R: MME (waveIn) buffer parameters used by
     // OpenCaptureForBackend's "mme" case. Defaults are the low-latency
@@ -310,6 +313,18 @@ class AudioSpectrum
     // the system default render endpoint.
     static string s_currentDeviceId = null;     // native ID (WASAPI endpoint ID / MME index / ASIO driver name)
     static string s_currentBackend  = "wasapi_loopback";
+    // v14.1.9: device-reacquire watchdog. The "desired" pair persists what the
+    // user actually asked for via /set-device; the "current" pair tracks what's
+    // actively capturing (which may be a wasapi_loopback fallback if the user's
+    // pick wasn't available when capture opened). Every REACQUIRE_INTERVAL_SECONDS
+    // the watchdog nudges s_deviceChangeEvent if desired != current backend so
+    // the capture loop retries the user's pick. Common cases this fixes: ASIO
+    // driver loads several seconds after Windows boot, headphones plugged in
+    // after the tray launched, Sonar/Voicemeeter virtual mixers cycling.
+    static string s_desiredDeviceId = null;
+    static string s_desiredBackend  = "wasapi_loopback";
+    const int REACQUIRE_INTERVAL_SECONDS = 10;
+    static volatile bool s_reacquireWatchdogStarted = false;
     // Input-gain compensation for non-loopback backends. WASAPI Loopback
     // sees the post-mixer system output at ~0 dBFS peaks. MME WaveIn,
     // WASAPI Input, WDM-KS, and ASIO see physical/virtual input signals
@@ -1030,6 +1045,49 @@ class AudioSpectrum
             Log("capture thread: failed to set priority: " + exPri.Message);
         }
         t.Start();
+        StartReacquireWatchdog();
+    }
+
+    // v14.1.9: periodic device-reacquire. Wakes every REACQUIRE_INTERVAL_SECONDS
+    // and, if the desired backend (what /set-device last asked for) differs from
+    // what we're currently capturing, signals s_deviceChangeEvent so the capture
+    // worker reopens with the desired pair. If the open fails again, the existing
+    // fallback path resets s_currentBackend to wasapi_loopback and the next tick
+    // retries. Backgrounded, idempotent, only started once.
+    static void StartReacquireWatchdog()
+    {
+        if (s_reacquireWatchdogStarted) return;
+        s_reacquireWatchdogStarted = true;
+        var t = new Thread(() =>
+        {
+            while (true)
+            {
+                try { Thread.Sleep(REACQUIRE_INTERVAL_SECONDS * 1000); }
+                catch { /* shutdown */ }
+                try
+                {
+                    if (s_desiredBackend != s_currentBackend)
+                    {
+                        Log(string.Format(
+                            "reacquire: desired='{0}' id='{1}' differs from current='{2}' id='{3}' — nudging capture",
+                            s_desiredBackend,
+                            s_desiredDeviceId ?? "default",
+                            s_currentBackend,
+                            s_currentDeviceId ?? "default"));
+                        s_currentBackend  = s_desiredBackend;
+                        s_currentDeviceId = s_desiredDeviceId;
+                        s_deviceChangeEvent.Set();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("reacquire watchdog: " + ex.Message);
+                }
+            }
+        })
+        { IsBackground = true, Name = "AudioReacquireWatchdog" };
+        t.Start();
+        Log(string.Format("reacquire watchdog: started ({0} s interval)", REACQUIRE_INTERVAL_SECONDS));
     }
 
     // Each DataAvailable payload is a block of 32-bit float PCM, interleaved
@@ -2649,6 +2707,11 @@ class AudioSpectrum
             // system-default endpoint instead of using whatever the last
             // config file wrote.
             s_currentDeviceId = string.IsNullOrEmpty(newId) ? null : newId;
+            // v14.1.9: also record the desired pair so the reacquire watchdog
+            // can retry this exact selection if the open fails (boot-order
+            // race with ASIO/USB devices) or the device disappears later.
+            s_desiredBackend  = s_currentBackend;
+            s_desiredDeviceId = s_currentDeviceId;
             s_deviceChangeEvent.Set();
             byte[] raw = Encoding.UTF8.GetBytes("{\"ok\":true,\"backend\":\"" + JsonEscape(s_currentBackend) + "\",\"id\":\"" + JsonEscape(s_currentDeviceId ?? "") + "\"}");
             ctx.Response.ContentType = "application/json";
