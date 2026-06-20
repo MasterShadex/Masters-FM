@@ -147,3 +147,13 @@ build_tools/naudio/
 # Random root garbage
 $null,+
 *.lnk
+# === REPO CLEANUP 2026-06 round 2 ===
+# Build/test investigation artifacts that shouldn't be in the public repo
+V14_S4_P1_BASELINE_CAPTURES/
+evidence/
+logs/
+tests/
+test-ps51-load.ps1
+# Node.js orphan (project doesn't use pkg anymore; build is C# via _full_rebuild.ps1)
+package.json
+package-lock.json

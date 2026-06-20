@@ -1,32 +1,0 @@
-  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
-                                 Dload  Upload  Total   Spent   Left   Speed
-  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0           00:01              0* Could not resolve host: text
-* Store negative name resolve for text:80
-* shutting down connection #0
-curl: (6) Could not resolve host: text
-  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
-                                 Dload  Upload  Total   Spent   Left   Speed
-  0      0   0      0   0      0      0      0                              0*   Trying 127.0.0.1:4242...
-* Established connection to 127.0.0.1 (127.0.0.1 port 4242) from 127.0.0.1 port 53518 
-* using HTTP/1.x
-> GET /events HTTP/1.1
-> Host: 127.0.0.1:4242
-> User-Agent: curl/8.18.0
-> 
-* Request completely sent off
-< HTTP/1.1 200 OK
-< Access-Control-Allow-Origin: *
-< Access-Control-Allow-Methods: GET, POST, OPTIONS
-< Access-Control-Allow-Headers: Content-Type
-< Content-Type: text/event-stream
-< Cache-Control: no-cache, no-transform
-< Connection: keep-alive
-< X-Accel-Buffering: no
-< Date: Mon, 04 May 2026 08:33:32 GMT
-< Transfer-Encoding: chunked
-< 
-{ [315 bytes data]
-100    932   0    932   0      0    576      0           00:01            576100   1548   0   1548   0      0    460      0           00:03            460100   2164   0   2164   0      0    419      0           00:05            419100   2780   0   2780   0      0    402      0           00:06            402100   3396   0   3396   0      0    390      0           00:08            390100   4012   0   4012   0      0    384      0           00:10            349100   4628   0   4628   0      0    378      0           00:12            347100   5244   0   5244   0      0    373      0           00:14            346100   5560   0   5560   0      0    355      0           00:15            317100   6176   0   6176   0      0    369      0           00:16            346100   6792   0   6792   0      0    368      0           00:18            346* Operation timed out after 20008 milliseconds with 7100 bytes received
-100   7100   0   7100   0      0    354      0           00:20            317
-* closing connection #1
-curl: (28) Operation timed out after 20008 milliseconds with 7100 bytes received
