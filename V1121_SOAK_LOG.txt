@@ -1,9 +1,0 @@
-﻿SOAK START: 2026-05-02 21:09:53
-T+min | WS=138.2MB Priv=94.1MB | [21:09:26.036] [CANARY] mem=139,1MB handles=961 threads=34 gdi=7 user=14 winrt_calls=86 winrt_tmo=0 [OK]
-T+min | WS=139MB Priv=94.8MB | [21:13:53.887] [CANARY] mem=136,4MB handles=955 threads=36 gdi=7 user=14 winrt_calls=90 winrt_tmo=0 [OK]
-T+min | WS=141.5MB Priv=96.9MB | [21:19:35.504] [CANARY] mem=142MB handles=934 threads=33 gdi=7 user=15 winrt_calls=86 winrt_tmo=0 [OK]
-T+min | WS=142.1MB Priv=97.4MB | [21:24:07.478] [CANARY] mem=141,4MB handles=954 threads=32 gdi=7 user=14 winrt_calls=86 winrt_tmo=0 [OK]
-T+min | WS=148MB Priv=103MB | [21:29:47.729] [CANARY] mem=148MB handles=949 threads=32 gdi=7 user=14 winrt_calls=85 winrt_tmo=0 [OK]
-T+min | WS=147.7MB Priv=102.7MB | [21:34:20.883] [CANARY] mem=148,6MB handles=988 threads=34 gdi=7 user=14 winrt_calls=86 winrt_tmo=0 [OK]
-T+min | WS=152.2MB Priv=107.1MB | [21:38:51.077] [CANARY] mem=148,7MB handles=980 threads=34 gdi=7 user=15 winrt_calls=86 winrt_tmo=0 [OK]
-SOAK END: 2026-05-02 21:39:53

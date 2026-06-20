@@ -121,3 +121,29 @@ src/obs_configured.flag
 # Local runtime databases (machine-specific, regenerated)
 ruvector.db
 .swarm/
+
+# === REPO CLEANUP 2026-06 (dev notes, claude tooling, naudio extracts) ===
+# Dev investigation logs / diagnoses / reports / release notes drafts
+_archive/dev_notes/
+V[0-9]*_*.md
+V[0-9]*_*.txt
+V[0-9]*_*.json
+V11*.txt
+V112X_*.md
+V14_*.md
+V14_*.txt
+CLAUDE_CODE_INSTRUCTIONS*.md
+RC3_TESTER_ANNOUNCEMENT.md
+TESTER_ANNOUNCEMENT*.md
+RELEASE_NOTES_v14.0.0-rc.*.md
+BAD_*.txt
+MISSING_RESOURCES.txt
+# Claude Code dev tooling
+.claude/
+.claude-flow/
+.mcp.json
+# NAudio nupkg extractions (rehydrated via _download_naudio.ps1)
+build_tools/naudio/
+# Random root garbage
+$null,+
+*.lnk
