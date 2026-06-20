@@ -1,2 +1,23 @@
 # Force CRLF on batch files -- cmd.exe mis-parses LF-only .bat
 *.bat text eol=crlf
+
+# === GitHub Linguist hints — fix language detection ===
+# Repo is primarily C# (WPF tray + server + audio engine) with JS/HTML overlay.
+# PowerShell build scripts and the Python MSI packager shouldn't dominate the
+# language chart because they're tooling, not the application.
+
+# Build/release tooling — not the application
+_full_rebuild.ps1                              linguist-vendored
+_push_update.ps1                               linguist-vendored
+_sign_msi.ps1                                  linguist-vendored
+_download_naudio.ps1                           linguist-vendored
+build_tools/**                                 linguist-vendored
+
+# Archived prior baselines — keep counted but de-emphasized
+_archive/**                                    linguist-vendored
+
+# Embedded patch notes JSON (long content, ~338 KB) shouldn't count toward JS
+src/tray_csharp/patch_notes.json               linguist-generated
+
+# Generated installer staging
+Master's FM Install/**                         linguist-generated
