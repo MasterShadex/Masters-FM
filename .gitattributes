@@ -20,4 +20,4 @@ _archive/**                                    linguist-vendored
 src/tray_csharp/patch_notes.json               linguist-generated
 
 # Generated installer staging
-Master's FM Install/**                         linguist-generated
+"Master's FM Install/**"                       linguist-generated
