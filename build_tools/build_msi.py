@@ -3,34 +3,48 @@ Master's FM MSI builder — uses Windows Installer API (msi.dll) via ctypes.
 Runs on any Windows machine with Python installed. No WiX, no dependencies.
 """
 
-import ctypes, ctypes.wintypes, os, sys, struct, tempfile, shutil, subprocess, uuid, re
+import ctypes, ctypes.wintypes, os, sys, struct, tempfile, shutil, subprocess, uuid, re, json
+
+# Make stdout/stderr UTF-8 so the final success banner (which contains a check
+# mark) never crashes with a cp1252 UnicodeEncodeError when this script's output
+# is piped -- a pipe makes Python fall back to the locale codepage, not the
+# console codepage, so the non-ASCII glyph fails to encode and returns exit 1
+# even though the MSI was written successfully.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 SRC   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT   = os.path.join(SRC, "Master's FM Install", "MastersFM_Setup.msi")
 
 def _parse_app_version():
-    # Pull $script:APP_VERSION = "v6.9.2" out of tray.ps1. The MSI
-    # ProductVersion needs to monotonically increase per release so
-    # the Major-Upgrade machinery (Upgrade table + RemoveExistingProducts)
-    # detects older installs as "older". Falls back to a low version on
-    # any parse failure so the build never crashes silently.
+    # Read version from version.json (single source of truth post-.NET-8).
+    # Pre-.NET-8 this came from tray.ps1's $script:APP_VERSION; v14.x retired
+    # the PowerShell tray, so version.json's "version" field (no v-prefix) is
+    # now canonical. The MSI ProductVersion needs to monotonically increase
+    # per release so the Major-Upgrade machinery (Upgrade table +
+    # RemoveExistingProducts) detects older installs as "older". Falls back
+    # to a low version on any parse failure so the build never crashes silently.
     #
-    # v14.0.0-rc.1: also strip SemVer pre-release suffix (-rc.N, -beta.N,
-    # -alpha.N, -pre.N) from MSI ProductVersion. Windows Installer's
-    # ProductVersion field requires numeric Major.Minor.Build only and
-    # rejects non-numeric segments. The display form (with suffix) is
-    # used elsewhere (filename, GitHub URL, version.json); only the
-    # MSI internal ProductVersion gets the suffix stripped.
-    tray_path = os.path.join(SRC, 'src', 'tray.ps1')
+    # v14.0.0-rc.1: strip SemVer pre-release suffix (-rc.N, -beta.N, -alpha.N,
+    # -pre.N) from MSI ProductVersion. Windows Installer's ProductVersion
+    # field requires numeric Major.Minor.Build only and rejects non-numeric
+    # segments. The display form (with suffix) is used elsewhere (filename,
+    # GitHub URL, version.json); only the MSI internal ProductVersion gets
+    # the suffix stripped.
+    vj_path = os.path.join(SRC, 'version.json')
     try:
-        with open(tray_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                m = re.match(r'\s*\$script:APP_VERSION\s*=\s*"([^"]+)"', line)
-                if m:
-                    disp = m.group(1)
-                    msi  = disp[1:] if disp.startswith('v') else disp
-                    msi  = re.sub(r'-(?:rc|beta|alpha|pre)\.?\d*$', '', msi)
-                    return disp, msi
+        # utf-8-sig strips a UTF-8 BOM if version.json was written by a tool
+        # that adds one (PowerShell's Out-File without -Encoding UTF8NoBOM does this).
+        with open(vj_path, 'r', encoding='utf-8-sig') as f:
+            data = json.load(f)
+        ver  = str(data.get('version', '0.0.0')).strip()
+        disp = ver if ver.startswith('v') else 'v' + ver
+        msi  = disp[1:]
+        msi  = re.sub(r'-(?:rc|beta|alpha|pre)\.?\d*$', '', msi)
+        return disp, msi
     except Exception:
         pass
     return 'v0.0.0', '0.0.0'
@@ -118,18 +132,24 @@ GUID_COMP63  = "{33333333-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.
 GUID_COMP64  = "{44444444-DDDD-8888-9999-AAAAAAAAAAAA}"  # MastersFM_ObsCleanup.deps.json
 # Stage 7.30.7: customize_legacy.html bundled into the MSI (instant-revert safety net; LEGACY_SHA 7E98377D).
 GUID_COMP65  = "{55555555-DDDD-8888-9999-AAAAAAAAAAAA}"  # customize_legacy.html
+# v14 auto-update: signed updater survivor + publisher cert, both installed to INSTALLFOLDER.
+# (GUID_COMP65 already taken by customize_legacy.html above; these continue the sequence.)
+GUID_COMP66  = "{66666666-EEEE-9999-AAAA-BBBBBBBBBBBB}"  # MastersFM_Updater.exe (signed self-contained update survivor)
+GUID_COMP67  = "{77777777-EEEE-9999-AAAA-BBBBBBBBBBBB}"  # MastersFM_publisher.cer (publisher cert for the updater to import)
 
 # (source filename in SRC folder, install filename, component GUID)
 FILES = [
     ("server.exe",                         "server.exe",                         GUID_COMP1),
-    ("src/tray.ps1",                       "tray.ps1",                           GUID_COMP2),
+    # GUID_COMP2 (src/tray.ps1) and GUID_COMP9 (src/discord_rpc.js) retired in v14
+    # — pre-.NET-8 PowerShell tray + Node Discord RPC replaced by tray_csharp/
+    # and server_dotnet/DiscordRpcService.cs. GUIDs intentionally unused so any
+    # leftover installs upgrade cleanly.
     ("assets/MastersFM.ico",               "MastersFM.ico",                      GUID_COMP4),
     ("MastersFM.exe",                      "MastersFM.exe",                      GUID_COMP5),   # C# launcher
     ("src/config_default.json",            "config_default.json",                GUID_COMP6),
     ("src/overlay.html",                   "overlay.html",                       GUID_COMP7),
     ("src/customize.html",                 "customize.html",                     GUID_COMP8),
     ("src/customize_legacy.html",          "customize_legacy.html",              GUID_COMP65),  # Stage 7.30.7: instant-revert safety net (LEGACY_SHA 7E98377D)
-    ("src/discord_rpc.js",                 "discord_rpc.js",                     GUID_COMP9),
     ("customize.exe",                      "customize.exe",                      GUID_COMP10),  # WebView2-hosted customize window
     ("Microsoft.Web.WebView2.Core.dll",    "Microsoft.Web.WebView2.Core.dll",    GUID_COMP11),
     ("Microsoft.Web.WebView2.WinForms.dll","Microsoft.Web.WebView2.WinForms.dll",GUID_COMP12),
@@ -237,6 +257,19 @@ if os.path.exists(_cleanup_exe_path):
         ("dist/obs_cleanup_release/MastersFM_ObsCleanup.deps.json",          "MastersFM_ObsCleanup.deps.json",          GUID_COMP64),
     ]
     CLEANUP_FILES = [(s, d, g) for s, d, g in _all_cleanup if os.path.exists(os.path.join(SRC, s))]
+
+# v14 auto-update: the signed updater survivor + publisher cert ship INTO INSTALLFOLDER.
+# Conditional (mirrors the obs_cleanup block): the updater is only present after
+# _full_rebuild.ps1 publishes it to dist/updater_release/; the .cer lives permanently in
+# build_tools/signing/. Each tuple is existence-guarded independently (same _optional
+# pattern as the Stage 4 server block) and joins the INSTALLFOLDER FILES list -- NOT the
+# MFMCleanupDir CLEANUP_FILES list. The tray's InstallAsync stages both out of INSTALLFOLDER
+# into %LOCALAPPDATA%\MastersFM_Update\ before spawning the updater elevated.
+_update_optional = [
+    ("dist/updater_release/MastersFM_Updater.exe", "MastersFM_Updater.exe", GUID_COMP66),
+    ("build_tools/signing/MastersFM_publisher.cer", "MastersFM_publisher.cer", GUID_COMP67),
+]
+FILES.extend([(s, d, g) for s, d, g in _update_optional if os.path.exists(os.path.join(SRC, s))])
 
 # v14: self-contained single-file publish bundles each app's satellite DLLs + the whole
 # .NET runtime INTO its .exe, so the old per-DLL manifest rows (WebView2 x3, NAudio x4,
@@ -383,7 +416,7 @@ def main():
     # ── Properties ───────────────────────────────────────────────────────────
     # ProductCode is regenerated every build (uuid4) so each MSI is a NEW
     # product to Windows Installer. ProductVersion tracks the real app
-    # version (parsed from tray.ps1). The legacy joke "67.0.0" caused
+    # version (parsed from version.json). The legacy joke "67.0.0" caused
     # MSI to enter maintenance/repair mode on every reinstall — fine when
     # the cached source filename matched, but fatal (1603 SECUREREPAIR)
     # when the bundle's MSI was version-stamped. Major-Upgrade machinery
@@ -420,7 +453,7 @@ def main():
     # The CA fires only during uninstall (condition REMOVE="ALL"), before file removal.
     # Write a temp PS1 to %TEMP%, run it, delete it.
     # This avoids all VBScript WMI For-Each loop and inline quote-escaping issues.
-    # The PS1 kills server.exe and the tray.ps1 PowerShell process cleanly.
+    # The PS1 kills every Master's FM process before the MSI tries to remove its files.
     _uninstall_vbs = (
         'On Error Resume Next : '
         'Set oShell = CreateObject("WScript.Shell") : '
@@ -429,10 +462,11 @@ def main():
         'If Right(instDir,1)="\\" Then instDir=Left(instDir,Len(instDir)-1) : '
 
         # ── Step 1: write a temp PS1 that kills every Master's FM process ──
-        # v2.0.0 added MastersFM_Tray.exe (in-process PowerShell host) so the
-        # old kill list missed it, leaving the tray running while the MSI
-        # tried to remove its files. Kill order: tray host → MastersFM launcher
-        # → server → legacy powershell children → customize window.
+        # v14 .NET 8 process inventory: MastersFM_Tray.exe (WPF tray host),
+        # MastersFM.exe (C# launcher), server.exe (server_dotnet),
+        # audio_spectrum.exe, customize.exe (WebView2 customize window).
+        # Pre-v14 the kill list also walked Win32_Process for *tray.ps1*
+        # command lines — removed when tray.ps1 was retired.
         'tmpPs1 = oShell.ExpandEnvironmentStrings("%TEMP%\\mfm_kill.ps1") : '
         'Set f = fso.OpenTextFile(tmpPs1, 2, True) : '
         'f.WriteLine "Stop-Process -Name MastersFM_Tray -Force -ErrorAction SilentlyContinue" : '
@@ -440,9 +474,6 @@ def main():
         'f.WriteLine "Stop-Process -Name audio_spectrum -Force -ErrorAction SilentlyContinue" : '
         'f.WriteLine "Stop-Process -Name MastersFM -Force -ErrorAction SilentlyContinue" : '
         'f.WriteLine "Stop-Process -Name server -Force -ErrorAction SilentlyContinue" : '
-        'f.WriteLine "Get-CimInstance Win32_Process |'
-        ' Where-Object { $_.CommandLine -like \'*tray.ps1*\' } |'
-        ' ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" : '
         'f.Close : '
 
         # ── Step 2: run the PS1 ──────────────────────────────────────────────
@@ -457,17 +488,13 @@ def main():
         # Removes Master's FM browser source from OBS scene-collection files.
         # Polls for OBS exit if OBS is running; runs immediately if not.
         # bWaitOnReturn=False: MSI uninstall continues without blocking on OBS.
-        # Self-deletes after completing its cleanup pass.
+        # Self-deletes after completing its cleanup pass. Replaces the pre-v14
+        # `tray.ps1 -Uninstall` OBS-cleanup hook (now retired with tray.ps1).
         'cleanupExe = oShell.ExpandEnvironmentStrings'
         '("%ProgramData%\\MastersFM\\Cleanup\\MastersFM_ObsCleanup.exe") : '
         'If fso.FileExists(cleanupExe) Then '
             'oShell.Run """" & cleanupExe & """", 0, False : '
         'End If : '
-
-        # ── Step 4: run tray.ps1 -Uninstall (removes OBS source from scenes) ─
-        'oShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden'
-        ' -File """ & instDir & "\\tray.ps1"""'
-        ' & " -scriptDir """ & instDir & """ -Uninstall", 0, True : '
 
         # ── Step 5: delete desktop + startup shortcuts + legacy Run entry ────
         'desktop = oShell.SpecialFolders("Desktop") : '

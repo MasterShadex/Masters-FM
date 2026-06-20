@@ -3,7 +3,8 @@
 # is fast-path-when-eligible, cold-rebuild-otherwise. See the entry-point
 # branch below (after the helper function definitions) for the dispatch.
 param(
-    [switch]$FullRebuild
+    [switch]$FullRebuild,
+    [switch]$BuildOnly
 )
 
 Set-Location "G:\Project Folder\Master FM"
@@ -353,6 +354,69 @@ if ($cleanupExit -eq 0) {
     L "  WARN: MastersFM_ObsCleanup build failed (exit $cleanupExit) -- continuing"
 }
 
+# v14 auto-update: MastersFM_Updater.exe -- the signed self-contained update SURVIVOR.
+# Staged by the tray's InstallAsync into %LOCALAPPDATA%\MastersFM_Update\ then spawned
+# ELEVATED to run msiexec /x + /i. Must be self-contained single-file (the friend's
+# machine may have NO .NET runtime) and signed with the MasterShadex cert so the UAC
+# prompt + import-cert path stay consistent with the MSI. build_msi.py harvests the exe
+# from dist\updater_release\ AND from the repo ROOT (it bundles the publisher .cer from
+# build_tools\signing\); we copy the exe to root after publish like the other components.
+L "=== v14 auto-update: building MastersFM_Updater.exe (dotnet publish, net8.0-windows, self-contained) ==="
+$updOut = Join-Path $root 'dist\updater_release'
+$updTmp = 'G:\upd_pub_tmp'
+if (Test-Path $updTmp) { Remove-Item $updTmp -Recurse -Force -ErrorAction SilentlyContinue }
+$updResult = & dotnet publish "$root\src\updater\updater.csproj" -r win-x64 `
+    --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishReadyToRun=false -c Release -o $updTmp --nologo -v quiet 2>&1
+$updExit = $LASTEXITCODE
+if ($updExit -eq 0) {
+    if (-not (Test-Path $updOut)) { New-Item -ItemType Directory -Path $updOut -Force | Out-Null }
+    Copy-Item "$updTmp\*" $updOut -Force
+    Remove-Item $updTmp -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+    Remove-Item $updTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $updResult | ForEach-Object { L "    $_" }
+    L "  FAIL: dotnet publish updater exit=$updExit -- v14 auto-update build failed, aborting"
+    exit 11
+}
+# HARD-ERROR if the survivor exe is missing after publish (mirror the WPF tray hard error).
+$updExe = Join-Path $updOut 'MastersFM_Updater.exe'
+if (-not (Test-Path $updExe)) {
+    L "  FAIL: updater build produced no MastersFM_Updater.exe at $updExe -- aborting (v14 auto-update hard error)"
+    exit 11
+}
+$updSz = [math]::Round((Get-Item $updExe).Length / 1KB, 1)
+L "  MastersFM_Updater.exe OK ($updSz KB)"
+# SIGN the updater with the MasterShadex cert. Best-effort: warn (don't hard-fail) if the
+# cert is missing -- matches how the MSI signing is non-fatal. Cert lookup + signtool
+# discovery mirror build_tools\signing\_sign_msi.ps1.
+$updCert = Get-ChildItem Cert:\CurrentUser\My |
+    Where-Object { $_.Subject -eq 'CN=MasterShadex, O=MasterShadex' -and $_.FriendlyName -eq "Master's FM Code Signing" } |
+    Sort-Object NotAfter -Descending | Select-Object -First 1
+if ($updCert) {
+    $updSigntool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -match 'x64' } |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($updSigntool) {
+        L "  signing MastersFM_Updater.exe with signtool ($($updSigntool.FullName))"
+        & $updSigntool.FullName sign /sha1 $updCert.Thumbprint /fd SHA256 /t 'http://timestamp.digicert.com' $updExe 2>&1 | ForEach-Object { L "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            L "  WARN: signtool exit=$LASTEXITCODE -- falling back to Set-AuthenticodeSignature"
+            try { Set-AuthenticodeSignature -FilePath $updExe -Certificate $updCert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256 | Out-Null }
+            catch { L "  WARN: Set-AuthenticodeSignature failed: $_" }
+        }
+    } else {
+        L "  signtool not found -- signing MastersFM_Updater.exe via Set-AuthenticodeSignature"
+        try { Set-AuthenticodeSignature -FilePath $updExe -Certificate $updCert -TimestampServer 'http://timestamp.digicert.com' -HashAlgorithm SHA256 | Out-Null }
+        catch { L "  WARN: Set-AuthenticodeSignature failed: $_" }
+    }
+} else {
+    L "  WARN: MasterShadex cert not found -- MastersFM_Updater.exe stays unsigned (best-effort)"
+}
+# Copy the signed updater to the repo ROOT (the SRC dir build_msi.py harvests from),
+# exactly like the obs_cleanup / audio_spectrum exes are copied to root after publish.
+Copy-Item $updExe "$root\MastersFM_Updater.exe" -Force
+L "  MastersFM_Updater.exe copied to root"
+
 # Step 1d2: Build audio_spectrum.exe (WASAPI/MME/WDM-KS/ASIO spectrum provider)
 # Stage 2: .NET 8 path (legacy csc.exe+_build_spectrum.ps1 path retired in Stage 8).
 L "[1d2/5] Building audio_spectrum.exe (WASAPI loopback)..."
@@ -454,10 +518,17 @@ try {
     L "  WARN: version.json generation failed: $_"
 }
 
-# Step 3: Stop running processes
+# v14 BuildOnly: the MSI is built + signed above. Stop here so we do NOT touch the
+# running install -- used to produce a test-fm update artifact without bumping this machine.
+if ($BuildOnly) {
+    L "[BuildOnly] MSI built + signed: $msi"
+    L "[BuildOnly] Skipping uninstall/install/launch -- running app left untouched."
+    exit 0
+}
+
+# Step 3: Stop running processes (v14 .NET 8 process inventory; the pre-v14
+# tray.ps1 command-line scan was retired with the PowerShell tray)
 L "[3/5] Stopping tray + server"
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*tray.ps1*' } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Stop-Process -Name 'server'          -Force -ErrorAction SilentlyContinue
 Stop-Process -Name 'wscript'         -Force -ErrorAction SilentlyContinue
 Stop-Process -Name 'MastersFM_Tray'  -Force -ErrorAction SilentlyContinue
@@ -505,9 +576,13 @@ if (Test-Path "$dest\MastersFM.exe") {
 # nothing else. No standalone MSI, no standalone cer, no bootstrapper exe
 # cluttering the Desktop. The folder is self-contained + zip-ready.
 try {
-    $trayTxt = Get-Content "$root\src\tray.ps1" -Raw
-    $appVer  = 'v2.0.0'
-    if ($trayTxt -match '\$script:APP_VERSION\s*=\s*"([^"]+)"') { $appVer = $matches[1] }
+    # v14: app version comes from version.json (single source of truth) instead of
+    # the retired tray.ps1's $script:APP_VERSION. Display form keeps the v-prefix.
+    $appVer = 'v0.0.0'
+    try {
+        $vj = Get-Content "$root\version.json" -Raw | ConvertFrom-Json
+        if ($vj.version) { $appVer = if ($vj.version.StartsWith('v')) { $vj.version } else { "v$($vj.version)" } }
+    } catch {}
 
     # Purge ALL older Master's FM clutter from the Desktop â€” standalone
     # MSIs, old bootstrappers, separate .cer files â€” so only the single
