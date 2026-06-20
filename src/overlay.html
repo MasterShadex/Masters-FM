@@ -2078,6 +2078,22 @@ function applyConfig(raw) {
       }).catch(() => {});
     }
   } catch (_) {}
+  // 14.1.8: forward Spectrum Reaction time (responseMs -> FFT HOP_SIZE) LIVE
+  // to audio_spectrum.exe so dragging the slider takes effect immediately.
+  // Same pattern as the sensitivity push above. Was a DEAD control before --
+  // the only /set-hop was in the SSE connect handler, so changes only took
+  // effect on the next reconnect / exe restart. Guarded against the last-sent
+  // value so unrelated config edits don't spam the endpoint.
+  try {
+    const _hopMs = Math.max(0.01, cfg.spectrum.responseMs ?? 10.7);
+    if (window.__lastHopMs !== _hopMs) {
+      window.__lastHopMs = _hopMs;
+      fetch('http://127.0.0.1:4243/set-hop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ms: _hopMs })
+      }).catch(() => {});
+    }
+  } catch (_) {}
 
   // ── Progress bar ────────────────────────────────────────────────────────
   // Only toggle hidden-by-config, not the normal hide-when-no-duration logic
