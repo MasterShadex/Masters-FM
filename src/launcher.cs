@@ -301,18 +301,22 @@ class MastersFM
         }
 
         string dir    = AppDomain.CurrentDomain.BaseDirectory;
-        string tray   = Path.Combine(dir, "tray.ps1");
+        string tray   = Path.Combine(dir, "tray.ps1");   // kept for legacy fallback path below
         string server = Path.Combine(dir, "server.exe");
         Log("dir    = " + dir);
         Log("tray   = " + tray);
         Log("server = " + server);
 
+        // v14.2.1: the .NET 8 WPF MastersFM_Tray.exe is the real tray now —
+        // tray.ps1 is intentionally no longer bundled. Don't FATAL-abort if
+        // it's missing; just note it and continue. The MastersFM_Tray.exe
+        // spawn block below is what we depend on now. The "tray" variable
+        // is only consulted by the powershell.exe fallback path further down,
+        // which only fires if MastersFM_Tray.exe itself is missing — which
+        // shouldn't happen on a v14.x install.
         if (!File.Exists(tray))
         {
-            Log("FATAL: tray.ps1 not found at " + tray + " - aborting");
-            mutex.ReleaseMutex();
-            mutex.Close();
-            return;
+            Log("note: tray.ps1 absent — running .NET 8 path via MastersFM_Tray.exe (this is normal in v14.2.x+)");
         }
 
         // Strip trailing separator to avoid \" quoting bug.
@@ -472,19 +476,24 @@ class MastersFM
         ProcessStartInfo psPsi;
         if (File.Exists(hostedTray))
         {
+            // v14.2.1: arguments left unset — the .NET 8 WPF tray (in MastersFM_Tray.exe)
+            // doesn't consume the legacy -scriptDir / -skipServerLaunch flags the old
+            // v2.0.0 PowerShell host needed. Passing them was harmless (App.OnStartup
+            // ignored unknown args) but irrelevant; the cleaner contract is "no args".
             psPsi = new ProcessStartInfo
             {
-                FileName  = hostedTray,
-                Arguments = string.Format(
-                    "-scriptDir \"{0}\" -skipServerLaunch",
-                    dirQ),
+                FileName         = hostedTray,
                 WorkingDirectory = dir,
                 UseShellExecute  = false,
                 CreateNoWindow   = true
             };
         }
-        else
+        else if (File.Exists(tray))
         {
+            // Legacy fallback only if BOTH MastersFM_Tray.exe is missing AND a tray.ps1
+            // happens to be present (very unusual install state, e.g. partial uninstall).
+            // Without tray.ps1 we silently skip — the launcher will exit immediately
+            // after the Application.Run watcher sees no tray process to wait on.
             psPsi = new ProcessStartInfo
             {
                 FileName  = "powershell.exe",
@@ -496,11 +505,16 @@ class MastersFM
                 CreateNoWindow  = true
             };
         }
+        else
+        {
+            psPsi = null;
+            Log("FATAL: neither MastersFM_Tray.exe nor tray.ps1 present — install is broken");
+        }
 
         Process ps = null;
         try
         {
-            ps = Process.Start(psPsi);
+            if (psPsi != null) ps = Process.Start(psPsi);
             if (ps != null)
             {
                 Log("tray host (" + Path.GetFileName(psPsi.FileName) + ") spawned, PID=" + ps.Id);
