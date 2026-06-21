@@ -2834,6 +2834,140 @@ class AudioSpectrum
         ctx.Response.Close();
     }
 
+    // v14.1.9: "where is music actively playing?" detector. Enumerates every
+    // active WASAPI render endpoint, walks its audio sessions, and scores them
+    // by (a) is the process a known music app or matches an explicit hint from
+    // the caller, AND (b) is the session's peak meter above silence right now.
+    // The highest-scoring endpoint is the answer — that's where the user's
+    // music is actually going, including through virtual mixers like
+    // Voicemeeter / SteelSeries Sonar / Razer Synapse where the music is
+    // routed to a virtual playback device, NOT the system default render.
+    //
+    // Optional query-string hint: ?app=Spotify.exe biases the score so the
+    // tray's SMTC integration can say "I see Spotify is playing — find its
+    // endpoint" rather than relying on the static known-app list.
+    //
+    // Returns JSON:
+    //   { "found": true,
+    //     "endpointId": "{0.0.0.00000000}.{guid}",
+    //     "endpointName": "VoiceMeeter Aux Input (VB-Audio VoiceMeeter AUX VAIO)",
+    //     "process": "Spotify",
+    //     "peak": 0.43 }
+    // or { "found": false, "reason": "..." } when nothing music-shaped is playing.
+    static readonly string[] s_knownMusicApps = new[] {
+        "spotify", "applemusic", "tidal", "tidaldesktop", "amazonmusic",
+        "foobar2000", "aimp", "musicbee", "deezer", "soundcloud",
+        "groove", "music",           // Windows Groove / Apple "Music"
+        "qobuz", "audirvana",        // hi-fi clients
+        "vlc"                         // common fallback player
+    };
+
+    static void HandleDetectMusic(HttpListenerContext ctx)
+    {
+        try
+        {
+            string hint = (ctx.Request.QueryString["app"] ?? "").Trim();
+            if (hint.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                hint = hint.Substring(0, hint.Length - 4);
+            hint = hint.ToLowerInvariant();
+
+            MMDevice bestDevice = null;
+            string   bestProc   = null;
+            double   bestScore  = 0.0;
+            double   bestPeak   = 0.0;
+
+            const double SILENCE_THRESHOLD = 0.002; // ≈ -54 dBFS — anything quieter is "not playing"
+
+            try
+            {
+                var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+                foreach (var dev in endpoints)
+                {
+                    try
+                    {
+                        var mgr = dev.AudioSessionManager;
+                        if (mgr == null || mgr.Sessions == null) continue;
+                        int n = mgr.Sessions.Count;
+                        for (int i = 0; i < n; i++)
+                        {
+                            var sess = mgr.Sessions[i];
+                            string procName = "?";
+                            try
+                            {
+                                var p = System.Diagnostics.Process.GetProcessById((int)sess.GetProcessID);
+                                procName = p.ProcessName ?? "?";
+                            } catch { /* process gone, system session, etc. */ }
+
+                            string procLower = procName.ToLowerInvariant();
+                            double peak = 0.0;
+                            try { peak = sess.AudioMeterInformation.MasterPeakValue; } catch { }
+
+                            if (peak < SILENCE_THRESHOLD) continue;
+
+                            double score = 0.0;
+                            // SMTC-provided hint takes precedence — exact-or-prefix match
+                            if (hint.Length > 0 && (procLower == hint || procLower.StartsWith(hint)))
+                                score = 1000.0 + peak;
+                            else
+                            {
+                                foreach (var app in s_knownMusicApps)
+                                {
+                                    if (procLower.Contains(app))
+                                    {
+                                        score = 100.0 + peak;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (score > bestScore)
+                            {
+                                bestScore  = score;
+                                bestDevice = dev;
+                                bestProc   = procName;
+                                bestPeak   = peak;
+                            }
+                        }
+                    } catch { /* skip endpoints we can't introspect */ }
+                }
+            } catch (Exception enumEx) {
+                Log("detect-music: enumerate threw: " + enumEx.Message);
+            }
+
+            var sb = new StringBuilder();
+            if (bestDevice != null)
+            {
+                string fname = "";
+                try { fname = bestDevice.FriendlyName ?? ""; } catch { }
+                sb.Append("{\"found\":true,");
+                sb.Append("\"endpointId\":\"").Append(JsonEscape(bestDevice.ID ?? "")).Append("\",");
+                sb.Append("\"endpointName\":\"").Append(JsonEscape(fname)).Append("\",");
+                sb.Append("\"process\":\"").Append(JsonEscape(bestProc ?? "")).Append("\",");
+                sb.Append("\"peak\":").Append(bestPeak.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+                if (hint.Length > 0) sb.Append(",\"hintUsed\":\"").Append(JsonEscape(hint)).Append("\"");
+                sb.Append("}");
+                Log(string.Format("detect-music: found process='{0}' on endpoint='{1}' (peak={2:F3}, hint='{3}')",
+                    bestProc, fname, bestPeak, hint));
+            }
+            else
+            {
+                string reason = hint.Length > 0
+                    ? "no active session for hint '" + hint + "' or any known music app above silence"
+                    : "no active known-music-app session above silence";
+                sb.Append("{\"found\":false,\"reason\":\"").Append(JsonEscape(reason)).Append("\"}");
+            }
+
+            byte[] raw = Encoding.UTF8.GetBytes(sb.ToString());
+            ctx.Response.ContentType = "application/json";
+            ctx.Response.OutputStream.Write(raw, 0, raw.Length);
+        }
+        catch (Exception ex)
+        {
+            Log("HandleDetectMusic: " + ex.Message);
+            ctx.Response.StatusCode = 500;
+        }
+        ctx.Response.Close();
+    }
+
     static void HandleRequest(HttpListenerContext ctx)
     {
         try
@@ -3103,6 +3237,18 @@ class AudioSpectrum
                 // v6.9.3: live-tune the magnitude multiplier ('Sensitivity'
                 // slider in customize.html). Body: {"sensitivity":N}.
                 HandleSetSensitivity(ctx);
+            }
+            else if (path == "/detect-music" && ctx.Request.HttpMethod == "GET")
+            {
+                // v14.1.9: "where is music actively playing?" — enumerates
+                // WASAPI sessions across every render endpoint and returns the
+                // one with the highest-scoring music-app session. Optional
+                // ?app=Spotify.exe hint biases the score so the tray's SMTC
+                // bridge can ask "find the endpoint for THIS playing app".
+                // Solves the Voicemeeter / Sonar / Razer Synapse problem:
+                // music goes to a virtual playback device, NOT the system
+                // default render — this endpoint finds the right one.
+                HandleDetectMusic(ctx);
             }
             else
             {
