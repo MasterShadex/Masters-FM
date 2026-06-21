@@ -78,6 +78,11 @@ public sealed partial class SetupWizardViewModel : ObservableObject
                 UpdateStepUi();
                 // Trigger audio enumeration when arriving at the audio step
                 _ = AudioVm.RefreshAsync();
+                // v14.2.0: kick off the auto-detect poller so the banner
+                // populates while the user reads the page. If they're
+                // already playing music it finds it in 1-3 s and they just
+                // click "Use this device" — no manual picking needed.
+                _ = AudioVm.StartAutoDetectAsync();
                 await Task.CompletedTask;
                 break;
 

@@ -254,9 +254,67 @@
                     <TextBlock Style="{StaticResource BodyTextStyle}"
                                Foreground="{StaticResource TextSecondary}"
                                TextWrapping="Wrap"
-                               Margin="0,0,0,20">
+                               Margin="0,0,0,14">
                         Master's FM listens to your computer's audio to detect what's playing.
                     </TextBlock>
+
+                    <!-- v14.2.0 auto-detect banner. While the user is on this
+                         step the AudioVm polls /detect-music for ~20 s with
+                         multiple browser hints. When something is found, the
+                         "Use this device" button enables and clicking it
+                         applies the endpoint without the user having to
+                         manually pick from the list below. -->
+                    <Border CornerRadius="8" Padding="14,12" Margin="0,0,0,18"
+                            Background="{StaticResource Surface3}">
+                        <StackPanel>
+                            <TextBlock Text="Play any music now — we'll find where it's coming from"
+                                       Style="{StaticResource BodyStrongTextStyle}"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="Spotify, YouTube, Tidal, Apple Music, foobar, VLC — anything. Works with virtual mixers (Voicemeeter / SteelSeries Sonar / Razer Synapse) too."
+                                       Style="{StaticResource CaptionTextStyle}"
+                                       Foreground="{StaticResource TextTertiary}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,10"/>
+                            <TextBlock Text="{Binding AutoDetectStatus}"
+                                       Foreground="{StaticResource TextSecondary}"
+                                       TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding AutoDetectStatus}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="Detect again"
+                                        Command="{Binding RerunAutoDetectCommand}"
+                                        Style="{StaticResource SecondaryButtonStyle}"/>
+                                <Button Content="Use this device"
+                                        Command="{Binding UseDetectedDeviceCommand}"
+                                        Margin="8,0,0,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasAutoDetectedDevice}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="…or pick a specific device:"
+                               Style="{StaticResource CaptionTextStyle}"
+                               Foreground="{StaticResource TextTertiary}"
+                               Margin="0,0,0,6"/>
                     <Border Style="{StaticResource CardStyle}" Padding="0">
                         <ListBox ItemsSource="{Binding OutputDevices}"
                                  SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"

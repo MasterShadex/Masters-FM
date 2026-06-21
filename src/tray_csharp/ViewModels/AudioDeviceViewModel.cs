@@ -15,9 +15,13 @@
 //   - User clicks forwarded via SelectDevice(); programmatic changes via
 //     SetSelectedDeviceSilent().
 
+using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MastersFM.Tray.Services;
@@ -48,6 +52,30 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<AudioDeviceInfo> asioDevices = new();
+
+    // v14.2.0 setup-wizard auto-detect — bound to a banner in the wizard's
+    // Audio step. SetupWizardViewModel calls StartAutoDetectAsync when the
+    // user navigates to the step; the poller hits /detect-music every ~1s
+    // trying several browser/app hints until a music source is found (or
+    // the 20s deadline expires).
+    [ObservableProperty]
+    private string _autoDetectStatus = "";
+
+    [ObservableProperty]
+    private bool _autoDetectInProgress;
+
+    [ObservableProperty]
+    private string _autoDetectedEndpointId = "";
+
+    [ObservableProperty]
+    private string _autoDetectedEndpointName = "";
+
+    public bool HasAutoDetectedDevice => !string.IsNullOrEmpty(AutoDetectedEndpointId);
+
+    partial void OnAutoDetectedEndpointIdChanged(string value)
+        => OnPropertyChanged(nameof(HasAutoDetectedDevice));
+
+    private CancellationTokenSource? _autoDetectCts;
 
     // -----------------------------------------------------------------------
     // Selection: single backing field, two computed read-only properties.
@@ -471,6 +499,116 @@ public sealed partial class AudioDeviceViewModel : ObservableObject
             ApplyDevice(active);
 
         PendingResult = null;
+    }
+
+    // ===== v14.2.0 setup-wizard auto-detect =====
+    // Polls audio_spectrum's /detect-music endpoint with multiple hint
+    // variants, looking for any music app currently above the silence
+    // threshold. Cycles through: no-hint (catches Spotify, foobar, etc.) →
+    // chrome → msedge → firefox → brave so browser-hosted players
+    // (YouTube/Tidal Web/SoundCloud) get caught even at first-run when
+    // SMTC hasn't fired a TrackChanged event yet.
+    //
+    // 20-second deadline. Updates AutoDetectStatus / AutoDetectedEndpoint*
+    // properties so the wizard's banner reflects progress.
+    public async Task StartAutoDetectAsync()
+    {
+        // De-dup: cancel any prior poll
+        try { _autoDetectCts?.Cancel(); } catch { }
+        _autoDetectCts = new CancellationTokenSource();
+        var ct = _autoDetectCts.Token;
+
+        AutoDetectInProgress = true;
+        AutoDetectStatus = "Play any music — looking for it now...";
+        AutoDetectedEndpointId = "";
+        AutoDetectedEndpointName = "";
+
+        var hints = new[] { "", "chrome", "msedge", "firefox", "brave", "Spotify", "" };
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        int idx = 0;
+
+        try
+        {
+            while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+            {
+                var hint = hints[idx % hints.Length];
+                idx++;
+
+                string url = "http://127.0.0.1:4243/detect-music";
+                if (!string.IsNullOrEmpty(hint))
+                    url += "?app=" + Uri.EscapeDataString(hint);
+
+                try
+                {
+                    using var resp = await _http.GetAsync(url, ct);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        var body = await resp.Content.ReadAsStringAsync(ct);
+                        using var doc = JsonDocument.Parse(body);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("found", out var foundEl) && foundEl.GetBoolean())
+                        {
+                            var endpointId = root.GetProperty("endpointId").GetString() ?? "";
+                            var endpointName = root.TryGetProperty("endpointName", out var nEl)
+                                ? (nEl.GetString() ?? "Unknown device") : "Unknown device";
+                            var proc = root.TryGetProperty("process", out var pEl)
+                                ? pEl.GetString() ?? "" : "";
+                            AutoDetectedEndpointId = endpointId;
+                            AutoDetectedEndpointName = endpointName;
+                            AutoDetectStatus = string.IsNullOrEmpty(proc)
+                                ? "Found music on: " + endpointName
+                                : "Found " + proc + " playing on: " + endpointName;
+                            AutoDetectInProgress = false;
+                            _logger.Log("auto-detect: " + AutoDetectStatus, Component);
+                            return;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    _logger.LogWarn($"auto-detect poll failed (hint='{hint}'): {ex.Message}", Component);
+                }
+
+                await Task.Delay(1000, ct);
+            }
+            AutoDetectStatus = "Couldn't detect anything — play some music or pick your device below";
+        }
+        catch (OperationCanceledException)
+        {
+            AutoDetectStatus = "Detection cancelled";
+        }
+        finally
+        {
+            AutoDetectInProgress = false;
+        }
+    }
+
+    public void CancelAutoDetect()
+    {
+        try { _autoDetectCts?.Cancel(); } catch { }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasAutoDetectedDevice))]
+    private async Task UseDetectedDeviceAsync()
+    {
+        if (string.IsNullOrEmpty(AutoDetectedEndpointId)) return;
+        try
+        {
+            await _backend.PushRawAsync("wasapi_loopback", AutoDetectedEndpointId);
+            AutoDetectStatus = "Using: " + AutoDetectedEndpointName;
+            _logger.Log("auto-detect: applied " + AutoDetectedEndpointName, Component);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogErr("UseDetectedDevice", ex, Component);
+        }
+    }
+
+    [RelayCommand]
+    private async Task RerunAutoDetectAsync()
+    {
+        await StartAutoDetectAsync();
     }
 }
 
