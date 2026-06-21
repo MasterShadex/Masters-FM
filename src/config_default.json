@@ -21,7 +21,13 @@
     "border": {
       "enabled": true,
       "spinDuration": 4,
-      "colors": ["#ff1085","#ff60c8","#d040ff","#8020e0","#4a0ab8"]
+      "colors": [
+        "#ff1085",
+        "#ff60c8",
+        "#d040ff",
+        "#8020e0",
+        "#4a0ab8"
+      ]
     },
     "glow": {
       "enabled": true,
@@ -83,7 +89,11 @@
       "enabled": true,
       "height": 9,
       "trackColor": "rgba(160,70,255,0.10)",
-      "fillColors": ["#8020c0","#ff60c8","#c040ff"]
+      "fillColors": [
+        "#8020c0",
+        "#ff60c8",
+        "#c040ff"
+      ]
     },
     "timestamps": {
       "fontSize": 46,
@@ -97,5 +107,6 @@
     "overlay": {
       "opacity": 1.0
     }
-  }
+  },
+  "audioAutoDetectMusic": true
 }

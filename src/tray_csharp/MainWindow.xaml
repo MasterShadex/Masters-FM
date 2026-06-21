@@ -154,17 +154,27 @@
                     </MenuItem.Icon>
                 </MenuItem>
 
-                <!-- 3. Audio source -->
+                <!-- 3. Audio source — v14.2.0 expanded to a submenu so the
+                     auto-detect toggle lives alongside the manual picker. -->
                 <MenuItem Header="Audio source"
-                          Tag="Pick which audio device to visualize"
-                          Style="{StaticResource AppMenuItemStyle}"
-                          Command="{Binding OpenAudioSourceCommand}">
+                          Tag="Pick where the spectrum captures from"
+                          Style="{StaticResource AppMenuItemStyle}">
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconSpeaker}"
                               Fill="{StaticResource TextSecondary}"
                               Width="18" Height="18"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
+                    <MenuItem Header="Pick device manually..."
+                              Tag="Open the audio-device picker"
+                              Style="{StaticResource AppMenuItemStyle}"
+                              Command="{Binding OpenAudioSourceCommand}"/>
+                    <MenuItem Header="Auto-detect music source"
+                              Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
+                              Style="{StaticResource AppMenuItemStyle}"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
+                              Command="{Binding ToggleAutoDetectMusicCommand}"/>
                 </MenuItem>
 
                 <!-- 4. Customize overlay -->

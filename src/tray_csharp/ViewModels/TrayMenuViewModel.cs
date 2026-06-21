@@ -28,6 +28,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     private readonly ICustomizerLauncher _customizerLauncher;
     private readonly IObsService _obsService;
     private readonly IConfigService _configService;
+    private readonly MusicSourceWatcher _musicSourceWatcher;  // v14.2.0 auto-detect "where is music playing"
     private readonly ILogger _logger;
 
     // Stage 7.8D: reconcile timer (replaces Stage 7.8C 60s OBS-exit poll timer).
@@ -40,6 +41,10 @@ public sealed partial class TrayMenuViewModel : ObservableObject
 
     [ObservableProperty] private bool _isDiscordEnabled;
     [ObservableProperty] private bool _isAutoStartEnabled;
+    // v14.2.0: master switch for the MusicSourceWatcher. When true, the watcher
+    // routes the spectrum to whichever device music is playing on (via the
+    // /detect-music endpoint). When false, manual selection stays put.
+    [ObservableProperty] private bool _isAutoDetectMusicEnabled;
     [ObservableProperty] private string _updateLabel = "Check for updates";
     [ObservableProperty] private string _obsLabel    = "OBS overlay";
     [ObservableProperty] private string _obsTooltip  = "Click to enable OBS integration";
@@ -63,6 +68,7 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         ICustomizerLauncher customizerLauncher,
         IObsService obsService,
         IConfigService configService,
+        MusicSourceWatcher musicSourceWatcher,
         ILogger logger)
     {
         NowPlaying = nowPlaying;
@@ -73,10 +79,12 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _customizerLauncher = customizerLauncher;
         _obsService = obsService;
         _configService = configService;
+        _musicSourceWatcher = musicSourceWatcher;
         _logger = logger;
 
         _isDiscordEnabled  = _discordService.IsEnabled;
         _isAutoStartEnabled = _autoStartService.IsEnabled;
+        _isAutoDetectMusicEnabled = _musicSourceWatcher.IsEnabled;
         _updateLabel = LabelForState(_updateService.CurrentState);
 
         // Stage 7.8D: migrate obs.enabled (Stage 7.8B/C) → obs.intent.
@@ -676,6 +684,18 @@ public sealed partial class TrayMenuViewModel : ObservableObject
     {
         _logger.Log("TrayMenu: ShowMenu (left-click)", "Tray");
         OpenContextMenu?.Invoke();
+    }
+
+    // v14.2.0: tray-menu toggle for the music-source auto-detect. Persists via
+    // the watcher (which writes audioAutoDetectMusic in the flat config), so
+    // the choice survives restarts. UI checkmark binds to IsAutoDetectMusicEnabled.
+    [RelayCommand]
+    private void ToggleAutoDetectMusic()
+    {
+        bool newValue = !IsAutoDetectMusicEnabled;
+        _musicSourceWatcher.SetEnabled(newValue);
+        IsAutoDetectMusicEnabled = newValue;
+        _logger.Log($"TrayMenu: auto-detect music -> {(newValue ? "ON" : "OFF")}", "Tray");
     }
 
     private void InvokeCleanShutdown()

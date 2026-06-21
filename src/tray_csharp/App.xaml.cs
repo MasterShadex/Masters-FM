@@ -55,6 +55,7 @@ public partial class App : Application
     private IObsService? _obsService;
     private SmtcEventBridge? _smtcBridge;
     private DetectorOrchestrator? _detectorOrchestrator;
+    private MusicSourceWatcher? _musicSourceWatcher;  // v14.2.0 auto-detect music endpoint
     private IDialogService? _dialogService;
 
     // -- Stage 7.7B: Reduced-motion detection (STEP 2 / S2.1) --
@@ -181,6 +182,12 @@ public partial class App : Application
         collection.AddSingleton<IPlatformDetector, WmpLegacyDetector>();
         collection.AddSingleton<DetectorOrchestrator>();
         collection.AddSingleton<SmtcEventBridge>();
+        // v14.2.0: auto-route the spectrum to wherever music is actually playing.
+        // Subscribes to ITrackResolver.TrackChanged, calls /detect-music on the
+        // audio_spectrum HTTP API with the SMTC-derived process hint, and pushes
+        // the result via AudioBackendBridge.PushRawAsync. Honors a flat config
+        // flag (audioAutoDetectMusic, default true) toggleable from the tray menu.
+        collection.AddSingleton<MusicSourceWatcher>();
         collection.AddSingleton<NowPlayingViewModel>();
         collection.AddSingleton<MainWindow>();
 
@@ -343,7 +350,11 @@ public partial class App : Application
         _detectorOrchestrator = _services.GetRequiredService<DetectorOrchestrator>();
         _smtcBridge.Start();
         _detectorOrchestrator.Start();
-        _logger.Log("all arms started; SMTC events live (or inactive if WinRT not projected); gap-fillers polling at 1s cadence", "Detect");
+        // v14.2.0: bring up the music-source watcher AFTER the SMTC bridge so
+        // TrackChanged events flow into it from the very first track event.
+        _musicSourceWatcher = _services.GetRequiredService<MusicSourceWatcher>();
+        _musicSourceWatcher.Start();
+        _logger.Log("all arms started; SMTC events live (or inactive if WinRT not projected); gap-fillers polling at 1s cadence; MusicSourceWatcher armed", "Detect");
 
         // -- Resolve and show the hidden MainWindow (host for the TaskbarIcon) --
         var mainWindow = _services.GetRequiredService<MainWindow>();
@@ -590,6 +601,8 @@ public partial class App : Application
         // Stage 7.5: stop detection arms before container disposal
         try { _detectorOrchestrator?.Stop(); } catch (Exception ex) { _logger?.LogErr("DetectorOrchestrator.Stop", ex, "Bootstrap"); }
         try { _smtcBridge?.Stop(); } catch (Exception ex) { _logger?.LogErr("SmtcEventBridge.Stop", ex, "Bootstrap"); }
+        // v14.2.0: stop the music-source watcher (unsubscribes from TrackChanged + cancels any in-flight detect-music)
+        try { _musicSourceWatcher?.Stop(); } catch (Exception ex) { _logger?.LogErr("MusicSourceWatcher.Stop", ex, "Bootstrap"); }
         // Stage 7.8: stop OBS service
         try { _obsService?.Stop(); } catch (Exception ex) { _logger?.LogErr("ObsService.Stop", ex, "Bootstrap"); }
 

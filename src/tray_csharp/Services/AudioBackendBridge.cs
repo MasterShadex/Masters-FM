@@ -86,6 +86,32 @@ public sealed class AudioBackendBridge
     }
 
     /// <summary>
+    /// v14.2.0: raw push for the MusicSourceWatcher — already has (backend, id)
+    /// from /detect-music, doesn't want to enumerate AudioDeviceInfo just to
+    /// re-derive the wire format. Persists to config (same flat keys as
+    /// PushAsync) then POSTs /set-device. Logs a context tag so it's clear in
+    /// the diagnostics this came from auto-detect, not a manual pick.
+    /// </summary>
+    public async Task PushRawAsync(string backend, string id, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(backend) || string.IsNullOrEmpty(id))
+        {
+            _logger.LogWarn($"PushRawAsync: empty backend or id (backend='{backend}', id='{id}')", Component);
+            return;
+        }
+        try
+        {
+            _config.SetValue(CfgBackendKey,  backend);
+            _config.SetValue(CfgDeviceIdKey, id);
+        }
+        catch (System.Exception ex)
+        {
+            _logger.LogErr("PushRawAsync persist", ex, Component);
+        }
+        await PushToSpectrumAsync(backend, id, ct);
+    }
+
+    /// <summary>
     /// Send a single set-device POST to audio_spectrum.  3-second timeout —
     /// audio_spectrum's HandleSetDevice is fast and synchronous; if it doesn't
     /// answer in that window something is wrong (process crashed, port held).
