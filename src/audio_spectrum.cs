@@ -815,25 +815,23 @@ class AudioSpectrum
                     }
                     catch (Exception ex)
                     {
-                        // Backend failed to open (ASIO driver missing,
-                        // Stereo Mix disabled, etc.) - fall back to
-                        // WASAPI Loopback rather than leaving the user
-                        // with no visualizer at all. User can switch
-                        // backends again once they fix their setup.
-                        Log(string.Format("backend '{0}' failed to open: {1} - falling back to WASAPI Loopback",
-                            s_currentBackend, ex.Message));
-                        // BUG FIX (found via instrumentation): the old s_currentDeviceId
-                        // came from the failed backend (e.g. an ASIO driver name like
-                        // "VB-Matrix VASIO-128"), and WASAPI's ResolveTargetDevice then
-                        // tried to look that string up as a WASAPI endpoint GUID, failing
-                        // with "Value does not fall within the expected range". Reset
-                        // device ID here so the fallback uses the system-default render
-                        // endpoint cleanly.
-                        s_currentBackend = "wasapi_loopback";
-                        s_currentDeviceId = null;
-                        lastBackend = s_currentBackend;
-                        failCountOnBackend = 0;
-                        open = OpenCaptureForBackend("wasapi_loopback");
+                        // v14.1.9 — NO FALLBACK. Per operator preference, when the
+                        // user's chosen device isn't available right now, we stay on
+                        // that device and keep retrying, even if that means silence
+                        // in the meantime. Common case this serves: user picked ASIO
+                        // X; ASIO driver loads late at boot; rather than swap to
+                        // WASAPI Loopback (which would show fake bars from system
+                        // audio), we sit idle and retry X every REACQUIRE_INTERVAL
+                        // seconds until it's ready. /set-device can preempt the wait
+                        // via s_deviceChangeEvent if the user changes their mind.
+                        Log(string.Format(
+                            "backend '{0}' id='{1}' not available: {2} — staying on this device, retry in {3}s",
+                            s_currentBackend, s_currentDeviceId ?? "default", ex.Message,
+                            REACQUIRE_INTERVAL_SECONDS));
+                        s_deviceChangeEvent.Wait(REACQUIRE_INTERVAL_SECONDS * 1000);
+                        s_deviceChangeEvent.Reset();
+                        lastBackend = "";  // force the if-block to re-enter next iteration
+                        continue;          // back to top of while(true)
                     }
 
                     s_currentBackend  = open.BackendTag;
@@ -972,17 +970,19 @@ class AudioSpectrum
                                 failCountOnBackend = System.Math.Max(0, failCountOnBackend - 1);
                             }
 
-                            if (s_currentBackend != "wasapi_loopback" && failCountOnBackend >= FAIL_THRESHOLD)
+                            if (failCountOnBackend >= FAIL_THRESHOLD)
                             {
+                                // v14.1.9 — NO FALLBACK. After FAIL_THRESHOLD strikes
+                                // we reset the counter and force a clean reopen of
+                                // the SAME device. Mirrors the open-path behavior:
+                                // user's selection sticks until they explicitly pick
+                                // something else via /set-device.
                                 Log(string.Format(
-                                    "capture: backend '{0}' failed {1} times in a row (last='{2}') - forcing fallback to WASAPI Loopback",
-                                    s_currentBackend, failCountOnBackend, stopEx.Message));
-                                // Same reset-device-ID fix as the open-path fallback:
-                                // the ID in s_currentDeviceId belongs to the failed
-                                // backend and can't be used to resolve a WASAPI endpoint.
-                                s_currentBackend = "wasapi_loopback";
-                                s_currentDeviceId = null;
+                                    "capture: backend '{0}' id='{1}' failed {2} times in a row (last='{3}') — staying on this device, will keep retrying",
+                                    s_currentBackend, s_currentDeviceId ?? "default",
+                                    failCountOnBackend, stopEx.Message));
                                 failCountOnBackend = 0;
+                                lastBackend = "";  // force re-open of the same device on next iteration
                             }
                         }
                         else if (stopEx == null)
@@ -996,11 +996,15 @@ class AudioSpectrum
                 {
                     Log("capture: exception, will retry in 2 s: " + ex.Message);
                     failCountOnBackend++;
-                    if (s_currentBackend != "wasapi_loopback" && failCountOnBackend >= FAIL_THRESHOLD)
+                    if (failCountOnBackend >= FAIL_THRESHOLD)
                     {
-                        Log("capture: outer exception threshold hit - forcing fallback to WASAPI Loopback");
-                        s_currentBackend = "wasapi_loopback";
+                        // v14.1.9 — NO FALLBACK. Reset counter, keep the user's
+                        // selection, force a clean reopen on the next iteration.
+                        Log(string.Format(
+                            "capture: outer exception threshold hit on '{0}' id='{1}' — staying on this device, will keep retrying",
+                            s_currentBackend, s_currentDeviceId ?? "default"));
                         failCountOnBackend = 0;
+                        lastBackend = "";
                     }
                 }
                 // NOTE: no `device.Dispose()` here - we now keep a single
