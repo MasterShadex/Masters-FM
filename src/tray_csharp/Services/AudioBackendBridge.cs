@@ -52,6 +52,16 @@ public sealed class AudioBackendBridge
     }
 
     /// <summary>
+    /// v14.2.0: fires after a manual device selection (via PushAsync). The
+    /// MusicSourceWatcher subscribes to this and disables itself so the
+    /// auto-detect can't override the user's deliberate pick on the next
+    /// track change. Event arg = the wire-format backend name (e.g.
+    /// "wasapi_loopback", "asio"). PushRawAsync (auto-detect path) does
+    /// NOT fire this event — only deliberate user picks count.
+    /// </summary>
+    public event System.EventHandler<string>? ManualPickPushed;
+
+    /// <summary>
     /// Apply the operator's device selection to the running audio_spectrum AND
     /// persist it to the config keys the spectrum's bootstrap reader consults
     /// (so the selection survives process restart).  Fire-and-forget from the
@@ -83,6 +93,13 @@ public sealed class AudioBackendBridge
 
         // 2. Push live to the running process so the change is immediate.
         await PushToSpectrumAsync(backend, id, ct);
+
+        // 3. v14.2.0: notify subscribers (MusicSourceWatcher) that the user
+        //    just made a deliberate pick. The watcher uses this to disable
+        //    auto-detect so it can't immediately swap the user's choice
+        //    away on the next track change.
+        try { ManualPickPushed?.Invoke(this, backend); }
+        catch (System.Exception ex) { _logger.LogErr("ManualPickPushed handler", ex, Component); }
     }
 
     /// <summary>

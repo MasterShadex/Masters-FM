@@ -80,6 +80,14 @@ public sealed class MusicSourceWatcher : IDisposable
     }
 
     /// <summary>
+    /// Fires AFTER SetEnabled writes the new state to config. Used by the
+    /// TrayMenuViewModel to keep the menu checkmark in sync when the
+    /// manual-pick guard auto-disables (not just when the user clicks the
+    /// toggle themselves).
+    /// </summary>
+    public event System.EventHandler<bool>? EnabledChanged;
+
+    /// <summary>
     /// Persist the toggle (called from the tray menu). When disabled, the
     /// TrackChanged handler short-circuits without hitting /detect-music so
     /// it's effectively zero-cost.
@@ -95,6 +103,8 @@ public sealed class MusicSourceWatcher : IDisposable
         {
             _logger.LogErr("persist autoDetectMusic", ex, Component);
         }
+        try { EnabledChanged?.Invoke(this, enabled); }
+        catch (Exception ex) { _logger.LogErr("EnabledChanged handler", ex, Component); }
     }
 
     public void Start()
@@ -102,7 +112,13 @@ public sealed class MusicSourceWatcher : IDisposable
         if (_started) return;
         _started = true;
         _tracks.TrackChanged += OnTrackChanged;
-        _logger.Log("started — subscribed to ITrackResolver.TrackChanged", Component);
+        // v14.2.0 manual-pick guard: when AudioBackendBridge fires its
+        // ManualPickPushed event (user explicitly picked a device from the
+        // tray's audio dialog), we turn ourselves off so the next SMTC
+        // TrackChanged doesn't whip the spectrum away from their choice.
+        // The user re-enables via tray menu → Audio source → Auto-detect.
+        _bridge.ManualPickPushed += OnManualPickPushed;
+        _logger.Log("started — subscribed to ITrackResolver.TrackChanged + AudioBackendBridge.ManualPickPushed", Component);
     }
 
     public void Stop()
@@ -110,8 +126,21 @@ public sealed class MusicSourceWatcher : IDisposable
         if (!_started) return;
         _started = false;
         _tracks.TrackChanged -= OnTrackChanged;
+        _bridge.ManualPickPushed -= OnManualPickPushed;
         try { _inFlight?.Cancel(); } catch { }
         _logger.Log("stopped", Component);
+    }
+
+    private void OnManualPickPushed(object? sender, string backend)
+    {
+        if (!IsEnabled) return;   // already off, nothing to do
+        _logger.Log(
+            $"manual device pick detected (backend='{backend}') — disabling auto-detect; re-enable via tray menu",
+            Component);
+        SetEnabled(false);
+        // Drop the "last-applied" memory so re-enabling later starts fresh
+        // (we won't compare against a now-stale endpoint).
+        _lastAppliedEndpointId = null;
     }
 
     public void Dispose() => Stop();

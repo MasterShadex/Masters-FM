@@ -86,6 +86,18 @@ public sealed partial class TrayMenuViewModel : ObservableObject
         _isAutoStartEnabled = _autoStartService.IsEnabled;
         _isAutoDetectMusicEnabled = _musicSourceWatcher.IsEnabled;
         _updateLabel = LabelForState(_updateService.CurrentState);
+        // v14.2.0: sync the checkmark when the watcher disables itself
+        // (e.g. manual-pick guard fires after the user picks a device).
+        // Without this, the menu would still show ☑ even though auto-detect
+        // is actually off.
+        _musicSourceWatcher.EnabledChanged += (_, isOn) =>
+        {
+            // Marshal to the UI thread — EnabledChanged can fire from the
+            // AudioBackendBridge.ManualPickPushed handler which runs on
+            // whatever thread did the manual push.
+            Application.Current?.Dispatcher.BeginInvoke(new System.Action(() =>
+                IsAutoDetectMusicEnabled = isOn));
+        };
 
         // Stage 7.8D: migrate obs.enabled (Stage 7.8B/C) → obs.intent.
         // Run migration if obs.intent is absent (empty = not set).
