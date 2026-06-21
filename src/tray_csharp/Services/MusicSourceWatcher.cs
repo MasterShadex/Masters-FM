@@ -136,34 +136,51 @@ public sealed class MusicSourceWatcher : IDisposable
         _ = DetectAndApplyAsync(hint, update.Source);
     }
 
-    // SMTC's "Source" is a platform tag the bridge sets (e.g. "spotify",
-    // "youtube_music", "chrome"). Map that back to a process-name hint the
+    // Map the actual Source string emitted by SmtcEventBridge.ClassifySource()
+    // (or one of the three platform detectors) to a process-name hint the
     // /detect-music endpoint can match against Win32_Process sessions.
+    //
+    // Ground truth for the SMTC source strings:
+    //   src/tray_csharp/Detectors/SmtcEventBridge.cs lines 421-441 — verified
+    //   against the running 14.1.8 codebase before the v14.2.0 fix.
+    // No underscores in any of these (so "applemusic" not "apple_music", etc.).
     private static string DeriveProcessHint(TrackUpdate update)
     {
         string src = (update.Source ?? "").Trim().ToLowerInvariant();
         if (src.Length == 0) return "";
 
-        // Direct app -> process name mappings. Browsers stay as the browser
-        // process name because YouTube Music / Tidal Web / SoundCloud run as
-        // tabs inside one of these — the /detect-music hint will then bind
-        // to whichever browser is hosting an audio session above silence.
         return src switch
         {
-            "spotify"        => "Spotify",
-            "tidal"          => "TIDAL",
-            "apple_music"    => "AppleMusic",
-            "youtube_music"  => "chrome",   // most common; tray's SmtcEventBridge.Source records the platform, not the browser
-            "youtube"        => "chrome",
-            "soundcloud"     => "chrome",
-            "deezer"         => "chrome",
-            "groove"         => "Music",    // Windows "Groove Music" → "Music.exe"
-            "amazon_music"   => "Amazon Music",
-            "foobar2000"     => "foobar2000",
-            "aimp"           => "AIMP",
-            "musicbee"       => "MusicBee",
-            "vlc"            => "vlc",
-            _                => src        // unknown — let the backend's known-app list catch it
+            // Dedicated music apps SMTC classifies by name
+            "spotify"      => "Spotify",
+            "tidal"        => "TIDAL",
+            "applemusic"   => "AppleMusic",     // single word — matches SmtcEventBridge line 425
+            "amazonmusic"  => "Amazon Music",   // single word — matches line 428
+            // Browser-hosted music: SMTC reports the platform; the audio session
+            // lives in whichever browser is hosting the tab. "chrome" is the
+            // most common; if the user uses Firefox/Edge/Brave, the bare backend
+            // scan still picks them up via peak-meter scoring (no hint match
+            // → falls through to known-music-apps + peak scan).
+            "youtubemusic" => "chrome",         // single word — matches line 423
+            "youtube"      => "chrome",         // matches line 424
+            "soundcloud"   => "chrome",         // matches line 422
+            "deezer"       => "chrome",         // matches line 427
+            // Native-installed players
+            "vlc"          => "vlc",            // VlcHttpDetector.Name
+            "wmp-legacy"   => "wmplayer",       // WmpLegacyDetector.Name → Windows Media Player exe
+            "foobar2000"   => "foobar2000",
+            "aimp"         => "AIMP",
+            "musicbee"     => "MusicBee",
+            "groove"       => "Music",          // Windows Groove → Music.exe
+            // Game/stream/generic — explicit empty hint so we don't pollute
+            // /detect-music with the wrong process name. Backend then runs
+            // its known-music-apps scan; if none are active, returns found:false
+            // and the watcher leaves the spectrum device alone (the user's
+            // last selection stays).
+            "twitch"       => "",
+            "browser"      => "",
+            "osu"          => "",               // osu! is rhythm-game audio, not music streaming
+            _              => src               // unknown source — let backend's known-app list catch it
         };
     }
 
