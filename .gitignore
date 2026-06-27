@@ -152,7 +152,7 @@ $null,+
 V14_S4_P1_BASELINE_CAPTURES/
 evidence/
 logs/
-tests/
+tests/*
 !tests/HeadlessTester/
 test-ps51-load.ps1
 # Node.js orphan (project doesn't use pkg anymore; build is C# via _full_rebuild.ps1)

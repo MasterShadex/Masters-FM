@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>MastersFM.HeadlessTester</RootNamespace>
+    <AssemblyName>HeadlessTester</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- We're an internal dev tool, not shipped to friends. Skip the apphost
+         that publishes a single-file exe; keep build cheap. -->
+    <UseAppHost>true</UseAppHost>
+    <NoWarn>$(NoWarn);CS8602;CS8604;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <!-- No ProjectReference: we read XAML files directly from src/tray_csharp at
+       runtime via System.IO + XamlReader. Keeps this dev tool standalone so a
+       broken tray build doesn't block running the headless smoke tests. -->
+
+</Project>
