@@ -19,10 +19,15 @@
     <AssemblyName>MastersFM_Tray_v14</AssemblyName>
     <RootNamespace>MastersFM.Tray</RootNamespace>
     <ApplicationIcon>..\..\assets\MastersFM.ico</ApplicationIcon>
-    <Version>14.0.0</Version>
-    <AssemblyVersion>14.0.0.0</AssemblyVersion>
-    <FileVersion>14.0.0.0</FileVersion>
-    <InformationalVersion>14.0.0</InformationalVersion>
+    <!-- v14.2.3: these four were hardcoded to 14.0.0 forever; every release the
+         tray's Welcome dialog kept showing "v14.0.0" because Assembly metadata
+         never moved. Now overridable from the build command via -p:Version=...
+         so _full_rebuild.ps1 can sync this to version.json on every cold build.
+         If -p:Version is not passed, defaults are bumped manually per release. -->
+    <Version Condition="'$(Version)' == ''">14.2.3</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">14.2.3.0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">14.2.3.0</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">14.2.3</InformationalVersion>
     <Company>MasterShadex</Company>
     <Product>Master's FM</Product>
     <Copyright>(c) MasterShadex</Copyright>
