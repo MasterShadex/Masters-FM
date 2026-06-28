@@ -46,6 +46,12 @@ public sealed class SmtcEventBridge : IDisposable
     // to lower it from the default 15.6 ms to 1 ms.
     private const int DrainDelayMs = 1;
     private const int CanaryCadenceMs = 30000;
+    // v14.2.3: scrub-sync poll for browser sources. Chromium only re-broadcasts
+    // setPositionState on play/pause/track-change, NOT on every progress-bar
+    // scrub. Without this poll the overlay clock keeps extrapolating from a
+    // stale anchor and shows the wrong position until the next pause. 2 s feels
+    // snappy without spamming SMTC IPC.
+    private const int ScrubPollCadenceMs = 2000;
     private const string Component = "Detect-SMTC";
 
     private readonly ILogger _logger;
@@ -57,6 +63,7 @@ public sealed class SmtcEventBridge : IDisposable
     private CancellationTokenSource? _drainCts;
     private Task? _drainTask;
     private DispatcherTimer? _canaryTimer;
+    private DispatcherTimer? _scrubPollTimer;
     private object? _manager;
     private bool _started;
     private bool _disposed;
@@ -144,7 +151,15 @@ public sealed class SmtcEventBridge : IDisposable
         _canaryTimer.Tick += OnCanaryTick;
         _canaryTimer.Start();
 
-        _logger.Log($"started; drain={DrainDelayMs}ms (bg-task) canary={CanaryCadenceMs / 1000}s", Component);
+        // v14.2.3: scrub-poll for browser sources (Chromium misses scrubs).
+        _scrubPollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(ScrubPollCadenceMs)
+        };
+        _scrubPollTimer.Tick += OnScrubPollTick;
+        _scrubPollTimer.Start();
+
+        _logger.Log($"started; drain={DrainDelayMs}ms (bg-task) canary={CanaryCadenceMs / 1000}s scrubPoll={ScrubPollCadenceMs / 1000}s", Component);
     }
 
     private async Task DrainLoopAsync(Dispatcher? dispatcher, CancellationToken ct)
@@ -675,6 +690,40 @@ public sealed class SmtcEventBridge : IDisposable
         };
     }
 
+    // v14.2.3: 2-second poll that forces a fresh GetTimelineProperties read on
+    // browser-source sessions. Chromium does not fire TimelinePropertiesChanged
+    // on every scrub (only on play / pause / track-change), so without this poll
+    // the bridge keeps interpolating position from a stale anchor and rapid mid-
+    // playback scrubs (Prime Video / Netflix / YouTube progress bar dragging)
+    // leave the overlay clock out of sync until the user pauses.
+    //
+    // Cheap: SMTC IPC for a single session is ~0.5 ms, sub-millisecond when the
+    // cached snap matches. Only the current session is polled (not all sessions)
+    // and the watcher itself bails fast when the saumid isn't subscribed.
+    private void OnScrubPollTick(object? sender, EventArgs e)
+    {
+        if (_watcher == null) return;
+        try
+        {
+            var saumid = _watcher.CurrentSaumid;
+            if (string.IsNullOrEmpty(saumid)) return;
+            // Map the SaUMID to our source classification (same logic used by
+            // OnMediaPropertiesChanged). Only poll for browser-like sources
+            // (the ones with the Chromium scrub-event miss).
+            var sourceName = MapSaumidToSource(saumid);
+            if (!IsBrowserLikeSource(sourceName)) return;
+            // Force-refresh; enqueues a synthetic event when the anchor moved
+            // beyond expected drift. The drain loop will then build a TrackUpdate
+            // with the fresh position and the resolver's state-aware dedup will
+            // route it through the seek path.
+            _watcher.ForceTimelinePoll(saumid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogErr("scrub-poll tick", ex, Component);
+        }
+    }
+
     private void OnCanaryTick(object? sender, EventArgs e)
     {
         if (_watcher == null) return;
@@ -768,6 +817,7 @@ public sealed class SmtcEventBridge : IDisposable
     {
         try { _drainCts?.Cancel(); } catch { }
         try { _canaryTimer?.Stop(); } catch { }
+        try { _scrubPollTimer?.Stop(); } catch { }
         _logger.Log("stopped", Component);
     }
 

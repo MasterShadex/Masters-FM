@@ -2923,6 +2923,16 @@ class AudioSpectrum
 
             const double SILENCE_THRESHOLD = 0.002; // ≈ -54 dBFS — anything quieter is "not playing"
 
+            // v14.2.3: also track loudest endpoint with ANY active session, as a
+            // fallback for Voicemeeter / Sonar / VB-Cable setups where the music
+            // process session is registered on a quiet virtual bus but the actual
+            // mixed output goes to a different (loud) bus -- the case operator hit
+            // 2026-06-28 where Chrome session was on Media VAIO (peak 0.012) while
+            // the real audio was on Discord VAIO (peak 0.925).
+            MMDevice loudestDevice = null;
+            double   loudestPeak   = 0.0;
+            string   loudestProc   = "";
+
             try
             {
                 var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
@@ -2930,9 +2940,37 @@ class AudioSpectrum
                 {
                     try
                     {
+                        // Endpoint overall peak (mixed output of all sessions on this device).
+                        // Drives the loud-fallback below + is used as the score tiebreaker so a
+                        // process session enumerated on multiple endpoints prefers the loud one.
+                        double endpointPeak = 0.0;
+                        try { endpointPeak = dev.AudioMeterInformation.MasterPeakValue; } catch { }
+
                         var mgr = dev.AudioSessionManager;
                         if (mgr == null || mgr.Sessions == null) continue;
                         int n = mgr.Sessions.Count;
+
+                        // Track loudest-endpoint candidate: just needs ANY active session +
+                        // a high endpoint meter (not silence).
+                        string topProcHere = "?";
+                        if (n > 0 && endpointPeak > loudestPeak && endpointPeak > SILENCE_THRESHOLD)
+                        {
+                            // Best-effort name of any active session on this endpoint, for logging.
+                            for (int j = 0; j < n; j++)
+                            {
+                                try
+                                {
+                                    var pid = (int)mgr.Sessions[j].GetProcessID;
+                                    if (pid <= 0) continue;
+                                    topProcHere = System.Diagnostics.Process.GetProcessById(pid).ProcessName ?? "?";
+                                    break;
+                                } catch { }
+                            }
+                            loudestDevice = dev;
+                            loudestPeak   = endpointPeak;
+                            loudestProc   = topProcHere;
+                        }
+
                         for (int i = 0; i < n; i++)
                         {
                             var sess = mgr.Sessions[i];
@@ -2949,17 +2987,23 @@ class AudioSpectrum
 
                             if (peak < SILENCE_THRESHOLD) continue;
 
+                            // v14.2.3: tiebreaker = max(sessionPeak, endpointPeak). When the same
+                            // process is enumerated on multiple endpoints (Voicemeeter etc.) the
+                            // endpoint with the loudest overall meter wins, not whichever the
+                            // walker happened to visit first.
+                            double tiebreak = Math.Max(peak, endpointPeak);
+
                             double score = 0.0;
                             // SMTC-provided hint takes precedence — exact-or-prefix match
                             if (hint.Length > 0 && (procLower == hint || procLower.StartsWith(hint)))
-                                score = 1000.0 + peak;
+                                score = 1000.0 + tiebreak;
                             else
                             {
                                 foreach (var app in s_knownMusicApps)
                                 {
                                     if (procLower.Contains(app))
                                     {
-                                        score = 100.0 + peak;
+                                        score = 100.0 + tiebreak;
                                         break;
                                     }
                                 }
@@ -2976,6 +3020,27 @@ class AudioSpectrum
                 }
             } catch (Exception enumEx) {
                 Log("detect-music: enumerate threw: " + enumEx.Message);
+            }
+
+            // v14.2.3 fallback: if the hint/known-music match landed on a near-silent
+            // endpoint (peak < 0.05) AND a DIFFERENT endpoint is markedly louder
+            // (peak > 5x the matched session peak), prefer the louder one. This is
+            // the Voicemeeter case again -- the music app's process session is on a
+            // quiet bus, but the actual audible mix goes to a different bus.
+            if (bestDevice != null
+                && bestPeak < 0.05
+                && loudestDevice != null
+                && loudestDevice != bestDevice
+                && loudestPeak > Math.Max(0.05, bestPeak * 5.0))
+            {
+                Log(string.Format(
+                    "detect-music: loud-fallback applied -- hint match on '{0}' (peak {1:F3}, proc={2}) " +
+                    "overridden by louder endpoint '{3}' (peak {4:F3}, proc={5})",
+                    (bestDevice.FriendlyName ?? ""), bestPeak, bestProc,
+                    (loudestDevice.FriendlyName ?? ""), loudestPeak, loudestProc));
+                bestDevice = loudestDevice;
+                bestPeak   = loudestPeak;
+                bestProc   = loudestProc + " (loud-fallback)";
             }
 
             var sb = new StringBuilder();

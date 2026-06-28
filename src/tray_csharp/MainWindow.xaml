@@ -154,14 +154,11 @@
                     </MenuItem.Icon>
                 </MenuItem>
 
-                <!-- 3. Audio source. v14.2.0 wrapped this in a submenu so
-                     auto-detect could live underneath, but the parent had no
-                     Command so clicking the header did nothing visible (shipped
-                     broken; rolled back from production). v14.1.9 reverts to
-                     a single-click direct picker, with Auto-detect as a
-                     SIBLING toggle at the same level. HeadlessTester
-                     ContextMenu walk gates against the parent-with-children-
-                     and-no-Command pattern. -->
+                <!-- 3. Audio source. Single-click direct picker (v14.1.9 reverted
+                     from the broken v14.2.x submenu wrap whose parent had no
+                     Command). The Auto-detect toggle that used to live nested
+                     under here was moved to the TOGGLES group in v14.2.3 per
+                     operator request (stateful checkable items belong there). -->
                 <MenuItem Header="Audio source"
                           Tag="Pick where the spectrum captures from"
                           Style="{StaticResource AppMenuItemStyle}"
@@ -173,13 +170,6 @@
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
                 </MenuItem>
-
-                <MenuItem Header="Auto-detect music source"
-                          Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
-                          Style="{StaticResource AppMenuItemStyle}"
-                          IsCheckable="True"
-                          IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
-                          Command="{Binding ToggleAutoDetectMusicCommand}"/>
 
                 <!-- 4. Customize overlay -->
                 <MenuItem Header="Customize overlay"
@@ -198,6 +188,16 @@
 
                 <!-- Stage 7.23 sub-header : TOGGLES group (stateful checkable items). -->
                 <MenuItem Header="TOGGLES" Style="{StaticResource AppMenuSubHeaderStyle}"/>
+
+                <!-- v14.2.3: Auto-detect music source moved here from above the
+                     ACTIONS/TOGGLES boundary. It's a stateful IsCheckable toggle
+                     so it lives with the other toggles per operator request. -->
+                <MenuItem Header="Auto-detect music source"
+                          Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
+                          Style="{StaticResource AppMenuItemStyle}"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
+                          Command="{Binding ToggleAutoDetectMusicCommand}"/>
 
                 <!-- 5. Discord [toggle] -->
                 <MenuItem Header="Discord"

@@ -748,6 +748,52 @@ namespace MasterFM.SMTC {
             return list.ToArray();
         }
 
+        // v14.2.3: force a fresh GetTimelineProperties read for a specific saumid +
+        // enqueue a synthetic TimelinePropertiesChanged event if the position drifted
+        // beyond the wall-clock-expected amount. Used by SmtcEventBridge to work
+        // around Chromium not firing TimelinePropertiesChanged on every scrub --
+        // it only re-broadcasts on play/pause/track-change, so rapid mid-playback
+        // scrubs (Prime Video / Netflix / YouTube progress bar dragging) leave the
+        // tray's anchor stale and the overlay clock shows the wrong position until
+        // the next pause. Polling at 2 s cadence from the bridge restores sync.
+        // Returns true when a synthetic event was enqueued.
+        public bool ForceTimelinePoll(string saumid) {
+            if (string.IsNullOrEmpty(saumid)) return false;
+            SessionSubs subs;
+            if (!_subs.TryGetValue(saumid, out subs) || subs == null || subs.Session == null) return false;
+            SMTCSessionSnapshot snap;
+            if (!_snaps.TryGetValue(saumid, out snap) || snap == null) return false;
+
+            long prevPosMs   = snap.PositionMs;
+            long prevUpdTicks = snap.LastUpdatedTimeUtcTicks;
+            DateTime prevSnapAt = snap.SnapshotUtc;
+            try {
+                CaptureTimeline(subs.Session, snap);
+            } catch (Exception ex) {
+                SafeLog("ForceTimelinePoll CaptureTimeline: " + ex.Message);
+                return false;
+            }
+
+            // Did the SMTC anchor itself advance (LastUpdatedTime moved) OR did the
+            // raw position jump beyond what wall-clock drift would explain? Either
+            // way the prior anchor is stale and the bridge should reprocess.
+            long newPosMs    = snap.PositionMs;
+            long newUpdTicks = snap.LastUpdatedTimeUtcTicks;
+            bool anchorMoved = newUpdTicks > 0 && newUpdTicks != prevUpdTicks;
+
+            // Positions reported in ms; allow up to 2500 ms of natural drift between
+            // polls (2 s cadence + slop). Anything beyond that on the raw position
+            // means a real scrub happened during the silence.
+            long delta = Math.Abs(newPosMs - prevPosMs);
+            bool jumped = delta > 2500;
+
+            if (anchorMoved || jumped) {
+                EnqueueEvent(SMTCEventKind.TimelinePropertiesChanged, saumid);
+                return true;
+            }
+            return false;
+        }
+
         // ── Plumbing ────────────────────────────────────────────────────────
         private void Bump() {
             Interlocked.Increment(ref _eventsTotal);
