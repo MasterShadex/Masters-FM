@@ -154,28 +154,32 @@
                     </MenuItem.Icon>
                 </MenuItem>
 
-                <!-- 3. Audio source — v14.2.0 expanded to a submenu so the
-                     auto-detect toggle lives alongside the manual picker. -->
+                <!-- 3. Audio source. v14.2.0 wrapped this in a submenu so
+                     auto-detect could live underneath, but the parent had no
+                     Command so clicking the header did nothing visible (shipped
+                     broken; rolled back from production). v14.1.9 reverts to
+                     a single-click direct picker, with Auto-detect as a
+                     SIBLING toggle at the same level. HeadlessTester
+                     ContextMenu walk gates against the parent-with-children-
+                     and-no-Command pattern. -->
                 <MenuItem Header="Audio source"
                           Tag="Pick where the spectrum captures from"
-                          Style="{StaticResource AppMenuItemStyle}">
+                          Style="{StaticResource AppMenuItemStyle}"
+                          Command="{Binding OpenAudioSourceCommand}">
                     <MenuItem.Icon>
                         <Path Data="{StaticResource IconSpeaker}"
                               Fill="{StaticResource TextSecondary}"
                               Width="18" Height="18"
                               Stretch="Uniform"/>
                     </MenuItem.Icon>
-                    <MenuItem Header="Pick device manually..."
-                              Tag="Open the audio-device picker"
-                              Style="{StaticResource AppMenuItemStyle}"
-                              Command="{Binding OpenAudioSourceCommand}"/>
-                    <MenuItem Header="Auto-detect music source"
-                              Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
-                              Style="{StaticResource AppMenuItemStyle}"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
-                              Command="{Binding ToggleAutoDetectMusicCommand}"/>
                 </MenuItem>
+
+                <MenuItem Header="Auto-detect music source"
+                          Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
+                          Style="{StaticResource AppMenuItemStyle}"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
+                          Command="{Binding ToggleAutoDetectMusicCommand}"/>
 
                 <!-- 4. Customize overlay -->
                 <MenuItem Header="Customize overlay"

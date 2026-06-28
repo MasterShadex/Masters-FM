@@ -79,6 +79,12 @@ public sealed class SmtcEventBridge : IDisposable
     // B7-seek branch fires immediately.
     private readonly Dictionary<string, string?> _artCache = new();
     private readonly Dictionary<string, (long PositionMs, DateTime ObservedUtc)> _prevPos = new();
+    // v14 2x-clock fix: per-saumid RAW (non-interpolated) SMTC position tracker. Detects a
+    // "live" source (raw Position advances on its own between polls, e.g. YouTube-in-Chrome)
+    // vs a "frozen" source (raw Position static at LastUpdatedTime, e.g. SoundCloud-RPC).
+    // A live source is already current, so interpolating (now - LastUpdatedTime) ON TOP of it
+    // double-counts and the clock runs at 2x. Anchor live sources at observation time instead.
+    private readonly Dictionary<string, (long RawPosMs, DateTime ObservedUtc)> _prevRawPos = new();
     // Stage 7.12 Batch B Phase H #1: per-saumid source-name cache.
     // For browser AUMIDs we sniff the foreground window title to detect
     // YouTube / Twitch / etc. — but we only want to evaluate it ONCE per
@@ -217,6 +223,7 @@ public sealed class SmtcEventBridge : IDisposable
                 {
                     _artCache.Remove(ev.Saumid);
                     _prevPos.Remove(ev.Saumid);
+                    _prevRawPos.Remove(ev.Saumid);
                     _sourceCache.Remove(ev.Saumid);
                 }
             }
@@ -308,8 +315,36 @@ public sealed class SmtcEventBridge : IDisposable
         // never report past the end of the track.
         bool isPlaying  = (snap.PlaybackStatusValue == 4);
         var  nowUtc     = ev.UtcTime;
-        long effectivePosMs = snap.PositionMs;
-        if (isPlaying && snap.HasTimeline && snap.LastUpdatedTimeUtcTicks > 0)
+        long rawPosMs   = snap.PositionMs;
+
+        // v14 2x-clock fix: is THIS source's raw position live (advancing on its own
+        // between polls, e.g. YouTube-in-Chrome) or frozen (static at LastUpdatedTime,
+        // e.g. SoundCloud-RPC)? A live raw is already current, so adding (now -
+        // LastUpdatedTime) on top of it would double-count -> the clock runs at 2x.
+        bool rawSelfAdvancing = false;
+        lock (_cacheLock)
+        {
+            if (_prevRawPos.TryGetValue(saumid, out var praw))
+            {
+                double rawDeltaMs  = rawPosMs - praw.RawPosMs;
+                double wallDeltaMs = (nowUtc - praw.ObservedUtc).TotalMilliseconds;
+                // raw advanced forward, tracking wall-clock within tolerance = the source
+                // maintains its own live position and must NOT be interpolated again.
+                if (wallDeltaMs > 500 && rawDeltaMs > 250
+                    && Math.Abs(rawDeltaMs - wallDeltaMs) <= (wallDeltaMs * 0.6) + 400)
+                    rawSelfAdvancing = true;
+            }
+            _prevRawPos[saumid] = (rawPosMs, nowUtc);
+        }
+
+        // effectivePosMs = current position; anchorUpdatedUtc = the instant it is valid
+        // AS OF (so the heartbeat interpolates from the right baseline). FROZEN+playing:
+        // snap.PositionMs is the value at LastUpdatedTime -> interpolate forward + anchor
+        // there. LIVE (raw self-advancing), or paused, or no timeline: snap.PositionMs is
+        // already current as of nowUtc -> anchor at nowUtc and do NOT add elapsed.
+        long effectivePosMs = rawPosMs;
+        DateTime anchorUpdatedUtc = nowUtc;
+        if (isPlaying && snap.HasTimeline && snap.LastUpdatedTimeUtcTicks > 0 && !rawSelfAdvancing)
         {
             var lastUpdUtc = new DateTime(snap.LastUpdatedTimeUtcTicks, DateTimeKind.Utc);
             var elapsedMs  = (nowUtc - lastUpdUtc).TotalMilliseconds;
@@ -318,6 +353,7 @@ public sealed class SmtcEventBridge : IDisposable
                 effectivePosMs += (long)elapsedMs;
                 if (snap.DurationMs > 0 && effectivePosMs > snap.DurationMs)
                     effectivePosMs = snap.DurationMs;
+                anchorUpdatedUtc = lastUpdUtc;
             }
         }
 
@@ -352,11 +388,34 @@ public sealed class SmtcEventBridge : IDisposable
             _prevPos[saumid] = (effectivePosMs, nowUtc);
         }
 
+        // v14.1.9 video-content reclassification. When the source is a streaming-
+        // video platform (Prime Video / Netflix / etc.) we re-label so the overlay
+        // shows the movie/show + platform name instead of misreading the title as
+        // a music track (or showing stale music data from a previous session).
+        // See DetectVideoPlatform / StripPlatformPrefix below.
+        var displayTitle  = snap.Title;
+        var displayArtist = snap.Artist;
+        var videoInfo = DetectVideoPlatform(sourceName, snap);
+        if (videoInfo.IsVideo)
+        {
+            sourceName    = videoInfo.SourceKey;
+            displayTitle  = StripPlatformPrefix(snap.Title, videoInfo.Platform);
+            displayArtist = videoInfo.Platform;
+            try
+            {
+                _logger.Log(
+                    $"video reclassified: saumid={saumid} raw=\"{snap.Title}\" -> " +
+                    $"source={sourceName} track=\"{displayTitle}\" platform={videoInfo.Platform}",
+                    Component);
+            }
+            catch { }
+        }
+
         var update = new TrackUpdate
         {
             Source = sourceName,
-            Artist = string.IsNullOrEmpty(snap.Artist) ? null : snap.Artist,
-            Track = string.IsNullOrEmpty(snap.Title) ? null : snap.Title,
+            Artist = string.IsNullOrEmpty(displayArtist) ? null : displayArtist,
+            Track = string.IsNullOrEmpty(displayTitle) ? null : displayTitle,
             Album = string.IsNullOrEmpty(snap.AlbumTitle) ? null : snap.AlbumTitle,
             Duration = snap.DurationMs > 0 ? TimeSpan.FromMilliseconds(snap.DurationMs) : null,
             Position = effectivePosMs > 0 ? TimeSpan.FromMilliseconds(effectivePosMs) : null,
@@ -374,6 +433,119 @@ public sealed class SmtcEventBridge : IDisposable
         };
 
         _resolver.OnTrackChanged(update);
+    }
+
+    // Video-platform table (v14.1.9). When detected we re-label so the overlay
+    // shows "Shelter" by "Prime Video" instead of a stale music track or a
+    // raw "Prime Video: Shelter" leak. Order in TitlePlatforms matters — more
+    // specific prefixes (e.g. "amazon prime video") MUST come before less
+    // specific ones (e.g. "prime video"), or the wrong one wins.
+    //
+    // To add another platform (e.g. a future "Tubi"), append one row to each
+    // applicable table and the rest of the pipeline picks it up automatically.
+
+    private static readonly (string Token, string Platform, string SourceKey)[] SaumidPlatforms =
+    {
+        ("primevideo",  "Prime Video", "primevideo"),
+        ("amazonvideo", "Prime Video", "primevideo"),
+        ("amazon.tv",   "Prime Video", "primevideo"),
+        ("netflix",     "Netflix",     "netflix"),
+        ("disneyplus",  "Disney+",     "disneyplus"),
+        ("disney.plus", "Disney+",     "disneyplus"),
+        ("hulu",        "Hulu",        "hulu"),
+        ("hbo",         "HBO Max",     "hbomax"),
+        ("max.app",     "Max",         "max"),
+        ("paramount",   "Paramount+",  "paramount"),
+        ("peacock",     "Peacock",     "peacock"),
+        ("appletv",     "Apple TV+",   "appletv"),
+        ("apple.tv",    "Apple TV+",   "appletv"),
+        ("crunchyroll", "Crunchyroll", "crunchyroll"),
+        ("plex.app",    "Plex",        "plex"),
+        ("jellyfin",    "Jellyfin",    "jellyfin"),
+        ("vlc",         "VLC",         "vlc"),
+        ("mpc-hc",      "MPC-HC",      "mpchc"),
+        ("mpv",         "mpv",         "mpv"),
+        ("films",       "Films & TV",  "filmstv"),
+        ("movies",      "Films & TV",  "filmstv"),
+        ("zunevideo",   "Films & TV",  "filmstv"),
+    };
+
+    private static readonly (string Prefix, string Platform, string SourceKey)[] TitlePlatforms =
+    {
+        ("amazon prime video", "Prime Video", "primevideo"),
+        ("prime video",        "Prime Video", "primevideo"),
+        ("amazon video",       "Prime Video", "primevideo"),
+        ("netflix",            "Netflix",     "netflix"),
+        ("disney+",            "Disney+",     "disneyplus"),
+        ("disney plus",        "Disney+",     "disneyplus"),
+        ("hulu",               "Hulu",        "hulu"),
+        ("hbo max",            "HBO Max",     "hbomax"),
+        ("hbo:",               "HBO Max",     "hbomax"),
+        ("paramount+",         "Paramount+",  "paramount"),
+        ("paramount plus",     "Paramount+",  "paramount"),
+        ("peacock",            "Peacock",     "peacock"),
+        ("apple tv+",          "Apple TV+",   "appletv"),
+        ("apple tv:",          "Apple TV+",   "appletv"),
+        ("apple tv ",          "Apple TV+",   "appletv"),
+        ("crunchyroll",        "Crunchyroll", "crunchyroll"),
+        ("twitch",             "Twitch",      "twitch"),
+        ("plex",               "Plex",        "plex"),
+        ("jellyfin",           "Jellyfin",    "jellyfin"),
+        ("vimeo",              "Vimeo",       "vimeo"),
+        ("youtube tv",         "YouTube TV",  "youtubetv"),
+        ("films & tv",         "Films & TV",  "filmstv"),
+        ("movies & tv",        "Films & TV",  "filmstv"),
+        ("max ",               "Max",         "max"),
+        ("max:",               "Max",         "max"),
+    };
+
+    /// <summary>
+    /// Identifies streaming-video content from an SMTC snapshot. Three signals
+    /// (any one is sufficient):
+    /// (1) SaUMID matches a known video-app token;
+    /// (2) source is a browser AND title starts with a platform prefix;
+    /// (3) PlaybackType==Video and we couldn't identify the platform
+    ///     (returned as generic "Video").
+    /// Returns IsVideo=false when none match.
+    /// </summary>
+    private static (bool IsVideo, string Platform, string SourceKey) DetectVideoPlatform(
+        string sourceName, MasterFM.SMTC.SMTCSessionSnapshot snap)
+    {
+        if (snap == null) return (false, "", "");
+
+        var idLow = (snap.Saumid ?? "").ToLowerInvariant();
+        foreach (var p in SaumidPlatforms)
+            if (idLow.Contains(p.Token)) return (true, p.Platform, p.SourceKey);
+
+        if (sourceName == "browser" || IsBrowserLikeSource(sourceName))
+        {
+            var titleLow = (snap.Title ?? "").TrimStart().ToLowerInvariant();
+            foreach (var p in TitlePlatforms)
+                if (titleLow.StartsWith(p.Prefix)) return (true, p.Platform, p.SourceKey);
+        }
+
+        if (snap.PlaybackType == 2) return (true, "Video", "video");
+
+        return (false, "", "");
+    }
+
+    /// <summary>
+    /// Removes a leading "PlatformName" + optional ":" / "-" / "—" separator
+    /// from the raw SMTC title. "Prime Video: Shelter" -> "Shelter".
+    /// Idempotent: titles without the prefix come through unchanged.
+    /// </summary>
+    private static string StripPlatformPrefix(string title, string platform)
+    {
+        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(platform)) return title ?? "";
+        var t = title.TrimStart();
+        if (t.StartsWith(platform, StringComparison.OrdinalIgnoreCase))
+        {
+            var rest = t.Substring(platform.Length).TrimStart();
+            if (rest.Length > 0 && (rest[0] == ':' || rest[0] == '-' || rest[0] == '—'))
+                rest = rest.Substring(1).TrimStart();
+            if (rest.Length > 0) return rest;
+        }
+        return title;
     }
 
     private static string MapSaumidToSource(string saumid)
@@ -477,7 +649,17 @@ public sealed class SmtcEventBridge : IDisposable
     // thresholds because their position reporting is rock-steady.
     internal static bool IsBrowserLikeSource(string source) =>
         source == "browser" || source == "youtube" || source == "youtubemusic"
-        || source == "twitch";
+        || source == "twitch" || _videoSourceKeys.Value.Contains(source);
+
+    // Lazy so the static initializer order doesn't bite (SaumidPlatforms +
+    // TitlePlatforms are static-readonly arrays initialized below this method).
+    private static readonly Lazy<HashSet<string>> _videoSourceKeys = new(() =>
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "video" };
+        foreach (var p in SaumidPlatforms) set.Add(p.SourceKey);
+        foreach (var p in TitlePlatforms) set.Add(p.SourceKey);
+        return set;
+    });
 
     private bool IsSourceEnabled(string source)
     {
@@ -487,6 +669,8 @@ public sealed class SmtcEventBridge : IDisposable
             "soundcloud" => _options.SoundCloudEnabled,
             "browser" or "youtube" or "youtubemusic" or "applemusic" or "tidal" or "deezer"
               or "amazonmusic" or "bandcamp" or "mixcloud" or "pandora" => _options.BrowserEnabled,
+            "wmpSMTC" => _options.Win11MediaEnabled,
+            "smtc-generic" => _options.GenericSmtcEnabled,
             _ => true
         };
     }

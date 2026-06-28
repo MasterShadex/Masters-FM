@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 10.0.19041 unlocks the WinRT projection (Windows.Media.Control) so the
+         smtc subcommand can query live SMTC sessions the same way the tray does. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>MastersFM.HeadlessTester</RootNamespace>
     <AssemblyName>HeadlessTester</AssemblyName>

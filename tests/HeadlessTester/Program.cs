@@ -51,6 +51,15 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // --smtc subcommand: dump every live SMTC session's metadata
+        // (Title/Artist/PlaybackType/Status). Used to confirm runtime bugs
+        // like "Master's FM shows wrong info while Prime Video is playing"
+        // without having to attach a debugger to the tray.
+        if (args.Length > 0 && args[0] == "--smtc")
+        {
+            return SmtcSnapshot.Run();
+        }
+
         // Default source dir = repo's src/tray_csharp (relative to the test exe).
         // Allow override: HeadlessTester.exe <path-to-tray_csharp>
         var trayDir = ResolveTrayDir(args);

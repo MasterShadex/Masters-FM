@@ -242,6 +242,13 @@ namespace MasterFM.SMTC {
         public string Artist;
         public string AlbumTitle;
         public string AlbumArtist;
+        // 0=Unknown, 1=Music, 2=Video, 3=Image. -1 means "not yet read".
+        // Honest desktop apps (Netflix, VLC, Films & TV) set this to 2 for
+        // video content; SmtcEventBridge.IsLikelyVideoContent uses this to
+        // suppress movie/TV titles leaking into the now-playing display.
+        // Chrome lies and reports everything as Music, so a title-prefix
+        // fallback also exists in the bridge.
+        public int    PlaybackType = -1;
         public object MediaPropertiesRcw;
         public object PlaybackInfoRcw;
         public object TimelinePropertiesRcw;
@@ -670,6 +677,14 @@ namespace MasterFM.SMTC {
                 try { snap.Artist      = pT.GetProperty("Artist").GetValue(props) as string ?? ""; } catch { }
                 try { snap.AlbumTitle  = pT.GetProperty("AlbumTitle").GetValue(props) as string ?? ""; } catch { }
                 try { snap.AlbumArtist = pT.GetProperty("AlbumArtist").GetValue(props) as string ?? ""; } catch { }
+                // PlaybackType is a Nullable<MediaPlaybackType> enum projected as
+                // Nullable<int>. Reflection sees the underlying int when set,
+                // null when the source didn't tag the session. Defense in depth
+                // for the video-streaming filter (cf. SmtcEventBridge.IsLikelyVideoContent).
+                try {
+                    var ptVal = pT.GetProperty("PlaybackType").GetValue(props);
+                    snap.PlaybackType = ptVal == null ? 0 : Convert.ToInt32(ptVal);
+                } catch { snap.PlaybackType = -1; }
                 snap.MediaPropertiesRcw = props;
                 snap.HasMediaProps = true;
                 snap.SnapshotUtc = DateTime.UtcNow;
