@@ -325,6 +325,21 @@ class AudioSpectrum
     static string s_desiredBackend  = "wasapi_loopback";
     const int REACQUIRE_INTERVAL_SECONDS = 10;
     static volatile bool s_reacquireWatchdogStarted = false;
+
+    // v14.1.10 silence-recovery. The "config-saved" pair is the user's persistent
+    // pick from config.json -- never overwritten at runtime. When the spectrum
+    // has reported SILENT_RECOVERY_THRESHOLD consecutive silent 3-second rollups
+    // (~30 s of zeros) AND the live capture is on something OTHER than the saved
+    // pick, the watchdog reverts to the saved pick. This is the "fall back to
+    // what the user originally chose" behavior operator asked for on 2026-06-28.
+    static string s_configBackend  = null;
+    static string s_configDeviceId = null;
+    static volatile int s_silentRollupCount = 0;
+    // 20 rollups * 3 s = 60 s. Long enough to ride out paused music or
+    // genuinely-quiet intros without false reverts; short enough to recover
+    // from a bad device pick within a minute. Tune up if friends see the
+    // spectrum jumping back to their fixed device during long pauses.
+    const int SILENT_RECOVERY_THRESHOLD = 20;
     // Input-gain compensation for non-loopback backends. WASAPI Loopback
     // sees the post-mixer system output at ~0 dBFS peaks. MME WaveIn,
     // WASAPI Input, WDM-KS, and ASIO see physical/virtual input signals
@@ -1070,10 +1085,34 @@ class AudioSpectrum
                 catch { /* shutdown */ }
                 try
                 {
-                    if (s_desiredBackend != s_currentBackend)
+                    // v14.1.10 silence-recovery (checked BEFORE the desired-vs-current
+                    // nudge so the saved pick wins when both fire on the same tick).
+                    // If we have been silent for >= SILENT_RECOVERY_THRESHOLD * 3 s
+                    // AND we know the user's config-saved pick AND we are NOT already
+                    // on it, fall back. Once.
+                    if (s_silentRollupCount >= SILENT_RECOVERY_THRESHOLD
+                        && s_configBackend != null
+                        && (s_configBackend != s_currentBackend
+                            || (s_configDeviceId ?? "") != (s_currentDeviceId ?? "")))
                     {
                         Log(string.Format(
-                            "reacquire: desired='{0}' id='{1}' differs from current='{2}' id='{3}' — nudging capture",
+                            "silence-recovery: {0} consecutive silent rollups -- reverting to user's saved device backend='{1}' id='{2}' (was backend='{3}' id='{4}')",
+                            s_silentRollupCount,
+                            s_configBackend,
+                            s_configDeviceId ?? "default",
+                            s_currentBackend,
+                            s_currentDeviceId ?? "default"));
+                        s_desiredBackend  = s_configBackend;
+                        s_desiredDeviceId = s_configDeviceId;
+                        s_currentBackend  = s_configBackend;
+                        s_currentDeviceId = s_configDeviceId;
+                        s_silentRollupCount = 0;   // give the new device a chance
+                        s_deviceChangeEvent.Set();
+                    }
+                    else if (s_desiredBackend != s_currentBackend)
+                    {
+                        Log(string.Format(
+                            "reacquire: desired='{0}' id='{1}' differs from current='{2}' id='{3}' -- nudging capture",
                             s_desiredBackend,
                             s_desiredDeviceId ?? "default",
                             s_currentBackend,
@@ -1232,12 +1271,18 @@ class AudioSpectrum
                         if (s_peakRollupAt == System.DateTime.MinValue) {
                             s_peakRollupAt = System.DateTime.Now.AddSeconds(3);
                         } else if (System.DateTime.Now >= s_peakRollupAt) {
+                            bool isSilent = peakRolling < 0.0005f;
                             Log(string.Format(
                                 "peak (last ~3 s) = {0:F4}   lifetime peak = {1:F4}   {2}",
                                 peakRolling, peakSample,
-                                (peakRolling < 0.0005f ? "[SILENCE — endpoint delivering zeros]" :
-                                 peakRolling < 0.05f    ? "[quiet audio]" :
-                                                          "[LIVE AUDIO]")));
+                                (isSilent              ? "[SILENCE — endpoint delivering zeros]" :
+                                 peakRolling < 0.05f   ? "[quiet audio]" :
+                                                         "[LIVE AUDIO]")));
+                            // v14.1.10 silence-recovery counter: increment on silent
+                            // rollups, reset on any audio. The reacquire watchdog
+                            // reads this to decide when to fall back to the saved pick.
+                            if (isSilent) s_silentRollupCount++;
+                            else          s_silentRollupCount = 0;
                             peakRolling      = 0f;
                             s_peakRollupAt   = System.DateTime.Now.AddSeconds(3);
                         }
@@ -3287,6 +3332,23 @@ class AudioSpectrum
                 text, "\"audioSpectrumDevice\"\\s*:\\s*\"([^\"]*)\"");
             if (m2.Success && !string.IsNullOrEmpty(m2.Groups[1].Value) && m2.Groups[1].Value != "default")
                 s_currentDeviceId = m2.Groups[1].Value;
+
+            // v14.2.2: ALSO seed the watchdog's desired pair from the boot
+            // config. Without this, s_desiredBackend stays at its static default
+            // ("wasapi_loopback") while s_currentBackend reflects the user's
+            // saved pick (e.g. "asio"). 10 s after boot the reacquire watchdog
+            // sees the mismatch and forcibly switches capture to System Default
+            // WASAPI loopback -- silent forever for users whose audio is routed
+            // through Voicemeeter / Sonar / VB-Cable (anything not the Windows
+            // default endpoint). This is exactly the bug operator hit in 14.1.9.
+            s_desiredBackend  = s_currentBackend;
+            s_desiredDeviceId = s_currentDeviceId;
+
+            // v14.2.2: also remember the config-saved pair separately so the
+            // silence-recovery watchdog can fall back to it if /set-device is
+            // ever changed at runtime to a device that turns out to be silent.
+            s_configBackend  = s_currentBackend;
+            s_configDeviceId = s_currentDeviceId;
 
             // v6.6.9: restore the Response Time setting from last session.
             // Stored as "responseMs" under spectrum.{...} in config.json.
