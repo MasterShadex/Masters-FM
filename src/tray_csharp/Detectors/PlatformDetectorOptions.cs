@@ -18,12 +18,23 @@ public sealed class PlatformDetectorOptions
         _config = config;
     }
 
-    public bool OsuEnabled => _config.GetValue<bool>("platforms.osu", true);
-    public bool VlcEnabled => _config.GetValue<bool>("platforms.VLC", true);
-    public bool WmpLegacyEnabled => _config.GetValue<bool>("platforms.WMP", true);
-    public bool SpotifyEnabled => _config.GetValue<bool>("platforms.Spotify", true);
-    public bool SoundCloudEnabled => _config.GetValue<bool>("platforms.SoundCloud", true);
-    public bool BrowserEnabled => _config.GetValue<bool>("platforms.Browser", true);
+    // v14 fix: read the EXACT keys PlatformsViewModel.PersistToggle writes --
+    // "platforms.<id>.enabled" with the lowercase/camelCase PlatformId from
+    // SeedPlatforms. These previously read flat PascalCase keys (platforms.Spotify,
+    // platforms.VLC, platforms.WMP, ...) with NO ".enabled" leaf, so the case-sensitive
+    // ConfigService.GetValue never resolved them and always returned the default true --
+    // i.e. the Platform Detection toggles were dead (a disabled platform stayed enabled).
+    public bool OsuEnabled => _config.GetValue<bool>("platforms.osu.enabled", true);
+    public bool VlcEnabled => _config.GetValue<bool>("platforms.vlc.enabled", true);
+    public bool WmpLegacyEnabled => _config.GetValue<bool>("platforms.wmpLegacy.enabled", true);
+    public bool SpotifyEnabled => _config.GetValue<bool>("platforms.spotify.enabled", true);
+    public bool SoundCloudEnabled => _config.GetValue<bool>("platforms.soundcloud.enabled", true);
+    public bool BrowserEnabled => _config.GetValue<bool>("platforms.browser.enabled", true);
+    // v14 fix: the only two SMTC source strings that hit IsSourceEnabled's
+    // default-true fallback are "smtc-generic" and "wmpSMTC"; wiring these two
+    // accessors makes the Generic SMTC + Windows 11 Media toggles actually work.
+    public bool GenericSmtcEnabled => _config.GetValue<bool>("platforms.smtcGeneric.enabled", true);
+    public bool Win11MediaEnabled => _config.GetValue<bool>("platforms.win11Media.enabled", true);
 
     /// <summary>VLC HTTP control port (default 8080 matches PS S15 default).</summary>
     public int VlcPort => _config.GetValue<int>("vlc.port", 8080);

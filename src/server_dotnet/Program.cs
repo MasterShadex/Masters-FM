@@ -94,6 +94,16 @@ public class Program
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MastersFM",
                 "server.log")));
+        // v14 fix: ASP.NET Core logs EVERY HTTP request at Information level
+        // (Hosting.Diagnostics "Request starting/finished" + Routing
+        // EndpointMiddleware "Executing/Executed endpoint"). The overlay polls
+        // /current,/version,/overlay-config ~1/s and the tray POSTs /webhook
+        // constantly, so at Information this filled server.log without bound
+        // (observed 16 GB -> silent disk fill). Drop the framework categories to
+        // Warning; our own component logs (DiscordRpcService, WebhookHandler,
+        // Update, ...) are NOT under Microsoft.* so they keep logging at INFO.
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.Hosting", LogLevel.Warning);
 
         // ServerState singleton: holds currentTrack + SERVER_BOOT_ID + SSE client registry
         builder.Services.AddSingleton<ServerState>();

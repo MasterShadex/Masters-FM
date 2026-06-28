@@ -24,6 +24,31 @@ internal sealed class SimpleFileLoggerProvider : ILoggerProvider
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
+
+            // v14: bounded log on startup. The original "no rotation" design let
+            // ASP.NET request logging grow server.log to 16 GB (silent disk fill).
+            // Now: if the existing log is pathologically large (> 200 MB) just
+            // delete it to reclaim the disk immediately; if it is merely large
+            // (> 10 MB) rotate it to server.log.old (replacing any prior .old) so
+            // one session of history is kept. Disk use stays bounded at ~2x cap.
+            // Rotation at startup is sufficient because the AddFilter in Program.cs
+            // reduces in-session growth to a trickle.
+            const long NukeBytes   = 200L * 1024 * 1024; // 200 MB -> too big to keep
+            const long RotateBytes = 10L  * 1024 * 1024; // 10 MB  -> rotate to .old
+            var fi = new FileInfo(path);
+            if (fi.Exists)
+            {
+                if (fi.Length > NukeBytes)
+                {
+                    try { File.Delete(path); } catch { /* best-effort */ }
+                }
+                else if (fi.Length > RotateBytes)
+                {
+                    var old = path + ".old";
+                    try { if (File.Exists(old)) File.Delete(old); } catch { }
+                    try { File.Move(path, old); } catch { /* best-effort */ }
+                }
+            }
         }
         catch { /* best-effort */ }
     }
