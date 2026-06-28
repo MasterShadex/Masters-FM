@@ -189,15 +189,22 @@
                 <!-- Stage 7.23 sub-header : TOGGLES group (stateful checkable items). -->
                 <MenuItem Header="TOGGLES" Style="{StaticResource AppMenuSubHeaderStyle}"/>
 
-                <!-- v14.2.3: Auto-detect music source moved here from above the
-                     ACTIONS/TOGGLES boundary. It's a stateful IsCheckable toggle
-                     so it lives with the other toggles per operator request. -->
-                <MenuItem Header="Auto-detect music source"
-                          Tag="Follow whichever device music plays on (Spotify, Tidal, browser, Voicemeeter, Sonar, etc.)"
+                <!-- v14.2.3: Auto-detect Audio Source toggle. Lives in TOGGLES
+                     (stateful checkable). v14.2.4: renamed from "music source"
+                     to "Audio Source" (we follow any audio, not just music),
+                     dropped the long subtitle, added the rescan icon. -->
+                <MenuItem Header="Auto-detect Audio Source"
                           Style="{StaticResource AppMenuItemStyle}"
                           IsCheckable="True"
                           IsChecked="{Binding IsAutoDetectMusicEnabled, Mode=OneWay}"
-                          Command="{Binding ToggleAutoDetectMusicCommand}"/>
+                          Command="{Binding ToggleAutoDetectMusicCommand}">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconReset}"
+                              Fill="{StaticResource TextSecondary}"
+                              Width="18" Height="18"
+                              Stretch="Uniform"/>
+                    </MenuItem.Icon>
+                </MenuItem>
 
                 <!-- 5. Discord [toggle] -->
                 <MenuItem Header="Discord"

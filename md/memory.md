@@ -7382,3 +7382,69 @@ Operator: friends on Sonar can't get the spectrum to bounce on WASAPI or MME, ev
 **Pre-existing stale-music behavior (NOT fixed by this patch):** Server `/current` still showed "I've Got A Story" by NEEDTOBREATHE (a Deezer browser tab from earlier). This was leftover resolver state, NOT Prime Video being misread. Operator opted against adding idle-clear logic (Q1 answer). Real music played after Prime Video will overwrite cleanly via existing resolver path.
 
 **GOTCHA #19 reference for future sessions:** if anyone reports a streaming-video title leaking into the overlay, FIRST run `tests/HeadlessTester/bin/Debug/net8.0-windows10.0.19041.0/HeadlessTester.exe --smtc` to see the actual SMTC data, THEN extend the `TitlePlatforms` table in SmtcEventBridge.cs (and mirror in SmtcSnapshot.cs). Don't trust PlaybackType for anything browser-based.
+
+## 2026-06-28 22:20 — HARD RULE: NEVER trigger GitHub login popup. Use URL-embedded PAT, period.
+
+Operator hit by Windows "Connect to GitHub Sign in" dialog when I ran `git push origin main`. This pops up because Git Credential Manager fails through to its GUI prompt when the cached PAT isn't accessible to the current shell context. Operator: "STOP ASKING FOR THIS, save to memory NOW!"
+
+**The rule for THIS project (and any project where the PAT is in Windows Credential Manager):**
+
+1. Extract PAT via `_read_git_cred.ps1` (uses CredManager.ReadPassword on `git:https://github.com`) into a tmp file like `/tmp/_mfm_pat_tmp` (chmod 600).
+2. ALWAYS push via URL-embedded PAT form:
+   ```
+   TOKEN=$(cat /tmp/_mfm_pat_tmp)
+   git push "https://x-access-token:${TOKEN}@github.com/MasterShadex/Masters-FM.git" main:main
+   ```
+3. NEVER use plain `git push origin main` from Bash — the Git Credential Manager popup pops up and steals focus.
+4. NEVER use `git -c http.extraheader="Authorization: Bearer $TOKEN" push origin main` — verified to fail with "invalid credentials".
+5. Same form works for any GitHub API call via curl: `curl -H "Authorization: Bearer $TOKEN" https://api.github.com/...`
+
+**Why:** The user is on Windows where Git Credential Manager's interactive sign-in dialog is enabled by default. Any auth failure in the cmdline triggers the popup, which the operator has to manually dismiss. After v14.2.x trauma they explicitly do not want unexpected UI from me.
+
+**How to apply:** Every single git push or GitHub API operation in this project must go through the URL-embedded PAT form. No exceptions. If `_read_git_cred.ps1` returns empty, STOP and ask — don't fall through to `git push origin`.
+
+## 2026-06-29 00:15 — CRITICAL: autoInstall=true silent-install kills the tray and does NOT relaunch
+
+**Operator hit on v14.2.2 ship:** "i am on v14 now and it downloads the update. It doesn't even ask me to install, it just resumes and crashes."
+
+**What actually happened (NOT a code crash):**
+1. v14.2.2 shipped to GitHub with `autoInstall=true` (per the historical default in _push_update.ps1)
+2. Friend-side (and operator's own) auto-updater polls raw.githubusercontent.com/.../version.json
+3. Sees newer version + autoInstall=true → silently downloads MSI to `%LOCALAPPDATA%\MastersFM\downloads\MastersFM_update_v<ver>.msi`
+4. Runs `msiexec /i /qn` silently
+5. msiexec needs file locks on running binaries → kills the running MastersFM.exe / MastersFM_Tray.exe / server.exe / audio_spectrum.exe
+6. Install completes (binaries replaced)
+7. **NOTHING RELAUNCHES THE TRAY.** Operator is left with no running app -- they perceive this as "the app crashed". Confirmed: manually `Start-Process MastersFM.exe` instantly restored all 4 processes, no actual code-level crash.
+
+**Root cause:** Master's FM launcher uses `KILL_ON_JOB_CLOSE | SILENT_BREAKAWAY_OK` Job Object semantics. When msiexec kills MastersFM.exe (the launcher), the Job Object cascades and kills all 4 child processes cleanly. The auto-updater never re-launches the tray after install completes. v14.1.x had the same code but operator didn't notice -- probably because they manually restarted often after updates.
+
+**Immediate fix applied (2026-06-29 00:13):** flipped GitHub manifest `autoInstall=true` → `false` so friends get a notification but NOT silent install. They must click to install (during which they'll restart the tray manually). Commits: `fcab934` (autoInstall=false, but accidentally also bumped version to phantom v14.2.3), `4b9421d` (reverted version back to v14.2.2 = existing release, kept autoInstall=false).
+
+**v14.2.3 ship status:** NEVER ACTUALLY SHIPPED. Build was killed at `[1/5]` step (no MSI produced, no install attempted). The earlier "feat: scrub-sync + loudest-endpoint probe + menu reorg (v14.2.3)" commit (`2f5346a`) IS on origin/main, but no v14.2.3 GitHub release exists and the manifest stays at v14.2.2.
+
+**THE REAL FIX (todo):** Either (a) the auto-updater (`MastersFM_Updater.exe` in src/updater/) should `Start-Process` MastersFM.exe after the MSI install completes, OR (b) the launcher should detect the install-time SIGTERM and self-relaunch from a watchdog process. Until that lands, KEEP `autoInstall=false` in every shipped manifest, so the user manually triggers the install (which gives them a moment to know the app is about to restart).
+
+**Standing rule:** any push to GitHub manifest via `_push_update.ps1` -- which defaults to autoInstall=true -- MUST be overridden with `-NoAutoInstall` flag until the auto-relaunch bug is fixed. Or edit version.json manually + use the URL-form PAT push (per the 2026-06-28 22:20 memory entry).
+
+## 2026-06-29 00:50 — HARD RULE (FOREVER): NO 10-MINUTE COLD REBUILDS. Iterate in 20-30s.
+
+Operator, emphatic + frustrated: "WE WILL NEVER DO COLD REBUILDS OF 10 MINUTES, rebuilds should only takes 20-30 seconds max. i am literally waiting for nothing and it fucks up."
+
+**THE RULE:** Do NOT run `_full_rebuild.ps1 -FullRebuild` (the ~10-min cold path: 6 self-contained publishes + makecab 414MB + MSI db + uninstall + install) for local iteration. That path is ONLY for the final ship-to-GitHub MSI, and even then run it ONCE at the very end after all changes are verified locally.
+
+**For local dev iteration (the 99% case): targeted publish + hot-swap the single changed exe.**
+- Changed ONLY tray (`src/tray_csharp`): publish just the tray, copy `MastersFM_Tray.exe` into `C:\Users\Master\AppData\Local\MastersFM\`, kill+relaunch ONLY MastersFM_Tray (leave server + audio_spectrum running). ~20-40s.
+- Changed ONLY audio_spectrum (`src/audio_spectrum.csproj`): publish just audio_spectrum, copy `audio_spectrum.exe`, kill+relaunch audio_spectrum only.
+- Changed ONLY server (`src/server_dotnet`): publish just server, copy `server.exe`, restart server.
+- See `_fast_iter.ps1` (created 2026-06-29) which does this hot-swap automatically per-project.
+
+**Why the full rebuild is slow + unnecessary for iteration:** the MSI cold path rebuilds ALL 6 projects, runs makecab compression (35s alone), builds the MSI database, signs, uninstalls, reinstalls. None of that is needed to test a code change on the operator's own machine — just swap the one exe that changed and restart that one process.
+
+**Standing workflow going forward:**
+1. Edit source.
+2. `dotnet build <only-the-changed-csproj>` to catch compile errors fast (2-4s).
+3. Hot-swap publish of ONLY that project + restart ONLY that process (~20-40s).
+4. Operator verifies live.
+5. ONLY when everything is confirmed AND we're shipping to friends: run the full cold MSI rebuild ONCE, then upload to GitHub.
+
+NEVER make the operator wait 10 minutes between iterations again.

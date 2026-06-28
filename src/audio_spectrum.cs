@@ -340,6 +340,18 @@ class AudioSpectrum
     // from a bad device pick within a minute. Tune up if friends see the
     // spectrum jumping back to their fixed device during long pauses.
     const int SILENT_RECOVERY_THRESHOLD = 20;
+
+    // v14.2.4 smart auto-switch. When Auto-detect is ON and our captured stream
+    // has been silent for SMART_SWITCH_THRESHOLD * 3 s, scan every active render
+    // endpoint's peak meter and switch capture to the LOUDEST one currently above
+    // LOUD_SWITCH_THRESHOLD -- "my selected device is dead, follow wherever audio
+    // actually is". Reacts in ~15 s (vs the 60 s fixed-device revert) and only
+    // fires when a clearly-loud alternative exists, so paused/quiet audio never
+    // triggers a false switch. The user's saved pick (s_config*) is never
+    // overwritten -- this is a transient runtime override.
+    static volatile bool s_autoDetectEnabled = true;   // re-read from config each tick
+    const int    SMART_SWITCH_THRESHOLD = 5;           // 5 * 3 s = 15 s of silence
+    const double LOUD_SWITCH_THRESHOLD  = 0.05;        // candidate must be clearly loud
     // Input-gain compensation for non-loopback backends. WASAPI Loopback
     // sees the post-mixer system output at ~0 dBFS peaks. MME WaveIn,
     // WASAPI Input, WDM-KS, and ASIO see physical/virtual input signals
@@ -1085,31 +1097,71 @@ class AudioSpectrum
                 catch { /* shutdown */ }
                 try
                 {
-                    // v14.1.10 silence-recovery (checked BEFORE the desired-vs-current
-                    // nudge so the saved pick wins when both fire on the same tick).
-                    // If we have been silent for >= SILENT_RECOVERY_THRESHOLD * 3 s
-                    // AND we know the user's config-saved pick AND we are NOT already
-                    // on it, fall back. Once.
-                    if (s_silentRollupCount >= SILENT_RECOVERY_THRESHOLD
-                        && s_configBackend != null
-                        && (s_configBackend != s_currentBackend
-                            || (s_configDeviceId ?? "") != (s_currentDeviceId ?? "")))
+                    // v14.2.4: keep the Auto-detect flag fresh (informational; the
+                    // dead-device rescue below runs regardless of it -- see why).
+                    s_autoDetectEnabled = ReadAutoDetectFlagFromConfig();
+
+                    bool silenceHandled = false;
+
+                    if (s_silentRollupCount >= SMART_SWITCH_THRESHOLD)
                     {
-                        Log(string.Format(
-                            "silence-recovery: {0} consecutive silent rollups -- reverting to user's saved device backend='{1}' id='{2}' (was backend='{3}' id='{4}')",
-                            s_silentRollupCount,
-                            s_configBackend,
-                            s_configDeviceId ?? "default",
-                            s_currentBackend,
-                            s_currentDeviceId ?? "default"));
-                        s_desiredBackend  = s_configBackend;
-                        s_desiredDeviceId = s_configDeviceId;
-                        s_currentBackend  = s_configBackend;
-                        s_currentDeviceId = s_configDeviceId;
-                        s_silentRollupCount = 0;   // give the new device a chance
-                        s_deviceChangeEvent.Set();
+                        // v14.2.4 DEAD-DEVICE RESCUE (ALWAYS ON): our selected device
+                        // has been silent ~15 s. Follow the audio -- jump to the
+                        // loudest active render endpoint. This runs REGARDLESS of the
+                        // Auto-detect toggle on purpose: manually picking a device in
+                        // the tray disables proactive auto-detect (so the pick sticks
+                        // for normal use), but the user still wants the spectrum to
+                        // recover when that picked device goes dead while audio is
+                        // clearly playing somewhere else (the exact case operator hit:
+                        // ASIO selected + silent, audio live on a VB-Audio VAIO bus).
+                        // Only fires when a clearly-loud alternative exists, so genuine
+                        // global silence (everything paused) leaves us put.
+                        string ldId, ldName; double ldPeak;
+                        if (TryFindLoudestRenderEndpoint(s_currentDeviceId, out ldId, out ldName, out ldPeak))
+                        {
+                            Log(string.Format(
+                                "smart-switch: {0} silent rollups -- following loudest endpoint '{1}' (peak={2:F3}) was backend='{3}' id='{4}'",
+                                s_silentRollupCount, ldName, ldPeak,
+                                s_currentBackend, s_currentDeviceId ?? "default"));
+                            s_desiredBackend  = "wasapi_loopback";
+                            s_desiredDeviceId = ldId;
+                            s_currentBackend  = "wasapi_loopback";
+                            s_currentDeviceId = ldId;
+                            s_silentRollupCount = 0;   // give the new device a chance
+                            s_deviceChangeEvent.Set();
+                            silenceHandled = true;
+                        }
+                        else if (s_silentRollupCount >= SILENT_RECOVERY_THRESHOLD
+                                 && s_configBackend != null
+                                 && (s_configBackend != s_currentBackend
+                                     || (s_configDeviceId ?? "") != (s_currentDeviceId ?? "")))
+                        {
+                            // v14.1.10 REVERT-TO-SAVED: nothing is loud anywhere AND
+                            // we've drifted off the user's saved pick after 60 s of
+                            // silence -- restore it so we're back on their device for
+                            // when audio resumes there.
+                            Log(string.Format(
+                                "silence-recovery: {0} consecutive silent rollups -- reverting to user's saved device backend='{1}' id='{2}' (was backend='{3}' id='{4}')",
+                                s_silentRollupCount,
+                                s_configBackend,
+                                s_configDeviceId ?? "default",
+                                s_currentBackend,
+                                s_currentDeviceId ?? "default"));
+                            s_desiredBackend  = s_configBackend;
+                            s_desiredDeviceId = s_configDeviceId;
+                            s_currentBackend  = s_configBackend;
+                            s_currentDeviceId = s_configDeviceId;
+                            s_silentRollupCount = 0;
+                            s_deviceChangeEvent.Set();
+                            silenceHandled = true;
+                        }
                     }
-                    else if (s_desiredBackend != s_currentBackend)
+
+                    // Reacquire nudge: retry the user's desired pick after a late
+                    // driver load (e.g. ASIO comes online seconds after boot).
+                    // Runs whenever desired != current and silence didn't already
+                    // re-point us this tick.
+                    if (!silenceHandled && s_desiredBackend != s_currentBackend)
                     {
                         Log(string.Format(
                             "reacquire: desired='{0}' id='{1}' differs from current='{2}' id='{3}' -- nudging capture",
@@ -1131,6 +1183,66 @@ class AudioSpectrum
         { IsBackground = true, Name = "AudioReacquireWatchdog" };
         t.Start();
         Log(string.Format("reacquire watchdog: started ({0} s interval)", REACQUIRE_INTERVAL_SECONDS));
+    }
+
+    // v14.2.4: read the Auto-detect master flag from config.json. The tray writes
+    // "audioAutoDetectMusic": true|false at the config root (MusicSourceWatcher
+    // CfgEnableKey). Default ON (true) when the key is missing or unreadable.
+    static bool ReadAutoDetectFlagFromConfig()
+    {
+        try
+        {
+            string cfgPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MastersFM", "config.json");
+            if (!File.Exists(cfgPath)) return true;
+            var m = System.Text.RegularExpressions.Regex.Match(
+                File.ReadAllText(cfgPath),
+                "\"audioAutoDetectMusic\"\\s*:\\s*(true|false)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return !m.Success
+                || m.Groups[1].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return true; }
+    }
+
+    // v14.2.4: find the active render endpoint with the highest peak meter right
+    // now, excluding the one we're already capturing. Used by the smart auto-
+    // switch so a dead selected device hands off to wherever audio is actually
+    // playing (Voicemeeter / Sonar / VB-Cable multi-bus rigs). Reads
+    // AudioMeterInformation, which works WITHOUT us capturing the endpoint, so it
+    // never disrupts live capture. Returns false when nothing is above
+    // LOUD_SWITCH_THRESHOLD (genuine silence everywhere).
+    static bool TryFindLoudestRenderEndpoint(string excludeId, out string deviceId, out string deviceName, out double peak)
+    {
+        deviceId = null; deviceName = null; peak = 0.0;
+        try
+        {
+            var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            MMDevice best = null;
+            double   bestPeak = 0.0;
+            foreach (var dev in endpoints)
+            {
+                try
+                {
+                    string id = dev.ID ?? "";
+                    if (!string.IsNullOrEmpty(excludeId) && id == excludeId) continue;
+                    double p = 0.0;
+                    try { p = dev.AudioMeterInformation.MasterPeakValue; } catch { }
+                    if (p > bestPeak) { bestPeak = p; best = dev; }
+                }
+                catch { /* skip endpoints we can't introspect */ }
+            }
+            if (best != null && bestPeak >= LOUD_SWITCH_THRESHOLD)
+            {
+                deviceId = best.ID;
+                try { deviceName = best.FriendlyName ?? ""; } catch { deviceName = ""; }
+                peak = bestPeak;
+                return true;
+            }
+        }
+        catch (Exception ex) { Log("TryFindLoudestRenderEndpoint: " + ex.Message); }
+        return false;
     }
 
     // Each DataAvailable payload is a block of 32-bit float PCM, interleaved
@@ -3414,6 +3526,12 @@ class AudioSpectrum
             // ever changed at runtime to a device that turns out to be silent.
             s_configBackend  = s_currentBackend;
             s_configDeviceId = s_currentDeviceId;
+
+            // v14.2.4: read the Auto-detect master flag (tray writes
+            // "audioAutoDetectMusic" at config root). Default ON. The watchdog
+            // re-reads it live so toggling from the tray takes effect without a
+            // restart.
+            s_autoDetectEnabled = ReadAutoDetectFlagFromConfig();
 
             // v6.6.9: restore the Response Time setting from last session.
             // Stored as "responseMs" under spectrum.{...} in config.json.
