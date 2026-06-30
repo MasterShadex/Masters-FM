@@ -7462,3 +7462,27 @@ Operator asked to try ideas from github.com/cobusgreyling/loop-engineering. Impl
 **Standing workflow:** run `/preship` (or the script) before every ship. It directly targets every disaster from this cycle: broken menu, stuck version, autoInstall silent-install, two-digit patch, stale manifest.
 
 **Deferred from loop-engineering (maybe later):** nightly health-triage cron (L1 report-only: build + HeadlessTester + version-consistency -> report to memory), and a patch_notes.json drafter (L2 assisted) since the project already maintains patch notes.
+
+## 2026-06-30 — v14.2.5: auto-switch is now MEDIA-AWARE (was following Discord/game audio)
+
+Operator: "The auto-select works, but it selects the audio that is not the media. So it selects as example my game audio or discord audio."
+
+ROOT CAUSE: two paths picked the LOUDEST render endpoint ignoring which process fed it:
+1. v14.2.4 dead-device rescue `TryFindLoudestRenderEndpoint` (pure loudest) — the main culprit.
+2. v14.2.3 `/detect-music` "loud-fallback" (grabbed loudest bus when the hinted process sat on a quiet bus).
+Discord voice / game audio is usually louder than music, so it won.
+
+FIX (audio_spectrum.cs): unified both on `TryFindMediaEndpoint(excludeId, hint, minPeak)`:
+- Walks each active render endpoint's SESSIONS, classifies the PROCESS.
+- `s_commExclude` (discord/teams/slack/zoom/skype/telegram/whatsapp/signal/mumble/ts3/...) → NEVER eligible.
+- Eligible only if process == live SMTC hint (score 1000) OR in `s_mediaApps` (browsers chrome/edge/firefox/brave + players vlc/mpv/potplayer + music spotify/tidal/etc; score 100). Games/unknowns score 0 → never targeted.
+- Returns false when no media playing → caller STAYS PUT (won't grab game/Discord).
+- `s_lastMediaHint` cached from `/detect-music` calls so the autonomous rescue biases to the same process the now-playing track came from.
+- Deleted the v14.2.3 loud-fallback + loudest-tracking entirely.
+- Rescue minPeak 0.01; detect-music minPeak 0.004 (keeps track-change detection permissive).
+
+GOTCHA: "Discord (VB-Audio Matrix VAIO)", "Main", "Media" are the operator's VB-Audio Matrix BUS NAMES (render endpoints), NOT the Discord app. Classification is by the PROCESS owning the session on a bus, not the bus name.
+
+VERIFIED: compiles clean, hot-swapped via _fast_iter.ps1 (5.2s), spectrum stable on saved ASIO showing live audio, no spurious switch to non-media. Full game+Discord+media multi-app test is operator-driven (can't reproduce their routing here).
+
+NOT YET SHIPPED: stacked on the unshipped 14.2.4 work. csproj now 14.2.5. version.json still last-shipped 14.2.3. Run /preship before the eventual cold-rebuild ship.

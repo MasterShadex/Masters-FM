@@ -1116,12 +1116,14 @@ class AudioSpectrum
                         // ASIO selected + silent, audio live on a VB-Audio VAIO bus).
                         // Only fires when a clearly-loud alternative exists, so genuine
                         // global silence (everything paused) leaves us put.
-                        string ldId, ldName; double ldPeak;
-                        if (TryFindLoudestRenderEndpoint(s_currentDeviceId, out ldId, out ldName, out ldPeak))
+                        MMDevice mediaDev; string ldProc; double ldPeak;
+                        if (TryFindMediaEndpoint(s_currentDeviceId, s_lastMediaHint, 0.01, out mediaDev, out ldProc, out ldPeak))
                         {
+                            string ldId = mediaDev.ID;
+                            string ldName = ""; try { ldName = mediaDev.FriendlyName ?? ""; } catch { }
                             Log(string.Format(
-                                "smart-switch: {0} silent rollups -- following loudest endpoint '{1}' (peak={2:F3}) was backend='{3}' id='{4}'",
-                                s_silentRollupCount, ldName, ldPeak,
+                                "smart-switch: {0} silent rollups -- following MEDIA proc='{1}' on endpoint='{2}' (peak={3:F3}) was backend='{4}' id='{5}'",
+                                s_silentRollupCount, ldProc, ldName, ldPeak,
                                 s_currentBackend, s_currentDeviceId ?? "default"));
                             s_desiredBackend  = "wasapi_loopback";
                             s_desiredDeviceId = ldId;
@@ -1206,42 +1208,74 @@ class AudioSpectrum
         catch { return true; }
     }
 
-    // v14.2.4: find the active render endpoint with the highest peak meter right
-    // now, excluding the one we're already capturing. Used by the smart auto-
-    // switch so a dead selected device hands off to wherever audio is actually
-    // playing (Voicemeeter / Sonar / VB-Cable multi-bus rigs). Reads
-    // AudioMeterInformation, which works WITHOUT us capturing the endpoint, so it
-    // never disrupts live capture. Returns false when nothing is above
-    // LOUD_SWITCH_THRESHOLD (genuine silence everywhere).
-    static bool TryFindLoudestRenderEndpoint(string excludeId, out string deviceId, out string deviceName, out double peak)
+    // v14.2.5: MEDIA-AWARE endpoint finder (replaces v14.2.4 "loudest wins",
+    // which followed Discord voice / game audio instead of the media). Walks
+    // every active render endpoint's sessions; an endpoint is only a valid
+    // capture target when one of its sessions is the live SMTC media hint OR a
+    // known media app (browsers / players / music) AND is above minPeak.
+    // Communication apps (Discord/Teams/...) and unknown processes (games) are
+    // NEVER eligible -- so the spectrum follows the media, not whatever is
+    // loudest. Used by BOTH /detect-music and the dead-device rescue so they
+    // share one rule. Returns false when no media is playing anywhere (caller
+    // stays put rather than grabbing the wrong source).
+    static bool TryFindMediaEndpoint(string excludeId, string hint, double minPeak,
+                                     out MMDevice device, out string procName, out double peak)
     {
-        deviceId = null; deviceName = null; peak = 0.0;
+        device = null; procName = null; peak = 0.0;
+        hint = (hint ?? "").ToLowerInvariant();
+        if (hint.EndsWith(".exe")) hint = hint.Substring(0, hint.Length - 4);
+
+        MMDevice best = null; double bestScore = 0.0; double bestPeak = 0.0; string bestProc = null;
         try
         {
             var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-            MMDevice best = null;
-            double   bestPeak = 0.0;
             foreach (var dev in endpoints)
             {
                 try
                 {
                     string id = dev.ID ?? "";
                     if (!string.IsNullOrEmpty(excludeId) && id == excludeId) continue;
-                    double p = 0.0;
-                    try { p = dev.AudioMeterInformation.MasterPeakValue; } catch { }
-                    if (p > bestPeak) { bestPeak = p; best = dev; }
+                    double endpointPeak = 0.0;
+                    try { endpointPeak = dev.AudioMeterInformation.MasterPeakValue; } catch { }
+                    var mgr = dev.AudioSessionManager;
+                    if (mgr == null || mgr.Sessions == null) continue;
+                    int n = mgr.Sessions.Count;
+                    for (int i = 0; i < n; i++)
+                    {
+                        var sess = mgr.Sessions[i];
+                        string proc = "?";
+                        try { proc = System.Diagnostics.Process.GetProcessById((int)sess.GetProcessID).ProcessName ?? "?"; }
+                        catch { }
+                        string pl = proc.ToLowerInvariant();
+
+                        // comms / voice apps can NEVER drive the spectrum
+                        bool isComm = false;
+                        foreach (var c in s_commExclude) { if (pl.Contains(c)) { isComm = true; break; } }
+                        if (isComm) continue;
+
+                        double sp = 0.0;
+                        try { sp = sess.AudioMeterInformation.MasterPeakValue; } catch { }
+                        double loud = Math.Max(sp, endpointPeak);
+                        if (loud < minPeak) continue;   // must be clearly playing
+
+                        double score = 0.0;
+                        if (hint.Length > 0 && (pl == hint || pl.StartsWith(hint) || pl.Contains(hint)))
+                            score = 1000.0 + loud;            // the live media process from SMTC
+                        else
+                        {
+                            foreach (var a in s_mediaApps) { if (pl.Contains(a)) { score = 100.0 + loud; break; } }
+                        }
+                        if (score <= 0.0) continue;           // game / unknown -> not a target
+
+                        if (score > bestScore) { bestScore = score; best = dev; bestPeak = loud; bestProc = proc; }
+                    }
                 }
                 catch { /* skip endpoints we can't introspect */ }
             }
-            if (best != null && bestPeak >= LOUD_SWITCH_THRESHOLD)
-            {
-                deviceId = best.ID;
-                try { deviceName = best.FriendlyName ?? ""; } catch { deviceName = ""; }
-                peak = bestPeak;
-                return true;
-            }
         }
-        catch (Exception ex) { Log("TryFindLoudestRenderEndpoint: " + ex.Message); }
+        catch (Exception ex) { Log("TryFindMediaEndpoint: " + ex.Message); }
+
+        if (best != null) { device = best; procName = bestProc; peak = bestPeak; return true; }
         return false;
     }
 
@@ -3019,6 +3053,34 @@ class AudioSpectrum
         "vlc"                         // common fallback player
     };
 
+    // v14.2.5: processes that must NEVER drive the spectrum -- communication /
+    // voice apps. Operator hit the auto-switch following Discord voice or game
+    // audio instead of their media. These are disqualified as a capture target
+    // even when loud. (PROCESS names; distinct from VB-Audio Matrix bus NAMES
+    // like "Discord (VB-Audio Matrix VAIO)" which are render endpoints.)
+    static readonly string[] s_commExclude = new[] {
+        "discord", "discordptb", "discordcanary", "vesktop", "armcord", "webcord",
+        "teams", "ms-teams", "msteams", "slack", "zoom", "skype",
+        "webex", "webexmta", "telegram", "whatsapp", "signal",
+        "mumble", "ts3client", "teamspeak", "ventrilo"
+    };
+
+    // v14.2.5: valid MEDIA sources for the auto-switch -- the known music apps
+    // PLUS browsers (streaming video/music) and desktop players. The dead-device
+    // rescue only follows one of these (or the live SMTC hint); it never grabs a
+    // game or an unknown loud process.
+    static readonly string[] s_mediaApps = new[] {
+        "chrome", "msedge", "edge", "firefox", "brave", "opera", "vivaldi", "librewolf", "zen", "waterfox",
+        "vlc", "mpc-hc", "mpc-be", "mpv", "potplayer", "wmplayer", "netflix", "plex", "plexamp",
+        "spotify", "tidal", "applemusic", "amazonmusic", "foobar2000", "aimp", "musicbee",
+        "deezer", "soundcloud", "qobuz", "audirvana", "itunes", "groove", "music"
+    };
+
+    // v14.2.5: last hint from /detect-music (the live media process the tray's
+    // SMTC integration knows is playing). Biases the autonomous dead-device
+    // rescue toward the SAME process the now-playing track came from.
+    static volatile string s_lastMediaHint = "";
+
     static void HandleDetectMusic(HttpListenerContext ctx)
     {
         try
@@ -3027,133 +3089,23 @@ class AudioSpectrum
             if (hint.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 hint = hint.Substring(0, hint.Length - 4);
             hint = hint.ToLowerInvariant();
+            // v14.2.5: cache the live media-process hint so the autonomous
+            // dead-device rescue can bias toward the SAME process later.
+            if (hint.Length > 0) s_lastMediaHint = hint;
 
+            // v14.2.5: unified on the media-aware finder. The previous inline scan
+            // had a "loud-fallback" that grabbed whatever render bus was loudest
+            // when the hinted process sat on a quiet bus -- which followed Discord
+            // voice / game audio (operator report 2026-06-30). TryFindMediaEndpoint
+            // only ever targets the live media process or a known media app and
+            // never a comms/game process, so detect-music and the dead-device
+            // rescue now follow the exact same rule. minPeak 0.004 keeps the old
+            // permissive detect-on-track-change behavior (a just-started, still-
+            // quiet stream still resolves).
             MMDevice bestDevice = null;
             string   bestProc   = null;
-            double   bestScore  = 0.0;
             double   bestPeak   = 0.0;
-
-            const double SILENCE_THRESHOLD = 0.002; // ≈ -54 dBFS — anything quieter is "not playing"
-
-            // v14.2.3: also track loudest endpoint with ANY active session, as a
-            // fallback for Voicemeeter / Sonar / VB-Cable setups where the music
-            // process session is registered on a quiet virtual bus but the actual
-            // mixed output goes to a different (loud) bus -- the case operator hit
-            // 2026-06-28 where Chrome session was on Media VAIO (peak 0.012) while
-            // the real audio was on Discord VAIO (peak 0.925).
-            MMDevice loudestDevice = null;
-            double   loudestPeak   = 0.0;
-            string   loudestProc   = "";
-
-            try
-            {
-                var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-                foreach (var dev in endpoints)
-                {
-                    try
-                    {
-                        // Endpoint overall peak (mixed output of all sessions on this device).
-                        // Drives the loud-fallback below + is used as the score tiebreaker so a
-                        // process session enumerated on multiple endpoints prefers the loud one.
-                        double endpointPeak = 0.0;
-                        try { endpointPeak = dev.AudioMeterInformation.MasterPeakValue; } catch { }
-
-                        var mgr = dev.AudioSessionManager;
-                        if (mgr == null || mgr.Sessions == null) continue;
-                        int n = mgr.Sessions.Count;
-
-                        // Track loudest-endpoint candidate: just needs ANY active session +
-                        // a high endpoint meter (not silence).
-                        string topProcHere = "?";
-                        if (n > 0 && endpointPeak > loudestPeak && endpointPeak > SILENCE_THRESHOLD)
-                        {
-                            // Best-effort name of any active session on this endpoint, for logging.
-                            for (int j = 0; j < n; j++)
-                            {
-                                try
-                                {
-                                    var pid = (int)mgr.Sessions[j].GetProcessID;
-                                    if (pid <= 0) continue;
-                                    topProcHere = System.Diagnostics.Process.GetProcessById(pid).ProcessName ?? "?";
-                                    break;
-                                } catch { }
-                            }
-                            loudestDevice = dev;
-                            loudestPeak   = endpointPeak;
-                            loudestProc   = topProcHere;
-                        }
-
-                        for (int i = 0; i < n; i++)
-                        {
-                            var sess = mgr.Sessions[i];
-                            string procName = "?";
-                            try
-                            {
-                                var p = System.Diagnostics.Process.GetProcessById((int)sess.GetProcessID);
-                                procName = p.ProcessName ?? "?";
-                            } catch { /* process gone, system session, etc. */ }
-
-                            string procLower = procName.ToLowerInvariant();
-                            double peak = 0.0;
-                            try { peak = sess.AudioMeterInformation.MasterPeakValue; } catch { }
-
-                            if (peak < SILENCE_THRESHOLD) continue;
-
-                            // v14.2.3: tiebreaker = max(sessionPeak, endpointPeak). When the same
-                            // process is enumerated on multiple endpoints (Voicemeeter etc.) the
-                            // endpoint with the loudest overall meter wins, not whichever the
-                            // walker happened to visit first.
-                            double tiebreak = Math.Max(peak, endpointPeak);
-
-                            double score = 0.0;
-                            // SMTC-provided hint takes precedence — exact-or-prefix match
-                            if (hint.Length > 0 && (procLower == hint || procLower.StartsWith(hint)))
-                                score = 1000.0 + tiebreak;
-                            else
-                            {
-                                foreach (var app in s_knownMusicApps)
-                                {
-                                    if (procLower.Contains(app))
-                                    {
-                                        score = 100.0 + tiebreak;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (score > bestScore)
-                            {
-                                bestScore  = score;
-                                bestDevice = dev;
-                                bestProc   = procName;
-                                bestPeak   = peak;
-                            }
-                        }
-                    } catch { /* skip endpoints we can't introspect */ }
-                }
-            } catch (Exception enumEx) {
-                Log("detect-music: enumerate threw: " + enumEx.Message);
-            }
-
-            // v14.2.3 fallback: if the hint/known-music match landed on a near-silent
-            // endpoint (peak < 0.05) AND a DIFFERENT endpoint is markedly louder
-            // (peak > 5x the matched session peak), prefer the louder one. This is
-            // the Voicemeeter case again -- the music app's process session is on a
-            // quiet bus, but the actual audible mix goes to a different bus.
-            if (bestDevice != null
-                && bestPeak < 0.05
-                && loudestDevice != null
-                && loudestDevice != bestDevice
-                && loudestPeak > Math.Max(0.05, bestPeak * 5.0))
-            {
-                Log(string.Format(
-                    "detect-music: loud-fallback applied -- hint match on '{0}' (peak {1:F3}, proc={2}) " +
-                    "overridden by louder endpoint '{3}' (peak {4:F3}, proc={5})",
-                    (bestDevice.FriendlyName ?? ""), bestPeak, bestProc,
-                    (loudestDevice.FriendlyName ?? ""), loudestPeak, loudestProc));
-                bestDevice = loudestDevice;
-                bestPeak   = loudestPeak;
-                bestProc   = loudestProc + " (loud-fallback)";
-            }
+            TryFindMediaEndpoint(null, hint, 0.004, out bestDevice, out bestProc, out bestPeak);
 
             var sb = new StringBuilder();
             if (bestDevice != null)
