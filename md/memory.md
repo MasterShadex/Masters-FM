@@ -7448,3 +7448,17 @@ Operator, emphatic + frustrated: "WE WILL NEVER DO COLD REBUILDS OF 10 MINUTES, 
 5. ONLY when everything is confirmed AND we're shipping to friends: run the full cold MSI rebuild ONCE, then upload to GitHub.
 
 NEVER make the operator wait 10 minutes between iterations again.
+
+## 2026-06-30 — Loop-engineering pre-ship gate added (_preship_check.ps1 + /preship skill)
+
+Operator asked to try ideas from github.com/cobusgreyling/loop-engineering. Implemented the highest-value adaptation: the maker/checker "checker" as a deterministic pre-ship verification gate. NOT adopting the full framework (PR-babysitter / CI-sweeper / issue-triage patterns assume a GitHub-team workflow this solo desktop project doesn't have; L3-unattended is unsafe when a bad ship bricks friend installs).
+
+**`_preship_check.ps1`** (repo root, runnable; the "checker"): builds all 8 projects, runs HeadlessTester (0-anomaly gate = the v14.2.x menu-bug class), and verifies version.json shape + msi_url tag + sha256 + autoInstall==false + csproj `<Version>` == version.json `version` (the "stuck at 14.0.0" guard). Exit 0=SHIP-OK, 1=REVIEW, 2=BLOCK. Appends every run to `logs/preship_runlog.md` (durable run-log). Each check maps to a real failure shipped this cycle.
+- Flags: `-SkipBuild` (fast checks ~2s), `-ExpectVersion 14.2.4` (assert intended ship version).
+- GOTCHA fixed in it: PS5.1 `.Count` on a single Where-Object match returns $null (scalar, not array) -> wrap in @(). Was making BLOCK mis-report as SHIP-OK.
+
+**`.claude/skills/preship/SKILL.md`**: `/preship` skill that runs the checker, interprets, and applies the HUMAN GATE (operator is final authority; never auto-ship past a FAIL). The ship itself (cold rebuild + GitHub upload + version.json push) stays operator-gated.
+
+**Standing workflow:** run `/preship` (or the script) before every ship. It directly targets every disaster from this cycle: broken menu, stuck version, autoInstall silent-install, two-digit patch, stale manifest.
+
+**Deferred from loop-engineering (maybe later):** nightly health-triage cron (L1 report-only: build + HeadlessTester + version-consistency -> report to memory), and a patch_notes.json drafter (L2 assisted) since the project already maintains patch notes.
