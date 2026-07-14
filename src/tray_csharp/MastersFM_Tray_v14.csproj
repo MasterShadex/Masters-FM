@@ -24,10 +24,10 @@
          never moved. Now overridable from the build command via -p:Version=...
          so _full_rebuild.ps1 can sync this to version.json on every cold build.
          If -p:Version is not passed, defaults are bumped manually per release. -->
-    <Version Condition="'$(Version)' == ''">14.2.5</Version>
-    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">14.2.5.0</AssemblyVersion>
-    <FileVersion Condition="'$(FileVersion)' == ''">14.2.5.0</FileVersion>
-    <InformationalVersion Condition="'$(InformationalVersion)' == ''">14.2.5</InformationalVersion>
+    <Version Condition="'$(Version)' == ''">14.2.8</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">14.2.8.0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">14.2.8.0</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">14.2.8</InformationalVersion>
     <Company>MasterShadex</Company>
     <Product>Master's FM</Product>
     <Copyright>(c) MasterShadex</Copyright>

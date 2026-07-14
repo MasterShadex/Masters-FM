@@ -79,11 +79,14 @@ if ($launcher) {
     foreach ($t in $Targets) {
         if (-not $map.ContainsKey($t)) { continue }
         $exe = Join-Path $install $map[$t].dstexe
-        if (Test-Path $exe) { Start-Process $exe -WorkingDirectory $install | Out-Null }
+        # -WindowStyle Hidden: audio_spectrum.exe / server.exe are CONSOLE apps;
+        # spawning them directly without this pops a CMD window every hot-swap
+        # (operator was gaming and got spammed with console windows, 2026-06-30).
+        if (Test-Path $exe) { Start-Process $exe -WorkingDirectory $install -WindowStyle Hidden | Out-Null }
     }
 } else {
     Write-Host "launcher not running - launching full app" -ForegroundColor Cyan
-    Start-Process (Join-Path $install 'MastersFM.exe') | Out-Null
+    Start-Process (Join-Path $install 'MastersFM.exe') -WindowStyle Hidden | Out-Null
 }
 
 $sw.Stop()

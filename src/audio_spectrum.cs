@@ -335,6 +335,17 @@ class AudioSpectrum
     static string s_configBackend  = null;
     static string s_configDeviceId = null;
     static volatile int s_silentRollupCount = 0;
+    // v14.2.8 SILENCE-REFRESH (rung 1): re-open the CURRENT capture ONCE when it goes
+    // silent -- or fully stalls (no buffers at all) -- for ~3-5s WHILE media is actually
+    // playing. Driven by a wall-clock watchdog (NOT OnData) so a full driver-callback
+    // stall is still caught. Never changes device -> cannot re-introduce the v14.2.7 thrash.
+    static volatile bool s_refreshedThisEpisode = false;   // one refresh per silence episode
+    static long   s_lastDataTicks    = 0;                  // UtcNow.Ticks of the last delivered buffer (heartbeat)
+    static long   s_lastRefreshTicks = 0;                  // UtcNow.Ticks of the last refresh (cooldown)
+    const int     STALL_SECONDS            = 4;            // no buffers for this long = capture stalled
+    const int     REFRESH_COOLDOWN_SECONDS = 20;           // min seconds between refreshes (anti-oscillation)
+    const int     REFRESH_POLL_MS          = 2000;         // wall-clock watchdog cadence -> refresh lands ~3-5s in
+    const double  MEDIA_PLAYING_MINPEAK    = 0.0008;       // per-SESSION meter "is media playing" floor
     // 20 rollups * 3 s = 60 s. Long enough to ride out paused music or
     // genuinely-quiet intros without false reverts; short enough to recover
     // from a bad device pick within a minute. Tune up if friends see the
@@ -863,6 +874,10 @@ class AudioSpectrum
 
                     s_currentBackend  = open.BackendTag;
                     s_currentDeviceId = open.ResolvedId;
+                    // v14.2.8: anchor the stall heartbeat to the moment capture (re)opens,
+                    // so a freshly-opened device gets a full STALL_SECONDS window before it
+                    // can be flagged stalled (and isn't judged by the previous device's clock).
+                    s_lastDataTicks   = System.DateTime.UtcNow.Ticks;
                     // Set per-backend input gain. WASAPI Loopback sees the
                     // post-mixer at near-0 dBFS so no boost. Everything else
                     // captures from hardware/virtual inputs that typically
@@ -1077,6 +1092,7 @@ class AudioSpectrum
         }
         t.Start();
         StartReacquireWatchdog();
+        StartSilenceRefreshWatchdog();   // v14.2.8 rung-1: wall-clock stall/silence -> re-open current device once
     }
 
     // v14.1.9: periodic device-reacquire. Wakes every REACQUIRE_INTERVAL_SECONDS
@@ -1116,18 +1132,35 @@ class AudioSpectrum
                         // ASIO selected + silent, audio live on a VB-Audio VAIO bus).
                         // Only fires when a clearly-loud alternative exists, so genuine
                         // global silence (everything paused) leaves us put.
-                        MMDevice mediaDev; string ldProc; double ldPeak;
-                        if (TryFindMediaEndpoint(s_currentDeviceId, s_lastMediaHint, 0.01, out mediaDev, out ldProc, out ldPeak))
+                        // v14.2.7 (operator report 2026-06-30): only HUNT for a media
+                        // bus when the user's HOME device is a wasapi_loopback device. On
+                        // a non-loopback home (ASIO / WASAPI input/exclusive / WDM-KS /
+                        // MME -- a deliberately chosen pro-audio or virtual route) NO
+                        // passive WASAPI signal is trustworthy: on VB-Audio Matrix the
+                        // render endpoint meter reads ~0.03 while its loopback delivers
+                        // ZEROS, and a routing bus may literally be named "Discord".
+                        // Hunting there thrashed the spectrum onto comms / dead buses
+                        // every time the operator's ASIO went quiet between tracks. So a
+                        // non-loopback home NEVER auto-hunts on silence -- it stays put and
+                        // lets revert-to-saved keep it on the home device. If the home
+                        // device truly dies the user re-picks; chasing a wrong bus is worse
+                        // than waiting. (The old v14.2.4 "follow audio to a VAIO bus" intent
+                        // was itself wrong -- that bus delivers zeros.)
+                        bool homeIsLoopback = string.IsNullOrEmpty(s_configBackend)
+                            || s_configBackend.Equals("wasapi_loopback", StringComparison.OrdinalIgnoreCase);
+                        MMDevice mediaDev = null; string mediaBackend = null; string ldProc = null; double ldPeak = 0.0;
+                        if (homeIsLoopback
+                            && TryFindMediaEndpoint(s_currentDeviceId, s_lastMediaHint, 0.01, out mediaDev, out mediaBackend, out ldProc, out ldPeak))
                         {
                             string ldId = mediaDev.ID;
                             string ldName = ""; try { ldName = mediaDev.FriendlyName ?? ""; } catch { }
                             Log(string.Format(
-                                "smart-switch: {0} silent rollups -- following MEDIA proc='{1}' on endpoint='{2}' (peak={3:F3}) was backend='{4}' id='{5}'",
-                                s_silentRollupCount, ldProc, ldName, ldPeak,
+                                "smart-switch: {0} silent rollups -- following MEDIA proc='{1}' via {2} on endpoint='{3}' (peak={4:F3}) was backend='{5}' id='{6}'",
+                                s_silentRollupCount, ldProc, mediaBackend, ldName, ldPeak,
                                 s_currentBackend, s_currentDeviceId ?? "default"));
-                            s_desiredBackend  = "wasapi_loopback";
+                            s_desiredBackend  = mediaBackend;
                             s_desiredDeviceId = ldId;
-                            s_currentBackend  = "wasapi_loopback";
+                            s_currentBackend  = mediaBackend;
                             s_currentDeviceId = ldId;
                             s_silentRollupCount = 0;   // give the new device a chance
                             s_deviceChangeEvent.Set();
@@ -1219,12 +1252,16 @@ class AudioSpectrum
     // share one rule. Returns false when no media is playing anywhere (caller
     // stays put rather than grabbing the wrong source).
     static bool TryFindMediaEndpoint(string excludeId, string hint, double minPeak,
-                                     out MMDevice device, out string procName, out double peak)
+                                     out MMDevice device, out string backend, out string procName, out double peak)
     {
-        device = null; procName = null; peak = 0.0;
+        device = null; backend = null; procName = null; peak = 0.0;
         hint = (hint ?? "").ToLowerInvariant();
         if (hint.EndsWith(".exe")) hint = hint.Substring(0, hint.Length - 4);
 
+        // ---- PASS 1: WASAPI RENDER endpoints, process-aware (preferred) -------
+        // Captures the OUTPUT of the bus the media app plays to. Picks the bus
+        // where the live media process (or a known media app) is loud; comms/games
+        // can never win. Backend = wasapi_loopback.
         MMDevice best = null; double bestScore = 0.0; double bestPeak = 0.0; string bestProc = null;
         try
         {
@@ -1255,8 +1292,23 @@ class AudioSpectrum
 
                         double sp = 0.0;
                         try { sp = sess.AudioMeterInformation.MasterPeakValue; } catch { }
-                        double loud = Math.Max(sp, endpointPeak);
-                        if (loud < minPeak) continue;   // must be clearly playing
+                        // v14.2.7 (red-team fix): gate on the ENDPOINT's OWN output meter,
+                        // not Math.Max(session, endpoint). A virtual render bus (VB-Audio
+                        // Matrix VAIO / SteelSeries Sonar) can show the SESSION metering
+                        // active (sp > 0) while that bus's loopback delivers ZEROS
+                        // (endpointPeak ~ 0) -- picking it on the session meter strands the
+                        // spectrum on silence. endpointPeak is the real capturable level; sp
+                        // is kept only to IDENTIFY/score which app it is. A dead bus now
+                        // falls through to the PASS 2 input scan instead of being chosen.
+                        if (endpointPeak < minPeak)
+                        {
+                            if (sp >= minPeak)
+                                Log("detect: dead-loopback bus (session '" + proc + "' meters "
+                                    + sp.ToString("F3") + " but endpoint output "
+                                    + endpointPeak.ToString("F4") + ") -> skip, try input scan");
+                            continue;
+                        }
+                        double loud = endpointPeak;   // real capturable output level
 
                         double score = 0.0;
                         if (hint.Length > 0 && (pl == hint || pl.StartsWith(hint) || pl.Contains(hint)))
@@ -1273,10 +1325,172 @@ class AudioSpectrum
                 catch { /* skip endpoints we can't introspect */ }
             }
         }
-        catch (Exception ex) { Log("TryFindMediaEndpoint: " + ex.Message); }
+        catch (Exception ex) { Log("TryFindMediaEndpoint(render): " + ex.Message); }
 
-        if (best != null) { device = best; procName = bestProc; peak = bestPeak; return true; }
+        if (best != null)
+        {
+            device = best; backend = "wasapi_loopback"; procName = bestProc; peak = bestPeak;
+            return true;
+        }
+
+        // ---- PASS 2: WASAPI CAPTURE/INPUT endpoints (virtual mixers/cables) ----
+        // For SteelSeries Sonar / Voicemeeter / VB-Cable rigs the render endpoint's
+        // loopback returns zeros (the mixer synthesizes internally) but the routed
+        // media shows up on a VIRTUAL capture endpoint whose peak meter we read
+        // passively. We can't classify by process here (capture sessions are
+        // recorders, not the source), so we require: it's a virtual-audio device by
+        // name AND not a voice/chat/mic stream. Backend = wasapi_input.
+        MMDevice bestIn = null; double bestInPeak = 0.0; string bestInName = null;
+        try
+        {
+            var caps = s_enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+            foreach (var dev in caps)
+            {
+                try
+                {
+                    string id = dev.ID ?? "";
+                    if (!string.IsNullOrEmpty(excludeId) && id == excludeId) continue;
+                    string nm = "";
+                    try { nm = (dev.FriendlyName ?? "").ToLowerInvariant(); } catch { }
+                    if (nm.Length == 0) continue;
+
+                    bool isVirtual = false;
+                    foreach (var v in s_virtualInputMatch) { if (nm.Contains(v)) { isVirtual = true; break; } }
+                    if (!isVirtual) continue;                 // physical mic -> skip
+
+                    bool isVoice = false;
+                    foreach (var x in s_inputVoiceExclude) { if (nm.Contains(x)) { isVoice = true; break; } }
+                    if (isVoice) continue;                    // Sonar Chat / comms -> skip
+
+                    // v14.2.7: also skip a virtual bus NAMED after a comms app (the
+                    // operator routes Discord to a VB-Matrix bus literally called
+                    // "Discord (VB-Audio Matrix VAIO)"). The name match above only checks
+                    // the mixer brand, so without this the input scan would follow the
+                    // Discord bus as if it were media.
+                    bool isCommsName = false;
+                    foreach (var c in s_commExclude) { if (nm.Contains(c)) { isCommsName = true; break; } }
+                    if (isCommsName) continue;                // bus named after Discord/Teams/etc -> skip
+
+                    double p = 0.0;
+                    try { p = dev.AudioMeterInformation.MasterPeakValue; } catch { }
+                    if (p < minPeak) continue;
+                    if (p > bestInPeak) { bestInPeak = p; bestIn = dev; bestInName = dev.FriendlyName; }
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex) { Log("TryFindMediaEndpoint(input): " + ex.Message); }
+
+        if (bestIn != null)
+        {
+            device = bestIn; backend = "wasapi_input";
+            procName = "(virtual-input: " + (bestInName ?? "?") + ")"; peak = bestInPeak;
+            return true;
+        }
+
         return false;
+    }
+
+    // v14.2.8: is a media app actually producing audio RIGHT NOW? Reads ONLY the
+    // per-SESSION render meter -- which stays reliable on VB-Audio Matrix even when the
+    // endpoint's own loopback meter lies/reads zeros (confirmed 2026-06-30). It never
+    // reads dev.AudioMeterInformation, so it is immune to the dead-loopback lie and
+    // CANNOT be replaced by TryFindMediaEndpoint (whose endpointPeak gate returns false
+    // on that rig while media plays). Comms/games excluded. Scan-only: opens nothing,
+    // makes no sound. Fail-safe: returns false on any error (=> refresh does nothing).
+    static bool IsMediaPlaying()
+    {
+        string hint = (s_lastMediaHint ?? "").ToLowerInvariant();
+        if (hint.EndsWith(".exe")) hint = hint.Substring(0, hint.Length - 4);
+        try
+        {
+            var endpoints = s_enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            foreach (var dev in endpoints)
+            {
+                try
+                {
+                    var mgr = dev.AudioSessionManager;
+                    if (mgr == null || mgr.Sessions == null) continue;
+                    int n = mgr.Sessions.Count;
+                    for (int i = 0; i < n; i++)
+                    {
+                        var sess = mgr.Sessions[i];
+                        string proc = "?";
+                        try { proc = System.Diagnostics.Process.GetProcessById((int)sess.GetProcessID).ProcessName ?? "?"; }
+                        catch { }
+                        string pl = proc.ToLowerInvariant();
+
+                        bool isComm = false;
+                        foreach (var c in s_commExclude) { if (pl.Contains(c)) { isComm = true; break; } }
+                        if (isComm) continue;                     // Discord/Teams/... never count as "media playing"
+
+                        bool isMedia = (hint.Length > 0 && (pl == hint || pl.StartsWith(hint) || pl.Contains(hint)));
+                        if (!isMedia) { foreach (var a in s_mediaApps) { if (pl.Contains(a)) { isMedia = true; break; } } }
+                        if (!isMedia) continue;                   // games / unknown apps don't count either
+
+                        double sp = 0.0;
+                        try { sp = sess.AudioMeterInformation.MasterPeakValue; } catch { }
+                        if (sp >= MEDIA_PLAYING_MINPEAK) return true;   // a media app is actively producing audio
+                    }
+                }
+                catch { /* skip endpoints we can't introspect */ }
+            }
+        }
+        catch (Exception ex) { Log("IsMediaPlaying: " + ex.Message); }
+        return false;
+    }
+
+    // v14.2.8 SILENCE-REFRESH watchdog (rung 1 of the operator's escalation ladder).
+    // Own thread + wall clock so it catches a FULL capture stall (no buffers at all),
+    // which the OnData/rollup path can't see. When the current capture has been silent
+    // (or stalled) for ~3-5s AND media is actually playing, re-open the SAME device ONCE
+    // per silence episode to recover a stalled stream. It NEVER changes the device, so
+    // fix B / the rung-2 smart-switch and rung-3 revert are untouched and take over later.
+    static bool s_silenceRefreshStarted = false;
+    static void StartSilenceRefreshWatchdog()
+    {
+        if (s_silenceRefreshStarted) return;
+        s_silenceRefreshStarted = true;
+        var t = new Thread(() =>
+        {
+            while (true)
+            {
+                try { Thread.Sleep(REFRESH_POLL_MS); } catch { }
+                try
+                {
+                    long last = s_lastDataTicks;   // x64: aligned long read is atomic
+                    double sinceData = (last == 0) ? 0.0
+                        : (System.DateTime.UtcNow - new System.DateTime(last, System.DateTimeKind.Utc)).TotalSeconds;
+                    bool stalled       = (last != 0) && (sinceData >= STALL_SECONDS);  // no buffers arriving at all
+                    bool silentFlowing = (s_silentRollupCount >= 1);                   // buffers arriving but silent ~3s
+
+                    if (!stalled && s_silentRollupCount == 0)
+                    {
+                        s_refreshedThisEpisode = false;   // audio is flowing -> episode over, re-arm for next time
+                    }
+                    else if ((stalled || silentFlowing) && !s_refreshedThisEpisode)
+                    {
+                        long lr = s_lastRefreshTicks;
+                        double sinceRefresh = (lr == 0) ? 1.0e9
+                            : (System.DateTime.UtcNow - new System.DateTime(lr, System.DateTimeKind.Utc)).TotalSeconds;
+                        if (sinceRefresh >= REFRESH_COOLDOWN_SECONDS && IsMediaPlaying())
+                        {
+                            s_refreshedThisEpisode = true;
+                            s_lastRefreshTicks     = System.DateTime.UtcNow.Ticks;
+                            Log(string.Format(
+                                "silence-refresh: current capture {0} but media IS playing -- re-opening SAME device backend='{1}' id='{2}'",
+                                stalled ? string.Format("STALLED (~{0:F0}s no buffers)", sinceData) : "silent (~3s)",
+                                s_currentBackend, s_currentDeviceId ?? "default"));
+                            s_deviceChangeEvent.Set();   // desired==current -> capture loop re-opens the SAME device
+                        }
+                    }
+                }
+                catch (Exception ex) { Log("silence-refresh watchdog: " + ex.Message); }
+            }
+        })
+        { IsBackground = true, Name = "AudioSilenceRefreshWatchdog" };
+        t.Start();
+        Log(string.Format("silence-refresh watchdog: started ({0}ms poll, stall>={1}s)", REFRESH_POLL_MS, STALL_SECONDS));
     }
 
     // Each DataAvailable payload is a block of 32-bit float PCM, interleaved
@@ -1285,6 +1499,10 @@ class AudioSpectrum
     {
         try
         {
+            // v14.2.8: heartbeat -- a buffer was delivered (wall clock). The silence-
+            // refresh watchdog reads this to detect a full capture STALL (no buffers
+            // arriving at all), which the rollup/OnData silence path cannot see.
+            s_lastDataTicks = System.DateTime.UtcNow.Ticks;
             int bytesPerSample = fmt.BitsPerSample / 8;
             int channelCount   = fmt.Channels;
             int frameBytes     = bytesPerSample * channelCount;
@@ -2897,6 +3115,15 @@ class AudioSpectrum
 
             Log(string.Format("set-device: requested backend='{0}' id='{1}'", newBackend, newId));
             s_currentBackend = newBackend;
+            // v14.2.7 (red-team fix): reset the silence counter on EVERY device switch so
+            // the new device starts with a clean ~15s grace and the live-pin's "alive"
+            // reasoning reflects THIS device's silence, not a stale carried-over count.
+            // Without this, a freshly-picked-but-silent device (e.g. operator pre-selects
+            // ASIO before starting their show) inherits a high count and the live-pin won't
+            // engage, reopening the dead-bus override window.
+            s_silentRollupCount = 0;
+            s_refreshedThisEpisode = false;                        // v14.2.8: fresh silence episode for the newly-picked device
+            s_lastDataTicks        = System.DateTime.UtcNow.Ticks;  // and a fresh stall window (don't judge new device by old clock)
             // KEEP "default" as a sentinel — and an empty id string is
             // equivalent to default — so ResolveTargetDevice can force the
             // system-default endpoint instead of using whatever the last
@@ -3081,6 +3308,22 @@ class AudioSpectrum
     // rescue toward the SAME process the now-playing track came from.
     static volatile string s_lastMediaHint = "";
 
+    // v14.2.6: virtual audio devices whose CAPTURE side carries routed app audio.
+    // Used by the input-scan fallback for rigs where the render endpoint's loopback
+    // returns zeros (the mixer synthesizes internally) -- SteelSeries Sonar /
+    // Voicemeeter / VB-Cable / VB-Audio Matrix. Physical mics never match these,
+    // so the scan won't grab a real microphone.
+    static readonly string[] s_virtualInputMatch = new[] {
+        "cable output", "cable-a", "cable-b", "vb-audio", "vb-cable", "voicemeeter",
+        "vaio", "vasio", "vac", "virtual", "steelseries sonar", "sonar",
+        "synchronous audio router", "matrix"
+    };
+    // v14.2.6: voice/comms streams on those virtual devices to skip (Sonar Chat,
+    // mic/comms buses) so the input-scan follows media, not voice.
+    static readonly string[] s_inputVoiceExclude = new[] {
+        "chat", "microphone", "communication", "voice"
+    };
+
     static void HandleDetectMusic(HttpListenerContext ctx)
     {
         try
@@ -3093,6 +3336,38 @@ class AudioSpectrum
             // dead-device rescue can bias toward the SAME process later.
             if (hint.Length > 0) s_lastMediaHint = hint;
 
+            // v14.2.7 LIVE-DEVICE PIN (locked design after multi-agent review 2026-06-30).
+            // If our CURRENT capture is a NON-loopback backend (ASIO / WASAPI input /
+            // exclusive / WDM-KS / MME) AND it is currently delivering audio, REFUSE to
+            // recommend any switch. Only wasapi_loopback render buses are passively
+            // trustworthy; a per-session render meter can read ACTIVE while that bus's
+            // loopback delivers ZEROS (VB-Audio Matrix VAIO / SteelSeries Sonar -- confirmed
+            // live this session). So a live non-loopback capture is the ground truth and must
+            // NOT be ripped onto a render-loopback bus on an SMTC track event (the operator's
+            // ~60s-strand bug). "alive" reuses the same silence counter the dead-device rescue
+            // uses, so a genuinely-dead device (>= ~15s silent) is NOT pinned and normal
+            // recovery still proceeds. /detect-music is the SOLE auto-detect chokepoint;
+            // manual picks POST /set-device directly and never reach here, so manual-always-
+            // wins is preserved with zero extra code.
+            {
+                string curBk  = s_currentBackend;
+                int    silent = s_silentRollupCount;
+                bool nonLoopback = !string.IsNullOrEmpty(curBk)
+                    && !curBk.Equals("wasapi_loopback", StringComparison.OrdinalIgnoreCase);
+                if (nonLoopback && silent < SMART_SWITCH_THRESHOLD)
+                {
+                    string reason = "current backend '" + curBk + "' is live (silentRollups="
+                        + silent + "); pinned, auto-detect will not move it";
+                    Log("detect-music: PINNED -- " + reason);
+                    byte[] pin = Encoding.UTF8.GetBytes(
+                        "{\"found\":false,\"reason\":\"" + JsonEscape(reason) + "\"}");
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.OutputStream.Write(pin, 0, pin.Length);
+                    ctx.Response.Close();
+                    return;
+                }
+            }
+
             // v14.2.5: unified on the media-aware finder. The previous inline scan
             // had a "loud-fallback" that grabbed whatever render bus was loudest
             // when the hinted process sat on a quiet bus -- which followed Discord
@@ -3102,10 +3377,11 @@ class AudioSpectrum
             // rescue now follow the exact same rule. minPeak 0.004 keeps the old
             // permissive detect-on-track-change behavior (a just-started, still-
             // quiet stream still resolves).
-            MMDevice bestDevice = null;
-            string   bestProc   = null;
-            double   bestPeak   = 0.0;
-            TryFindMediaEndpoint(null, hint, 0.004, out bestDevice, out bestProc, out bestPeak);
+            MMDevice bestDevice  = null;
+            string   bestProc    = null;
+            double   bestPeak    = 0.0;
+            string   bestBackend = "wasapi_loopback";
+            TryFindMediaEndpoint(null, hint, 0.004, out bestDevice, out bestBackend, out bestProc, out bestPeak);
 
             var sb = new StringBuilder();
             if (bestDevice != null)
@@ -3115,6 +3391,7 @@ class AudioSpectrum
                 sb.Append("{\"found\":true,");
                 sb.Append("\"endpointId\":\"").Append(JsonEscape(bestDevice.ID ?? "")).Append("\",");
                 sb.Append("\"endpointName\":\"").Append(JsonEscape(fname)).Append("\",");
+                sb.Append("\"backend\":\"").Append(JsonEscape(bestBackend ?? "wasapi_loopback")).Append("\",");
                 sb.Append("\"process\":\"").Append(JsonEscape(bestProc ?? "")).Append("\",");
                 sb.Append("\"peak\":").Append(bestPeak.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
                 if (hint.Length > 0) sb.Append(",\"hintUsed\":\"").Append(JsonEscape(hint)).Append("\"");

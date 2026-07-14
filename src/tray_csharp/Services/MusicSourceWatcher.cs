@@ -264,7 +264,10 @@ public sealed class MusicSourceWatcher : IDisposable
                 $"detect-music: found process='{r.Process}' on '{r.EndpointName}' (peak={r.Peak:F3}, hint='{hint}', src='{source}') — routing spectrum",
                 Component);
 
-            await _bridge.PushRawAsync("wasapi_loopback", r.EndpointId, cts.Token);
+            // v14.2.6: use the backend the spectrum recommends (wasapi_input for
+            // virtual-capture devices on Sonar/Voicemeeter rigs), not always loopback.
+            var backend = string.IsNullOrEmpty(r.Backend) ? "wasapi_loopback" : r.Backend!;
+            await _bridge.PushRawAsync(backend, r.EndpointId, cts.Token);
             _lastAppliedEndpointId = r.EndpointId;
         }
         catch (OperationCanceledException)
@@ -286,5 +289,9 @@ public sealed class MusicSourceWatcher : IDisposable
         [JsonPropertyName("peak")]         public double Peak         { get; init; }
         [JsonPropertyName("reason")]       public string? Reason      { get; init; }
         [JsonPropertyName("hintUsed")]     public string? HintUsed    { get; init; }
+        // v14.2.6: backend the spectrum recommends for this endpoint --
+        // "wasapi_loopback" (render bus) or "wasapi_input" (virtual capture
+        // device for Sonar/Voicemeeter rigs where loopback returns zeros).
+        [JsonPropertyName("backend")]      public string? Backend     { get; init; }
     }
 }

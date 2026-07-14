@@ -116,15 +116,14 @@ public sealed class AudioBackendBridge
             _logger.LogWarn($"PushRawAsync: empty backend or id (backend='{backend}', id='{id}')", Component);
             return;
         }
-        try
-        {
-            _config.SetValue(CfgBackendKey,  backend);
-            _config.SetValue(CfgDeviceIdKey, id);
-        }
-        catch (System.Exception ex)
-        {
-            _logger.LogErr("PushRawAsync persist", ex, Component);
-        }
+        // v14.2.7 (red-team fix delta): the AUTO-detect path must NOT persist to
+        // config. A "follow the music" auto-switch is a TRANSIENT runtime decision,
+        // not a new home device. Persisting it overwrote the operator's saved ASIO
+        // pick with a dead wasapi_loopback VB-Matrix bus, so the spectrum then BOOTED
+        // onto silence on every restart (config poisoning -> cold-start-on-dead-bus,
+        // confirmed live 2026-06-30). Only deliberate manual picks (PushAsync) set the
+        // boot default now; auto-detect just pushes the live device for this session
+        // and lets the saved home device win again on the next restart.
         await PushToSpectrumAsync(backend, id, ct);
     }
 
