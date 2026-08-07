@@ -394,6 +394,18 @@ internal sealed class DiscordRpcService : BackgroundService
         }
         if (client == null) return;
 
+        // v14.2.9: if the client is no longer READY (e.g. Discord sent an ERROR frame and
+        // set _ready=false without closing the pipe), SetActivityAsync would silently
+        // early-return AND we'd still log "SetActivity sent" below (phantom, misleading).
+        // Detect it here: mark disconnected so the reconnect loop recovers, and skip the
+        // bogus log. Belt-and-suspenders alongside the OnError fix so the send path can't
+        // sit on a dead connection either.
+        if (!client.IsReady)
+        {
+            lock (_lock) { _connected = false; }
+            return;
+        }
+
         try
         {
             await client.SetActivityAsync(activity, CancellationToken.None);
@@ -439,6 +451,15 @@ internal sealed class DiscordRpcService : BackgroundService
     private void OnError(string message)
     {
         _logger.LogWarning("Discord RPC: error {Msg}", message);
+        // v14.2.9: a Discord ERROR frame (or any pipe error) leaves the client
+        // NOT-ready, but the pipe can stay open so the read loop never fires Closed.
+        // Mark the service disconnected so the 30 s reconnect loop disposes the zombie
+        // client and re-handshakes. Without this, a single ERROR frame (seen after long
+        // uptime -- a rate-limit burst) stuck _connected=true forever: SetActivityAsync
+        // silently early-returned (IsReady=false) so nothing reached Discord, yet no
+        // reconnect fired -> presence dead for HOURS until the pipe finally closed on its
+        // own (operator report; server.log 2026-08-06 01:06 -> 08-07 07:42 = ~30.5 h dead).
+        lock (_lock) { _connected = false; }
     }
 
     // ── Activity building ─────────────────────────────────────────────────────

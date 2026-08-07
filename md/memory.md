@@ -7581,3 +7581,37 @@ Operator restarted VB-Audio Matrix (Coconut) -- the exact ASIO-callback-stall th
 Operator also re-enabled audioAutoDetectMusic=true (their choice; safe now with Angle C live-pin + fix B). Device still asio VB-Matrix VASIO-32|30.
 
 UNSHIPPED TALLY: v14.2.4 (menu) + v14.2.5 (media-aware) + v14.2.6 (input-scan) + v14.2.7 (override/pin/beta/gamma/delta + live config un-poison) + v14.2.8 (silence-refresh) are ALL live-on-operator-machine but NOT in the GitHub MSI. csproj=14.2.5, version.json=14.2.3. Ship-to-friends (bump csproj->14.2.8, /preship, ONE cold rebuild, sign, upload, push version.json) is pending operator go-ahead when not gaming/vibing.
+
+## 2026-07-14 ~03:45 — v14.2.8 SHIPPED TO GITHUB (operator: "ship to github, i have had no issues")
+
+Full release pipeline executed + verified. After ~11 days soak on the operator's machine with no issues.
+- Bumped csproj + version.json to 14.2.8 (both — preship enforces csproj==manifest).
+- Pre-ship gate (_preship_check.ps1 -ExpectVersion 14.2.8): all PASS (version 14.2.8, autoInstall=false, msi_url v14.2.8, 8 projects compiled, HeadlessTester 0 anomalies); only WARN = uncommitted files (expected). Verdict REVIEW -> proceeded.
+- Cold rebuild (_full_rebuild.ps1 -FullRebuild): MSI built + signed (CN=MasterShadex, status Valid), version.json regenerated sha256=68577ea21b466de92a853cf0a0b5b76e4789ec026fd52f0731586b83c8d71f25, autoInstall=false. Uninstalled+reinstalled on operator machine; installed tray FileVersion=14.2.8.0 (the "stuck at 14.0.0" bug is gone).
+- Committed 7 files to main (2be9e77): audio_spectrum.cs, AudioBackendBridge.cs, MusicSourceWatcher.cs, csproj, version.json, _fast_iter.ps1, md/memory.md. Did NOT git-add the untracked scratch.
+- Pushed via PAT-URL (git push "https://x-access-token:$token@github.com/MasterShadex/Masters-FM.git" main:main) -> 2b19ba1..2be9e77, no popup. (Remote main was behind at 2b19ba1; also carried up the local-only bbc7cfe.)
+- GitHub release v14.2.8 created (id=353524804) via API + PAT; uploaded Masters-FM-V14.2.8.msi (353.9 MB, state=uploaded).
+- Did NOT use _push_update.ps1 (it defaults autoInstall=true + pushes via popup-prone origin). Kept autoInstall=false manually.
+- FINAL REMOTE VERIFY (all green): remote version.json on main = 14.2.8 / autoInstall=false / sha==MSI / msi_url==asset browser_download_url. Auto-update path coherent.
+Notes: _full_rebuild writes version.json with a UTF-8 BOM (strip via .TrimStart([char]0xFEFF) before ConvertFrom-Json in PS5.1). GitHub Contents API returns content base64 with newlines (strip \s before FromBase64String). Both are verifier gotchas, not ship problems.
+
+STATUS: v14.2.8 LIVE on GitHub. Friends' trays will notify (autoInstall=false) within ~6h. Everything from v14.2.4-14.2.8 is now shipped. Auto-updater relaunch bug still open -> autoInstall stays false until fixed.
+
+## 2026-08-07 ~08:38 — v14.2.9 fix: Discord RPC zombie-on-ERROR-frame (operator: "RPC stops after long time")
+
+ROOT CAUSE (proven from server.log, 8-day uptime 07-30..08-07): a Discord ERROR frame puts the connection in a ZOMBIE state that never recovers.
+- DiscordIpcClient.HandleFrame on evt=="ERROR" sets client _ready=false but does NOT close the pipe / fire Closed.
+- DiscordRpcService.OnError only LOGGED -- did not set _connected=false.
+- So _connected stayed true forever. The 30s reconnect loop only fires when (_enabled && !_connected), so it NEVER reconnected. And SetActivityAsync early-returns when !IsReady -> nothing reaches Discord.
+- Evidence: 2026-08-06 01:06:12 five "Discord returned ERROR frame" (a rate-limit burst, ~5+ SET_ACTIVITY in 20s from a scrub). Then presence DEAD until 08-07 07:42:41 (~30.5h) when the pipe finally closed on its own -> reconnect.
+- GOTCHA that hid it: SendActivityAsync logs "SetActivity sent" UNCONDITIONALLY after the await, even when SetActivityAsync early-returned (!IsReady) and sent nothing. So the log showed 1117 phantom "sends" during the dead window. Last REAL send 01:06:08, next real 07:42:51.
+
+FIX (src/server_dotnet/DiscordRpcService.cs, tag v14.2.9):
+1. OnError: `lock (_lock) { _connected = false; }` -> a Discord error now marks disconnected so the 30s reconnect loop disposes the zombie + re-handshakes (recovers within <=30s instead of never).
+2. SendActivityAsync: if (!client.IsReady) { _connected=false; return; } BEFORE the send/log -> catches the zombie via the send path too AND stops the phantom "SetActivity sent" log.
+
+Both paths that set client _ready=false now propagate to _connected=false (Closed already did; ERROR now does too). Verified: compiled 0 err, hot-swapped server (3.7s), reconnected "connected as mastershadex", real SetActivity flowing.
+
+SECONDARY (not fixed, optional): the ERROR frames were a rate-limit burst -- DiscordRpcThrottle is a 50ms coalescer with NO 5/20s cap, so rapid scrubbing exceeds Discord's 5-updates-per-20s and triggers ERROR frames. The zombie fix makes them self-heal (<=30s blip). To PREVENT them entirely, add a 5/20s token-bucket to the throttle (cost: less real-time scrub feedback). Operator tradeoff -- deferred.
+
+STATUS: hot-swapped live on operator machine (recovers now). csproj still 14.2.8 (shipped). This fix = v14.2.9, UNSHIPPED. Ship when operator says (bump csproj->14.2.9, /preship, cold rebuild, sign, upload, push manifest).
